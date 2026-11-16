@@ -98,7 +98,7 @@ struct ChatView: View {
     @State private var password = ""
     @State private var importing = false
     @State private var photo: PhotosPickerItem?
-    @FocusState private var composing: Bool
+    @State private var focusRequest = 0
     var body: some View {
         VStack(spacing: 0) {
             Text(store.status).font(.caption).foregroundStyle(.secondary).padding(8)
@@ -120,9 +120,9 @@ struct ChatView: View {
                 HStack(alignment: .bottom, spacing: 10) {
                     PhotosPicker(selection: $photo, matching: .any(of: [.images, .videos])) { Image(systemName: "photo").font(.title3).frame(width: 30, height: 40) }.disabled(!store.connected || store.transferProgress != nil).accessibilityLabel("Chọn ảnh hoặc video")
                     Button { importing = true } label: { Image(systemName: "paperclip").font(.title3).frame(width: 36, height: 40) }.disabled(!store.connected || store.transferProgress != nil).accessibilityLabel("Gửi tệp, ảnh hoặc video")
-                    TextField("Nhắn tin…", text: $draft, axis: .vertical).lineLimit(1...5).padding(10).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18)).focused($composing).accessibilityIdentifier("composer")
+                    MessageComposer(text: $draft, focusRequest: focusRequest).fixedSize(horizontal: false, vertical: true)
                     Button {
-                        if store.send(draft) { draft = ""; composing = true }
+                        if store.send(draft) { draft = ""; focusRequest += 1 }
                     } label: { Image(systemName: "arrow.up.circle.fill").font(.system(size: 34)).frame(height: 40) }.disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty).accessibilityLabel("Gửi tin nhắn").accessibilityIdentifier("send")
                 }.padding(.horizontal, 12).padding(.vertical, 8)
             }
@@ -131,6 +131,7 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { if store.current?.protected == true && !store.locked { ToolbarItem(placement: .navigationBarTrailing) { Button { Task { await store.lock() } } label: { Image(systemName: "lock") }.accessibilityLabel("Khóa hội thoại") } } }
         .onAppear { store.select(conversationID) }
+        .onChange(of: store.locked) { if !$0 { focusRequest += 1 } }
         .onDisappear { password = ""; draft = ""; store.select("") }
         .onChange(of: store.visible) { if !$0 { password = ""; if store.current?.protected == true { draft = "" } } }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item]) { result in
@@ -166,6 +167,42 @@ struct ChatView: View {
             .onChange(of: store.messages.last?.id) { _ in proxy.scrollTo("end", anchor: .bottom) }
             .task { try? await Task.sleep(nanoseconds: 300_000_000); proxy.scrollTo("end", anchor: .bottom) }
         }
+    }
+}
+
+// Keep the editor's native identity and selection stable while history/ACK updates redraw SwiftUI.
+struct MessageComposer: UIViewRepresentable {
+    @Binding var text: String
+    let focusRequest: Int
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView(); view.delegate = context.coordinator
+        view.font = .preferredFont(forTextStyle: .body); view.adjustsFontForContentSizeCategory = true
+        view.backgroundColor = .secondarySystemBackground; view.layer.cornerRadius = 18
+        view.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 8)
+        view.accessibilityIdentifier = "composer"; view.accessibilityLabel = "Nhắn tin"
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return view
+    }
+    func updateUIView(_ view: UITextView, context: Context) {
+        context.coordinator.parent = self
+        if view.text != text { view.text = text }
+        if context.coordinator.focusRequest != focusRequest {
+            context.coordinator.focusRequest = focusRequest
+            DispatchQueue.main.async { if view.window != nil { view.becomeFirstResponder() } }
+        }
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        let width = proposal.width ?? 220
+        let measured = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: min(130, max(42, measured.height)))
+    }
+    static func dismantleUIView(_ uiView: UITextView, coordinator: Coordinator) { uiView.resignFirstResponder(); uiView.delegate = nil }
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: MessageComposer
+        var focusRequest = 0
+        init(_ parent: MessageComposer) { self.parent = parent }
+        func textViewDidChange(_ textView: UITextView) { parent.text = textView.text; textView.invalidateIntrinsicContentSize() }
     }
 }
 

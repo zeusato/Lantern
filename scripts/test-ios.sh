@@ -25,9 +25,13 @@ PY
 DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(v["udid"] for group in d["devices"].values() for v in group if v["name"].startswith("iPhone")))')
 xcrun simctl boot "$DEVICE_ID" || true
 xcrun simctl bootstatus "$DEVICE_ID" -b
-openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/lantern-ios-relay.key -out /tmp/lantern-ios-relay.crt -days 1 \
-  -subj '/CN=Lantern Simulator Relay' -addext 'subjectAltName=IP:127.0.0.1,DNS:localhost' -addext 'basicConstraints=critical,CA:TRUE'
-xcrun simctl keychain "$DEVICE_ID" add-root-cert /tmp/lantern-ios-relay.crt
+openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/lantern-ios-root.key -out /tmp/lantern-ios-root.crt -days 1 \
+  -subj '/CN=Lantern Simulator Root' -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign'
+openssl req -newkey rsa:2048 -nodes -keyout /tmp/lantern-ios-relay.key -out /tmp/lantern-ios-relay.csr -subj '/CN=localhost'
+printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' 'subjectAltName=IP:127.0.0.1,DNS:localhost' > /tmp/lantern-ios-relay.ext
+openssl x509 -req -in /tmp/lantern-ios-relay.csr -CA /tmp/lantern-ios-root.crt -CAkey /tmp/lantern-ios-root.key -CAcreateserial \
+  -out /tmp/lantern-ios-relay.crt -days 1 -sha256 -extfile /tmp/lantern-ios-relay.ext
+xcrun simctl keychain "$DEVICE_ID" add-root-cert /tmp/lantern-ios-root.crt
 node tests/MobileInteropFixture/relay-harness.mjs /tmp/lantern-ios-relay.crt /tmp/lantern-ios-relay.key > /tmp/lantern-ios-relay.log 2>&1 &
 RELAY_PID=$!
 xcodebuild -project ios/Lantern.xcodeproj -scheme Lantern -configuration Debug \
