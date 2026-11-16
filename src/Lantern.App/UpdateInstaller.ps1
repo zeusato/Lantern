@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][int]$TargetPid, [Parameter(Mandatory)][string]$SourceDirectory, [Parameter(Mandatory)][string]$InstallDirectory, [Parameter(Mandatory)][string]$DataDirectory, [Parameter(Mandatory)][string]$ExpectedExeHash)
+﻿param([Parameter(Mandatory)][int]$TargetPid, [Parameter(Mandatory)][string]$SourceDirectory, [Parameter(Mandatory)][string]$InstallDirectory, [Parameter(Mandatory)][string]$DataDirectory, [Parameter(Mandatory)][string]$ExpectedExeHash)
 $ErrorActionPreference = 'Stop'
 $sourceRoot = [IO.Path]::GetFullPath($SourceDirectory)
 $installRoot = [IO.Path]::GetFullPath($InstallDirectory)

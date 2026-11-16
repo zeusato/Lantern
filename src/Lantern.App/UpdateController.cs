@@ -52,7 +52,8 @@ internal sealed class UpdateController : IDisposable
         using (var file = new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose)) { }
         var script = Path.Combine(CacheDirectory, "apply-" + Guid.NewGuid().ToString("N") + ".ps1");
         using var resource = Assembly.GetExecutingAssembly().GetManifestResourceStream("Lantern.App.UpdateInstaller.ps1")!;
-        using (var output = File.Create(script)) await resource.CopyToAsync(output, ct);
+        using (var reader = new StreamReader(resource, System.Text.Encoding.UTF8, true))
+            await File.WriteAllTextAsync(script, await reader.ReadToEndAsync(ct), new System.Text.UTF8Encoding(true), ct);
         using var source = File.OpenRead(sourceExe); var hash = Convert.ToHexString(await SHA256.HashDataAsync(source, ct));
         var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe")) { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden };
         foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script, "-TargetPid", Environment.ProcessId.ToString(), "-SourceDirectory", staging, "-InstallDirectory", installDirectory, "-DataDirectory", App.DataDirectory, "-ExpectedExeHash", hash }) start.ArgumentList.Add(argument);

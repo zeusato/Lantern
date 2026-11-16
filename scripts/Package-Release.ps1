@@ -11,6 +11,7 @@ try {
     if (-not $SkipTests) {
         dotnet run --project tests/Lantern.Tests/Lantern.Tests.csproj -c Release
         if ($LASTEXITCODE -ne 0) { throw 'Integration checks failed.' }
+        & (Join-Path $PSScriptRoot 'Test-UpdateInstaller.ps1')
     }
     dotnet publish src/Lantern.App/Lantern.App.csproj -c Release -r win-x64 --self-contained true "-p:Version=$Version" -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o $payload
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
