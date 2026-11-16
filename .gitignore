@@ -17,3 +17,11 @@ vault.json
 vault.bin
 settings.json
 media/
+android/.gradle/
+android/**/build/
+android/local.properties
+*.jks
+*.p12
+*.keystore
+*.dpapi
+mobile-devices.enc*

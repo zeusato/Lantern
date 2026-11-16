@@ -130,6 +130,6 @@ Mở hồ sơ thử nghiệm tách biệt:
 - `tests/Lantern.Tests`: chương trình kiểm thử tích hợp có exit code; không cần framework test bổ sung.
 - `docs/PROTOCOL.md`: quy ước giao thức và ràng buộc tin cậy.
 
-Phương án app Android liên kết tài khoản PC qua QR: [docs/MOBILE-PLAN.md](docs/MOBILE-PLAN.md). Đây là kế hoạch, chưa có trong bản Windows hiện tại.
+Android companion: cài `Lantern-Android.apk`, mở khóa PC → Cài đặt → Điện thoại → Ghép đôi QR. Đối chiếu mã rồi chấp nhận trên PC. PC cần chạy và không sleep; mạng Internet dùng relay riêng trên Sites, không cần VPN hay mở cổng router. Credential relay được cấu hình riêng, không chứa trong bản phát hành công khai. Chi tiết và giới hạn bản mobile đầu: [docs/MOBILE-PLAN.md](docs/MOBILE-PLAN.md).
 
 Thiết kế tham khảo [WinUI App skill](https://github.com/openai/skills/tree/main/skills/.curated/winui-app), [Windows design](https://learn.microsoft.com/windows/apps/design/) và [WPF Fluent](https://learn.microsoft.com/dotnet/desktop/wpf/whats-new/net100). Runtime thực tế là WPF/.NET 10; không phụ thuộc WinUI 3.

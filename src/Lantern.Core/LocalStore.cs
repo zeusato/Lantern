@@ -65,7 +65,7 @@ public sealed class LocalStore : IDisposable
             using var tx = db.BeginTransaction(); WriteMessage(message, tx); AddUnread(message.Id, tx); tx.Commit(); return true;
         }
     }
-    public List<ChatMessage> MarkConversationRead(string conversationId)
+    public List<ChatMessage> MarkConversationRead(string conversationId, IReadOnlySet<string>? visibleMessages = null)
     {
         lock (gate)
         {
@@ -76,6 +76,7 @@ public sealed class LocalStore : IDisposable
                 using var reader = read.ExecuteReader(); while (reader.Read()) unread.Add(Codec.Decode<ChatMessage>(Open(reader.GetString(0))));
             }
             unread.RemoveAll(message => message.Kind == "image" && message.Status is "offered" or "receiving");
+            if (visibleMessages is not null) unread.RemoveAll(message => !visibleMessages.Contains(message.Id));
             if (unread.Count == 0) return unread;
             using var tx = db.BeginTransaction();
             foreach (var message in unread)

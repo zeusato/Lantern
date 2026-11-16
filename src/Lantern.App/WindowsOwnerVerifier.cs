@@ -30,7 +30,7 @@ internal static class WindowsOwnerVerifier
         if (!WorkspaceVault.Exists(root) || !WorkspaceVault.IsOwner(WorkspaceVault.ReadHeader(root)) || WorkspaceVault.ReadHeader(root).WorkspaceId != approvedWorkspaceId || new DirectoryInfo(root).Attributes.HasFlag(FileAttributes.ReparsePoint)) throw new UnauthorizedAccessException("Workspace không hợp lệ để xóa.");
         var media = Path.Combine(root, "media");
         if (Directory.Exists(media)) DeleteOwnedTree(media, root);
-        foreach (var name in new[] { "identity.bin", "history.db", "history.db-wal", "history.db-shm", "settings.json", "settings.json.tmp", "conversation-locks.enc", "conversation-locks.enc.tmp", "errors.log", "workspace.json.tmp", "workspace.json" }) File.Delete(Path.Combine(root, name));
+        foreach (var name in new[] { "identity.bin", "history.db", "history.db-wal", "history.db-shm", "settings.json", "settings.json.tmp", "conversation-locks.enc", "conversation-locks.enc.tmp", "mobile-devices.enc", "mobile-devices.enc.tmp", "errors.log", "workspace.json.tmp", "workspace.json" }) File.Delete(Path.Combine(root, name));
     }
     private static void DeleteOwnedTree(string path, string root)
     {

@@ -67,6 +67,7 @@ public partial class MainWindow : Window
     {
         identity = new Identity(App.DataDirectory, App.Settings.Name, App.Vault);
         store = new LocalStore(App.DataDirectory, App.Vault); node = new PeerNode(identity, store) { AutoReceiveImages = true };
+        InitializeMobile();
         node.Changed += QueueRefresh;
         node.MessageReceived += message => Dispatcher.BeginInvoke(() => NotifyMessage(message));
         node.Notice += message => Dispatcher.BeginInvoke(() => ShowToast(message));
@@ -113,6 +114,7 @@ public partial class MainWindow : Window
                 else { Close(); return; }
             }
             await node.StartAsync(App.TestMode ? 0 : App.Settings.Port, !App.TestMode, App.TestMode);
+            await mobile.StartAsync(App.TestMode ? 0 : 45854, App.TestMode);
             await UpdatePresence();
             MyInitials.Text = Initials(identity.Name);
             NetworkStatus.Text = App.TestMode ? $"Kiểm thử cục bộ · 127.0.0.1:{node.Port}" : $"LAN · {string.Join(" · ", PeerNode.LocalAddresses())} · Cổng {node.Port}";
@@ -650,6 +652,7 @@ public partial class MainWindow : Window
         var folder = new Button { Content = "Mở thư mục dữ liệu", HorizontalAlignment = HorizontalAlignment.Left }; folder.Click += (_, _) => Process.Start(new ProcessStartInfo(App.DataDirectory) { UseShellExecute = true }); panel.Children.Add(folder);
         panel.Children.Add(Paragraph("Lantern " + UpdateController.CurrentVersion.ToString(3) + " · LAN IPv4 · TCP/TLS\nTối đa 32 thành viên/nhóm · Tệp tối đa 10 GB", 11, muted: true));
         var updateSettings = new Button { Content = "Kiểm tra và cài đặt cập nhật", Margin = new Thickness(0, 0, 0, 16) }; updateSettings.Click += UpdatesClick; panel.Children.Add(updateSettings);
+        var mobileSettings = new Button { Content = "Điện thoại · Ghép đôi QR và quản lý thiết bị", Margin = new Thickness(0, 0, 0, 16) }; mobileSettings.Click += (_, _) => MobileSettings(); panel.Children.Add(mobileSettings);
         foreach (var blocked in node.Peers.Where(p => p.Blocked))
         {
             var unblock = new Button { Content = "Bỏ chặn: " + blocked.DisplayName, Margin = new Thickness(0, 3, 0, 3) };
@@ -811,6 +814,7 @@ public partial class MainWindow : Window
     private void CloseMediaViews() { foreach (var window in mediaWindows.ToArray()) window.Close(); }
     private void LockConversationClick(object sender, RoutedEventArgs e)
     {
+        mobile.LockConversation(selectedId);
         if (emojiPopup is not null) emojiPopup.IsOpen = false;
         unlockedConversations.Remove(selectedId); Composer.Clear(); drafts.Remove(selectedId); replyDrafts.Remove(selectedId); CloseMediaViews(); renderKey = ""; RefreshConversation();
     }
@@ -837,7 +841,7 @@ public partial class MainWindow : Window
             var remove = new Button { Content = "Bỏ mật khẩu của hội thoại này" }; remove.Click += (_, _) => { App.Vault.RemoveConversationPassword(id); removed = true; remove.IsEnabled = false; ShowToast("Đã bỏ mật khẩu hội thoại."); }; panel.Children.Add(remove);
         }
         if (ShowDialog("Bảo vệ hội thoại", panel, "Lưu mật khẩu", () => removed || first.Password.Length >= 8 && first.Password == second.Password) && !removed)
-        { App.Vault.SetConversationPassword(id, first.Password); unlockedConversations.Add(id); ShowToast("Đã đặt mật khẩu riêng cho hội thoại."); }
+        { App.Vault.SetConversationPassword(id, first.Password); mobile.LockConversation(id); unlockedConversations.Add(id); ShowToast("Đã đặt mật khẩu riêng cho hội thoại."); }
         first.Clear(); second.Clear(); renderKey = ""; RefreshConversation();
     }
     private async Task<bool> ResetConversation(string id)
@@ -903,6 +907,6 @@ public partial class MainWindow : Window
         tray?.Dispose();
         if (emojiPopup is not null) emojiPopup.IsOpen = false;
         foreach (var player in players) player.Close();
-        await node.DisposeAsync(); store.Dispose(); identity.Dispose(); uiLifetime.Dispose(); closeReady = true; Close();
+        await mobile.DisposeAsync(); await node.DisposeAsync(); store.Dispose(); identity.Dispose(); uiLifetime.Dispose(); closeReady = true; Close();
     }
 }

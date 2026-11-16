@@ -315,13 +315,20 @@ public sealed class PeerNode : IAsyncDisposable
         if (seconds > 0 && recipients.Any(id => peers[id].ProtocolVersion < 2)) throw new InvalidOperationException("Tin tự hủy yêu cầu tất cả thành viên dùng Lantern 1.1 trở lên.");
         return seconds;
     }
-    public async Task<ChatMessage> SendTextAsync(string conversationId, string text, string replyToId = "")
+    public async Task<ChatMessage> SendTextAsync(string conversationId, string text, string replyToId = "", string? stableId = null)
     {
+        if (stableId is not null)
+        {
+            if (!Protocol.ValidId(stableId)) throw new ArgumentException("Mã tin nhắn không hợp lệ.");
+            var existing = Store.Message(stableId);
+            if (existing is not null) { if (!existing.Outgoing || existing.ConversationId != conversationId) throw new ArgumentException("Mã tin nhắn trùng."); return existing; }
+        }
         text = text.Trim(); if (text.Length is < 1 or > 16000) throw new ArgumentException("Tin nhắn cần từ 1 đến 16.000 ký tự.");
         var recipients = Recipients(conversationId);
         if (replyToId.Length > 0 && Store.Message(replyToId)?.ConversationId != conversationId) throw new ArgumentException("Tin được trích dẫn không thuộc hội thoại này.");
         var msg = new ChatMessage { ConversationId = conversationId, SenderId = Identity.Id, SenderName = Identity.Name, Text = text, Outgoing = true, GroupId = Store.Groups().Any(g => g.Id == conversationId) ? conversationId : "", Delivery = recipients.ToDictionary(id => id, _ => "queued") };
         msg.ReplyToId = replyToId;
+        if (stableId is not null) msg.Id = stableId;
         msg.DisappearAfterSeconds = DisappearSeconds(conversationId, recipients);
         Store.SaveMessage(msg); Changed?.Invoke();
         foreach (var peerId in recipients) await SendTo(peerId, new WireMessage { Type = "message", Message = ForWire(msg) });
@@ -378,13 +385,21 @@ public sealed class PeerNode : IAsyncDisposable
         foreach (var id in members.Where(id => id != Identity.Id)) await SendTo(id, new WireMessage { Type = "group", Group = group });
         Changed?.Invoke(); return group;
     }
-    public async Task<ChatMessage> OfferFileAsync(string conversationId, string source, CancellationToken ct = default)
+    public async Task<ChatMessage> OfferFileAsync(string conversationId, string source, CancellationToken ct = default, string? stableId = null, string? displayFileName = null)
     {
+        if (stableId is not null)
+        {
+            if (!Protocol.ValidId(stableId)) throw new ArgumentException("Mã tin nhắn không hợp lệ.");
+            var existing = Store.Message(stableId);
+            if (existing is not null) { if (!existing.Outgoing || existing.ConversationId != conversationId) throw new ArgumentException("Mã tin nhắn trùng."); return existing; }
+        }
         var recipients = Recipients(conversationId); var file = new FileInfo(source);
         if (!file.Exists || file.Length > Protocol.MaxFileSize) throw new ArgumentException("Tệp không tồn tại hoặc vượt quá 10 GB.");
         var msg = new ChatMessage { ConversationId = conversationId, SenderId = Identity.Id, SenderName = Identity.Name, Outgoing = true, Kind = "file", FileName = Protocol.SafeFileName(file.Name), FileSize = file.Length, GroupId = Store.Groups().Any(g => g.Id == conversationId) ? conversationId : "", Delivery = recipients.ToDictionary(id => id, _ => "offered"), Status = "offered" };
         msg.DisappearAfterSeconds = DisappearSeconds(conversationId, recipients);
-        var ext = file.Extension.ToLowerInvariant();
+        if (stableId is not null) msg.Id = stableId;
+        if (displayFileName is not null) msg.FileName = Protocol.SafeFileName(displayFileName);
+        var ext = Path.GetExtension(msg.FileName).ToLowerInvariant();
         if (new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" }.Contains(ext)) msg.Kind = "image";
         if (new[] { ".mp4", ".m4v", ".wmv", ".avi", ".mov" }.Contains(ext)) msg.Kind = "video";
         msg.FilePath = Path.Combine(Store.MediaPath, msg.Id + "_" + msg.FileName);
@@ -441,9 +456,9 @@ public sealed class PeerNode : IAsyncDisposable
         receiving.TryRemove(messageId, out _); Store.UpdateMessage(messageId, current => current.Status = "declined");
         await SendTo(msg.SenderId, new WireMessage { Type = "decline", Id = msg.Id }); Changed?.Invoke();
     }
-    public async Task MarkReadAsync(string conversationId)
+    public async Task MarkReadAsync(string conversationId, IReadOnlySet<string>? visibleMessages = null)
     {
-        var unread = Store.MarkConversationRead(conversationId);
+        var unread = Store.MarkConversationRead(conversationId, visibleMessages);
         if (unread.Count > 0) Changed?.Invoke();
         foreach (var msg in unread.Where(m => m.Kind is "text" or "contact"))
             await SendTo(msg.SenderId, new WireMessage { Type = "read", Id = msg.Id });

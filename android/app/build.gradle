@@ -1,0 +1,21 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'vn.lantern.companion'
+    compileSdk 35
+    defaultConfig { applicationId 'vn.lantern.companion'; minSdk 26; targetSdk 35; versionCode 1; versionName '1.2.0'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    signingConfigs {
+        release {
+            if (System.getenv('LANTERN_KEYSTORE')) {
+                storeFile file(System.getenv('LANTERN_KEYSTORE')); storePassword System.getenv('LANTERN_STORE_PASSWORD')
+                keyAlias 'lantern'; keyPassword System.getenv('LANTERN_STORE_PASSWORD')
+            }
+        }
+    }
+    buildTypes { release { signingConfig signingConfigs.release; minifyEnabled false } }
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+dependencies {
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'; implementation 'androidx.core:core:1.15.0'
+    androidTestImplementation 'androidx.test:runner:1.6.2'; androidTestImplementation 'androidx.test.ext:junit:1.2.1'; androidTestImplementation 'androidx.test:rules:1.6.1'
+}

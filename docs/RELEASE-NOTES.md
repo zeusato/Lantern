@@ -1,13 +1,15 @@
-# Lantern 1.1.3
+# Lantern 1.2.0
 
-Chat P2P trong LAN cho Windows 10/11 x64. Giải nén **Lantern-Windows-x64.zip**, chạy **Lantern.exe**; bản portable đã kèm runtime. Bản cũ có thể tải qua mục **Cập nhật** trong app.
+Bản PC Windows x64 và Android companion liên kết bằng QR. Giải nén **Lantern-Windows-x64.zip**, chạy **Lantern.exe**; cài **Lantern-Android.apk** trên Android 8 trở lên.
 
-- Màn đăng nhập, khóa ứng dụng và mở khóa hội thoại nằm ngay trong app. Đăng nhập thành công vẫn dùng cùng cửa sổ, không xuất hiện thêm một mục mở khóa trên taskbar. Ô mật khẩu tự focus; lời chào hiển thị tên tài khoản.
-- Hội thoại đang khóa chặn toàn bộ bảng thông tin: Media/Tệp/Link, tìm kiếm và cài đặt, kể cả chế độ cửa sổ nhỏ. Mở khóa vẫn có hiệu lực suốt phiên cho đến khi chủ động khóa lại.
-- Bong bóng tin nhắn rộng theo nội dung, tin của mình căn phải và của đối tác căn trái; tin dài tự xuống dòng. Emoji và số lượt react nằm gọn ở mép dưới bong bóng, cạnh nút thả biểu cảm; nút trả lời xuất hiện khi hover.
-- Hiển thị số tin chưa đọc trên icon taskbar, bên cạnh badge tray và badge từng hội thoại đã có. Đọc hết tin sẽ xóa badge; `99+` khi vượt 99.
-- Ảnh từ đối tác đã ghép đôi tự tải, kiểm tra SHA-256 và hiện trong log. Tối đa 3 lượt nhận đồng thời, tự tiếp tục khi kết nối lại. Tệp và video vẫn cần chủ động nhận. Ảnh đang chờ tải không bị đánh dấu đã đọc hoặc bắt đầu tự hủy sớm.
+- PC có mục **Điện thoại** trong Cài đặt: QR dùng một lần, đối chiếu mã, duyệt thiết bị và thu hồi quyền.
+- Điện thoại dùng cùng danh tính PC để gửi/nhận tin, quote, react, xem danh bạ/nhóm và số chưa đọc; 50 tin gần nhất.
+- Kết nối trực tiếp khi cùng LAN, hoặc qua relay riêng trên Internet. Không có VPN toàn máy, không cần mở cổng router. PC phải chạy Lantern, đã đăng nhập và không sleep.
+- TLS hai chiều từ điện thoại tới PC; khóa Android nằm trong Keystore. Hội thoại có mật khẩu được kiểm tra ở PC cho tất cả thao tác; khóa thủ công PC áp dụng cả với điện thoại.
+- Android gửi/nhận ảnh, video, tệp tối đa 100 MB, kiểm tra SHA-256. Ảnh đến tối đa 10 MB tự tải xem trước; video/tệp mở chủ động bằng ứng dụng Android.
+- Tin đã hiển thị mới được ACK; ảnh cần tải xong. Thu hồi thiết bị ngắt kết nối đang chạy và từ chối dùng lại QR.
+- Các chức năng PC 1.1.3 được giữ nguyên. Cập nhật không xóa workspace hay mật khẩu.
 
-Đã qua 109 kiểm thử core, 70 kiểm thử WPF trên desktop và kiểm thử helper cập nhật Windows PowerShell. Kết nối được kiểm thử bằng các peer thật trên loopback; chưa kiểm chứng hai máy vật lý hoặc mọi chính sách firewall/VLAN.
+Credential relay cá nhân không nằm trong bản công khai. PC khác cần cấu hình relay riêng. Android bản đầu chưa có lịch sử offline, resume tệp, push FCM, khóa app Android riêng hoặc đầy đủ màn cài đặt như PC. Hạn chế mạng nền của Android vẫn áp dụng; xem **docs/MOBILE-PLAN.md**.
 
-Cập nhật giữ mật khẩu, workspace và lịch sử. Bản exe chưa ký Authenticode. Phương án Android/QR/Internet được ghi trong `docs/MOBILE-PLAN.md`; bản này chưa bao gồm app mobile hay giao thức liên kết thiết bị.
+Đã kiểm thử 131 trường hợp core, 72 trường hợp UI WPF, build/lint Android và TLS qua relay Sites công khai. Cần kiểm chứng thêm trên điện thoại thật dùng 4G/5G với mạng công ty; không khẳng định đã thử mọi firewall/Doze. EXE PC chưa ký Authenticode; APK dùng khóa phát hành riêng.

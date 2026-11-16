@@ -205,6 +205,30 @@ internal sealed class UiHarness : Application
             if (settingsFailure is not null) throw settingsFailure;
             Check(Settings.MessageToasts && Settings.MessageToastMode == "private", "Saving settings applies the private toast mode");
             Check(Settings.CloseToTray && Codec.Decode<AppSettings>(File.ReadAllText(Path.Combine(workspace, "settings.json"))).CloseToTray, "Close-to-tray choice is saved to disk");
+            Exception? mobileFailure = null;
+            _ = Dispatcher.InvokeAsync(() =>
+            {
+                var dialog = Visuals<Border>(window).Single(view => view.Name == "InAppDialog");
+                try
+                {
+                    Check(Windows.Count == 1 && Field<MobileServer>(window, "mobile").Port > 0, "Mobile device management is embedded and starts only after PC login");
+                    _ = Dispatcher.InvokeAsync(() =>
+                    {
+                        try
+                        {
+                            var qr = Visuals<Border>(window).Single(view => view.Tag as string == "Ghép đôi điện thoại");
+                            Check(Visuals<Image>(qr).Single().Source is BitmapSource { PixelWidth: > 200 }, "Pairing renders a real QR image in the app");
+                            Snapshot(window, Path.Combine(root, "mobile-qr.png"));
+                            Visuals<Button>(qr).Single(button => button.Content as string == "Đóng mã QR").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                        }
+                        catch (Exception ex) { mobileFailure = ex; InAppDialog.CancelAll(window); }
+                    }, System.Windows.Threading.DispatcherPriority.Background);
+                    Visuals<Button>(dialog).Single(button => button.Content as string == "＋ Ghép đôi điện thoại bằng QR").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    Visuals<Button>(dialog).Single(button => button.Content as string == "Xong").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                }
+                catch (Exception ex) { mobileFailure = ex; InAppDialog.CancelAll(window); }
+            }, System.Windows.Threading.DispatcherPriority.Background);
+            Call(window, "MobileSettings"); if (mobileFailure is not null) throw mobileFailure;
             ApplyTheme("dark"); Call(window, "Refresh"); Snapshot(window, Path.Combine(root, "chat-locked-dark.png"));
             using var previewService = new LinkPreviews(new PreviewFixture(File.ReadAllBytes(remoteStore.Message(image.Id)!.FilePath)));
             var previewCard = new LinkPreviewCard(new Uri("https://example.test/design"), previewService, () => { });

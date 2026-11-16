@@ -1,0 +1,10 @@
+Lantern Android
+
+ZXing Android Embedded 4.3.0 — Journey Mobile / JourneyApps contributors
+https://github.com/journeyapps/zxing-android-embedded
+ZXing Core — ZXing authors
+https://github.com/zxing/zxing
+AndroidX Core and AndroidX transitive libraries — The Android Open Source Project
+https://android.googlesource.com/platform/frameworks/support/
+
+These libraries are distributed under Apache License 2.0. The complete license is included in APACHE-LICENSE.txt in this APK.

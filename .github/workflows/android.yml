@@ -1,0 +1,49 @@
+name: Android checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build and lint
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug assembleDebugAndroidTest lintDebug --console=plain
+      - name: Test on Android 15 emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sdkmanager 'system-images;android-35;google_apis;x86_64' 'emulator'
+          echo no | avdmanager create avd --force --name lantern-test --package 'system-images;android-35;google_apis;x86_64' --device pixel_6
+          "$ANDROID_HOME/emulator/emulator" -avd lantern-test -no-window -no-audio -no-snapshot -gpu swiftshader_indirect > /tmp/lantern-emulator.log 2>&1 &
+          adb wait-for-device
+          for n in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = '1' ]; then break; fi
+            sleep 2
+          done
+          cd android
+          ./gradlew connectedDebugAndroidTest --console=plain
+          mkdir -p build/screenshots
+          adb pull /sdcard/Android/data/vn.lantern.companion/files/. build/screenshots/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: android-qa
+          path: |
+            android/app/build/reports/
+            android/build/screenshots/
+            android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14

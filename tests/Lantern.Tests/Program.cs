@@ -7,6 +7,11 @@ using System.Security.Cryptography.X509Certificates;
 using Lantern.Core;
 
 if (args.FirstOrDefault() == "--ui-peer") { await UiPeer.Run(args[1], args[2]); return; }
+if (args.FirstOrDefault() == "--mobile-relay")
+{
+    var config = System.Text.Json.JsonSerializer.Deserialize<RelayConfiguration>(Console.ReadLine()!, MobileProtocol.Json)!;
+    await MobileTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-relay-qa-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }, config); return;
+}
 
 var root = args.FirstOrDefault() ?? Path.Combine(Path.GetTempPath(), "Lantern-tests-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
@@ -274,4 +279,5 @@ Check(!new AppSettings().MessageToasts, "Message toasts are disabled by default"
 await UpdaterTests.Run(root, Check);
 await PreviewTests.Run(Check);
 await AutoImageTests.Run(root, Check);
+await MobileTests.Run(root, Check);
 Console.WriteLine($"\n{passed} checks passed. Test data: {root}");
