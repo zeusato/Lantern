@@ -25,3 +25,7 @@ android/local.properties
 *.keystore
 *.dpapi
 mobile-devices.enc*
+ios/build/
+ios/output/
+ios/*.xcodeproj/
+*.ipa

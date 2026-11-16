@@ -1,0 +1,33 @@
+name: Lantern
+options:
+  bundleIdPrefix: vn.lantern
+  deploymentTarget:
+    iOS: '16.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    CODE_SIGNING_ALLOWED: NO
+    MARKETING_VERSION: '1.2.3'
+    CURRENT_PROJECT_VERSION: '1'
+targets:
+  Lantern:
+    type: application
+    platform: iOS
+    sources: [Lantern]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: vn.lantern.companion
+        INFOPLIST_FILE: Lantern/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    scheme:
+      testTargets: [LanternTests]
+  LanternTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [LanternTests]
+    dependencies:
+      - target: Lantern
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES

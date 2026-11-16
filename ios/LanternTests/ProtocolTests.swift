@@ -1,0 +1,75 @@
+import XCTest
+import Security
+@testable import Lantern
+
+final class ProtocolTests: XCTestCase {
+    func testFramesAndBounds() throws {
+        let packet: Packet = ["type": "send", "text": "Tiếng Việt 👋", "id": Wire.id()]
+        let frame = try Wire.frame(packet)
+        XCTAssertEqual(try Wire.length(Data(frame.prefix(4))), frame.count - 4)
+        XCTAssertEqual(try Wire.decode(Data(frame.dropFirst(4))).string("text"), "Tiếng Việt 👋")
+        XCTAssertThrowsError(try Wire.length(Data([0, 0, 0, 1])))
+        XCTAssertThrowsError(try Wire.length(Data([0xff, 0xff, 0xff, 0xff])))
+        XCTAssertThrowsError(try Wire.frame(["text": String(repeating: "x", count: Wire.maxFrame)]))
+    }
+    func testQRRejectsExpiredPublicAndCredentialRedirectURLs() throws {
+        var qr: Packet = ["v": 1, "pc": String(repeating: "A", count: 64), "nonce": String(repeating: "b", count: 43), "expires": 200, "port": 45854, "addresses": ["192.168.1.2"]]
+        func encode(_ p: Packet) throws -> String { String(data: try JSONSerialization.data(withJSONObject: p), encoding: .utf8)! }
+        XCTAssertNoThrow(try Wire.qr(encode(qr), now: 100))
+        XCTAssertThrowsError(try Wire.qr(encode(qr), now: 201))
+        qr["addresses"] = ["8.8.8.8"]; XCTAssertThrowsError(try Wire.qr(encode(qr), now: 100))
+        qr["addresses"] = ["10.0.0.2"]
+        qr["relay"] = ["url": "https://user:pass@example.com/", "id": String(repeating: "a", count: 32), "key": String(repeating: "b", count: 43), "token": "test"]
+        XCTAssertThrowsError(try Wire.qr(encode(qr), now: 100))
+        XCTAssertFalse(Wire.privateIPv4("127.0.0.1")); XCTAssertFalse(Wire.privateIPv4("192.168.1.256")); XCTAssertFalse(Wire.privateIPv4("10.0.0.1.example.com"))
+    }
+    func testIdentityPersistsAndMatchesCertificate() throws {
+        let first = try DeviceKeys.id(); XCTAssertEqual(first.count, 64); XCTAssertEqual(first, try DeviceKeys.id())
+        var cert: SecCertificate?
+        XCTAssertEqual(SecIdentityCopyCertificate(try DeviceKeys.identity(), &cert), errSecSuccess)
+        XCTAssertEqual(first, try DeviceKeys.fingerprint(XCTUnwrap(cert)))
+        let pc = String(repeating: "A", count: 64)
+        XCTAssertEqual(Wire.verification(pc: pc, device: first), Wire.verification(pc: first, device: pc))
+        XCTAssertEqual(Wire.verification(pc: pc, device: first).split(separator: " ").count, 6)
+    }
+    func testCacheEncryptedBoundToPCAndExcludesDisappearingMessages() throws {
+        let pc = Wire.id(), cache = try HistoryCache(pc: pc)
+        let packets: [Packet] = [["id": "normal", "text": "private plaintext marker"], ["id": "ephemeral", "disappearAfterSeconds": 10], ["id": "expired", "expiresAt": "2020-01-01T00:00:00Z"]]
+        try cache.write("history", HistoryCache.persistable(packets))
+        XCTAssertEqual(try cache.read("history").count, 1)
+        let root = HistoryCache.root.appendingPathComponent(Data(pc.utf8).sha256)
+        let file = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).first)
+        let ciphertext = try Data(contentsOf: file)
+        XCTAssertNil(ciphertext.range(of: Data("private plaintext marker".utf8)))
+        var changed = ciphertext; changed[changed.count - 1] ^= 1; try changed.write(to: file)
+        XCTAssertThrowsError(try cache.read("history"))
+        try FileManager.default.removeItem(at: root)
+    }
+    @MainActor func testRealDotNetMutualTLSAndPush() async throws {
+        guard let pin = ProcessInfo.processInfo.environment["LANTERN_FIXTURE_PIN"], !pin.isEmpty else { throw XCTSkip("Run scripts/test-ios.sh with the .NET interoperability fixture.") }
+        let pc = PCConnection(); defer { pc.close() }
+        let welcome = try await pc.open(["pc": pin, "port": 45854, "addresses": [], "fixture": true])
+        XCTAssertEqual(welcome.string("text"), try DeviceKeys.id())
+        let conversation = String(repeating: "a", count: 64)
+        let locked = try await pc.request(["type": "sync", "conversation": conversation]); XCTAssertTrue(locked.bool("locked"))
+        do { _ = try await pc.request(["type": "unlock", "conversation": conversation, "password": "incorrect"]); XCTFail("Wrong password accepted") } catch { }
+        let unlocked = try await pc.request(["type": "unlock", "conversation": conversation, "password": "qa-password"])
+        XCTAssertGreaterThanOrEqual(unlocked.packets("messages").count, 30)
+        let pushed = expectation(description: "PC pushes without polling")
+        pc.onPush = { packet in if packet.packets("messages").contains(where: { $0.string("text") == "Incoming immediately after send" }) { pushed.fulfill() } }
+        let request = Wire.id()
+        let response = try await pc.request(["type": "send", "id": request, "conversation": conversation, "text": "iOS ↔ .NET tiếng Việt"])
+        XCTAssertEqual(response.string("messageId"), Wire.messageID(device: try DeviceKeys.id(), request: request))
+        await fulfillment(of: [pushed], timeout: 5)
+        pc.onPush = nil
+        let retried = try await pc.request(["type": "send", "id": request, "conversation": conversation, "text": "iOS ↔ .NET tiếng Việt"])
+        XCTAssertEqual(response.string("messageId"), retried.string("messageId"))
+        let history = try await pc.request(["type": "history", "conversation": conversation])
+        XCTAssertEqual(history.packets("messages").filter { $0.string("id") == response.string("messageId") }.count, 1)
+    }
+    @MainActor func testWrongPCPinFailsHandshake() async throws {
+        guard ProcessInfo.processInfo.environment["LANTERN_FIXTURE_PIN"] != nil else { throw XCTSkip("Requires fixture") }
+        let pc = PCConnection(); defer { pc.close() }
+        do { _ = try await pc.open(["pc": String(repeating: "0", count: 64), "port": 45854, "addresses": [], "fixture": true]); XCTFail("Wrong pin accepted") } catch { }
+    }
+}
