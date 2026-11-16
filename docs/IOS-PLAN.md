@@ -1,6 +1,6 @@
 # Phương án Lantern iOS
 
-Ngày đối chiếu tài liệu: 16/11/2026. Đây là phương án triển khai; bản 1.2.3 chưa có ứng dụng hoặc IPA iOS.
+Ngày đối chiếu tài liệu: 16/11/2026. Phương án ban đầu bên dưới được giữ làm tham khảo. Quyết định triển khai sau đó: **bản IPA miễn phí để ký/cài bằng Scarlet**, không sử dụng Apple Developer trả phí, Ad Hoc, TestFlight hoặc APNs. Mã native và hướng dẫn hiện tại ở [ios/README.md](../ios/README.md). Workflow `iOS IPA` tạo IPA arm64 chưa ký và kiểm thử trên macOS; chỉ coi đã build/kiểm chứng khi có kết quả workflow thành công.
 
 ## Đề xuất
 

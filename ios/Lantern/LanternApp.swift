@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import QuickLook
+import PhotosUI
 
 @main struct LanternApp: App {
     @StateObject private var store = ChatStore()
@@ -96,6 +97,7 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var password = ""
     @State private var importing = false
+    @State private var photo: PhotosPickerItem?
     @FocusState private var composing: Bool
     var body: some View {
         VStack(spacing: 0) {
@@ -116,6 +118,7 @@ struct ChatView: View {
                     HStack { Text("Trả lời: " + (reply.text.isEmpty ? reply.raw.string("fileName") : reply.text)).font(.caption).lineLimit(2); Spacer(); Button { store.replyTo = nil } label: { Image(systemName: "xmark.circle.fill") } }.padding(12).background(.thinMaterial)
                 }
                 HStack(alignment: .bottom, spacing: 10) {
+                    PhotosPicker(selection: $photo, matching: .any(of: [.images, .videos])) { Image(systemName: "photo").font(.title3).frame(width: 30, height: 40) }.disabled(!store.connected || store.transferProgress != nil).accessibilityLabel("Chọn ảnh hoặc video")
                     Button { importing = true } label: { Image(systemName: "paperclip").font(.title3).frame(width: 36, height: 40) }.disabled(!store.connected || store.transferProgress != nil).accessibilityLabel("Gửi tệp, ảnh hoặc video")
                     TextField("Nhắn tin…", text: $draft, axis: .vertical).lineLimit(1...5).padding(10).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18)).focused($composing).accessibilityIdentifier("composer")
                     Button {
@@ -132,6 +135,14 @@ struct ChatView: View {
         .onChange(of: store.visible) { if !$0 { password = ""; if store.current?.protected == true { draft = "" } } }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item]) { result in
             switch result { case .success(let url): store.upload(url); case .failure(let error): store.error = error.localizedDescription }
+        }
+        .onChange(of: photo) { item in
+            guard let item else { return }
+            Task {
+                do { if let media = try await item.loadTransferable(type: ImportedMedia.self), store.visible, !store.locked { store.upload(media.url) } }
+                catch { store.error = error.localizedDescription }
+                photo = nil
+            }
         }
         .sheet(isPresented: Binding(get: { store.preview != nil && store.visible && !store.locked }, set: { if !$0 { store.preview = nil } })) {
             if let url = store.preview { FilePreview(url: url).ignoresSafeArea() }
@@ -154,6 +165,22 @@ struct ChatView: View {
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: store.messages.last?.id) { _ in proxy.scrollTo("end", anchor: .bottom) }
             .task { try? await Task.sleep(nanoseconds: 300_000_000); proxy.scrollTo("end", anchor: .bottom) }
+        }
+    }
+}
+
+struct ImportedMedia: Transferable {
+    let url: URL
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .data) { received in
+            let size = try received.file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size <= Wire.maxFile else { throw LanternError.message("Ảnh/video tối đa 100 MB.") }
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("LanternMedia", isDirectory: true).appendingPathComponent(Wire.id(), isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let target = directory.appendingPathComponent(received.file.lastPathComponent)
+            try FileManager.default.copyItem(at: received.file, to: target)
+            try FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: target.path)
+            return ImportedMedia(url: target)
         }
     }
 }

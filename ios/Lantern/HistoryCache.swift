@@ -13,6 +13,7 @@ final class HistoryCache {
     }
     static var root: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("LanternCache", isDirectory: true) }
     private func path(_ name: String) -> URL { folder.appendingPathComponent(Data(name.utf8).sha256 + ".enc") }
+    func remove(_ name: String) throws { let file = path(name); if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) } }
     func read(_ name: String) throws -> [Packet] {
         let file = path(name)
         guard FileManager.default.fileExists(atPath: file.path) else { return [] }

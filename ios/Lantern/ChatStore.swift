@@ -31,10 +31,12 @@ import CryptoKit
     private var deviceID = ""
     private var inFlight: Set<String> = []
     private var syncInFlight = false
+    private var previewMessage: Message?
 
     var current: Conversation? { conversations.first { $0.id == selected } }
     var locked: Bool { current?.locked ?? true }
     init() {
+        clearTemporaryFiles()
         do {
             if let saved = try DeviceKeys.get("connection") {
                 let value = try Wire.decode(saved); config = value; paired = true; pcName = value.string("name")
@@ -94,7 +96,7 @@ import CryptoKit
     }
     private func disconnected() {
         connected = false; serial = 0; hashes.removeAll(); shown.removeAll(); downloaded.removeAll()
-        transfer?.cancel(); transfer = nil; transferProgress = nil; preview = nil; clearTemporaryFiles()
+        transfer?.cancel(); transfer = nil; transferProgress = nil; preview = nil; previewMessage = nil; clearTemporaryFiles()
         conversations = conversations.map { conversation in
             var p = conversation.raw; if conversation.protected { p["locked"] = true; snapshots.removeValue(forKey: conversation.id) }; return Conversation(raw: p)
         }
@@ -128,8 +130,12 @@ import CryptoKit
         guard next == 0 || next > serial else { return }; serial = max(serial, next)
         if packet["conversations"] != nil {
             conversations = packet.packets("conversations").map { Conversation(raw: $0) }
-            for c in conversations where c.locked { snapshots.removeValue(forKey: c.id); outbox.removeAll { $0.string("conversationId") == c.id }; if c.id == selected { replyTo = nil; preview = nil } }
+            for c in conversations where c.locked {
+                snapshots.removeValue(forKey: c.id); outbox.removeAll { $0.string("conversationId") == c.id }
+                if c.id == selected { replyTo = nil; preview = nil; previewMessage = nil; transfer?.cancel(); clearTemporaryFiles() }
+            }
             do {
+                for c in conversations where c.protected { try cache?.remove("history-" + c.id) }
                 try cache?.write("contacts", conversations.map { c in var p = c.raw; if c.protected { p["locked"] = true }; return p })
                 try saveOutbox()
             } catch { self.error = "Không lưu được cache: \(error.localizedDescription)" }
@@ -147,6 +153,7 @@ import CryptoKit
         refresh()
     }
     private func refresh() {
+        if previewMessage?.expired == true { preview = nil; previewMessage = nil; clearTemporaryFiles() }
         guard visible, !selected.isEmpty, !locked else { messages = []; return }
         let remote = (snapshots[selected] ?? []).filter { !Message(raw: $0).expired }
         let ids = Set(remote.map { $0.string("id") })
@@ -179,8 +186,9 @@ import CryptoKit
     func lock() async {
         let id = selected
         conversations = conversations.map { c in var p = c.raw; if c.id == id { p["locked"] = true }; return Conversation(raw: p) }
-        snapshots.removeValue(forKey: id); outbox.removeAll { $0.string("conversationId") == id }; replyTo = nil; preview = nil; refresh()
-        do { _ = try await connection?.request(["type": "lock", "conversation": id]); try saveOutbox() }
+        snapshots.removeValue(forKey: id); outbox.removeAll { $0.string("conversationId") == id }; replyTo = nil; preview = nil; previewMessage = nil; clearTemporaryFiles(); refresh()
+        if transfer != nil { cancelTransfer() }
+        do { if let result = try await connection?.request(["type": "lock", "conversation": id]) { serial = max(serial, result.int("serial")) }; try saveOutbox() }
         catch { self.error = error.localizedDescription }
     }
     func send(_ text: String) -> Bool {
@@ -229,7 +237,7 @@ import CryptoKit
                 _ = try await pc.request(["type": "upload-start", "id": Wire.id(), "conversation": conversation, "size": actual, "hash": checksum, "fileName": url.lastPathComponent])
                 var offset = 0
                 while let chunk = try handle.read(upToCount: 32768), !chunk.isEmpty {
-                    try Task.checkCancellation(); guard connection === pc else { throw CancellationError() }
+                    try Task.checkCancellation(); guard connection === pc, conversations.first(where: { $0.id == conversation })?.locked == false else { throw CancellationError() }
                     _ = try await pc.request(["type": "upload-chunk", "conversation": conversation, "offset": offset, "data": chunk.base64EncodedString()]); offset += chunk.count; transferProgress = Double(offset) / Double(max(actual, 1))
                 }
                 try Task.checkCancellation()
@@ -265,7 +273,8 @@ import CryptoKit
                 } while offset < size
                 guard Data(hash.finalize()).hex == message.raw.string("hash").uppercased() else { throw LanternError.message("Checksum tệp không đúng.") }
                 guard visible, !locked, selected == conversation, !message.expired else { throw CancellationError() }
-                downloaded.insert(message.id); preview = file; await sync()
+                try Task.checkCancellation()
+                downloaded.insert(message.id); previewMessage = message; preview = file; await sync()
             } catch { if let output { try? FileManager.default.removeItem(at: output) }; if !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
