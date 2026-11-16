@@ -72,18 +72,19 @@ public class CompanionFlowTest {
             // after send, acknowledgement and an incoming push all rebuild the message list.
             String next="Next message without tapping the input";
             onView(withContentDescription("Soạn tin nhắn")).check(matches(hasFocus())).perform(typeTextIntoFocusedView(next)).check(matches(withText(next)));
+            onView(withContentDescription("Gửi tin nhắn")).check(matches(isCompletelyDisplayed()));
             scenario.onActivity(activity->{try{
                 java.lang.reflect.Field field=MainActivity.class.getDeclaredField("composer");field.setAccessible(true);EditText editor=(EditText)field.get(activity);
                 assertTrue("Composer must stay the active IME target",((android.view.inputmethod.InputMethodManager)activity.getSystemService(Context.INPUT_METHOD_SERVICE)).isActive(editor));
                 assertNotNull(editor.getLayout());assertEquals("Typed text must already be laid out",next,editor.getLayout().getText().toString());
-                CompanionTest.snapshot(activity,"android-composer-after-send.png");
+                CompanionTest.snapshotCurrent(activity,"android-composer-after-send.png");
             }catch(Exception e){throw new AssertionError(e);}});
             onView(withContentDescription("Gửi tin nhắn")).perform(click());until(()->acknowledged(next));
             assertEquals(1,countText(next));
             onView(withContentDescription("Soạn tin nhắn")).check(matches(hasFocus())).perform(typeTextIntoFocusedView("Draft after second send")).check(matches(withText("Draft after second send")));
             scenario.onActivity(activity->{ConnectionService.current.select("");ConnectionService.current.select(conversation);assertEquals("Cached history should be immediately available",1,countText(text));});
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);Thread.sleep(1600);scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);until(()->countText(text)==1);
-            scenario.onActivity(activity->{try{CompanionTest.snapshot(activity,"android-live-chat.png");}catch(Exception e){throw new AssertionError(e);}});
+            scenario.onActivity(activity->{try{CompanionTest.snapshotCurrent(activity,"android-live-chat.png");}catch(Exception e){throw new AssertionError(e);}});
             context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);
             assertTrue(ConnectionService.conversations.getJSONObject(0).getBoolean("locked"));assertEquals(0,ConnectionService.messages.length());
         }finally{context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);DeviceKeys.forget(context);ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}

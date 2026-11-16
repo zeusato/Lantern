@@ -49,7 +49,7 @@ public final class MainActivity extends Activity {
             scroll.setOnScrollChangeListener((v,x,y,oldX,oldY)->updateVisibleMessages());
             quote=text("",12,ACCENT);quote.setVisibility(View.GONE);quote.setPadding(dp(12),dp(8),dp(12),dp(8));quote.setOnClickListener(v->{replyTo="";quote.setVisibility(View.GONE);});body.addView(quote);
             actionStatus=text("",12,MUTED);actionStatus.setPadding(dp(4),dp(6),dp(4),dp(6));actionStatus.setVisibility(View.GONE);body.addView(actionStatus);
-            composerBar=new LinearLayout(this);composerBar.setGravity(Gravity.BOTTOM);body.addView(composerBar);
+            composerBar=new LinearLayout(this);composerBar.setBaselineAligned(false);composerBar.setGravity(Gravity.BOTTOM);body.addView(composerBar);
             composerBar.addView(button("＋",this::pickFile),new LinearLayout.LayoutParams(dp(44),dp(48)));
             composer=new EditText(this);composer.setContentDescription("Soạn tin nhắn");composer.setTextColor(TEXT);composer.setHintTextColor(MUTED);composer.setTextSize(16);composer.setHint("Nhắn tin…");composer.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE|InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);composer.setMaxLines(5);composer.setBackground(shape(SURFACE,18));composer.setPadding(dp(14),dp(10),dp(14),dp(10));LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1);cp.setMargins(dp(8),0,dp(8),0);composerBar.addView(composer,cp);
             sendButton=button("↑",this::send);sendButton.setContentDescription("Gửi tin nhắn");sendButton.setPadding(0,0,0,0);sendButton.setTextSize(24);sendButton.setBackground(shape(Color.rgb(18,116,107),16));composerBar.addView(sendButton,new LinearLayout.LayoutParams(dp(48),dp(48)));
