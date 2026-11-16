@@ -21,7 +21,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Install project generator
-        run: brew install xcodegen
+        run: brew install xcodegen openssl@3
       - name: Build arm64 IPA for Scarlet
         run: bash scripts/build-ios.sh
       - name: Test on iOS Simulator with real .NET TLS

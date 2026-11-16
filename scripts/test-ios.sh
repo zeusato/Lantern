@@ -26,13 +26,16 @@ DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import sys,json
 defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool NO
 xcrun simctl boot "$DEVICE_ID" || true
 xcrun simctl bootstatus "$DEVICE_ID" -b
-openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/lantern-ios-root.key -out /tmp/lantern-ios-root.crt -days 1 \
+OPENSSL_BIN="$(brew --prefix openssl@3)/bin/openssl"
+"$OPENSSL_BIN" version
+"$OPENSSL_BIN" req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -sha256 -nodes -keyout /tmp/lantern-ios-root.key -out /tmp/lantern-ios-root.crt -days 1 \
   -subj '/CN=Lantern Simulator Root' -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign'
-openssl req -newkey rsa:2048 -nodes -keyout /tmp/lantern-ios-relay.key -out /tmp/lantern-ios-relay.csr -subj '/CN=localhost'
-printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' 'subjectAltName=IP:127.0.0.1,DNS:localhost' > /tmp/lantern-ios-relay.ext
-openssl x509 -req -in /tmp/lantern-ios-relay.csr -CA /tmp/lantern-ios-root.crt -CAkey /tmp/lantern-ios-root.key -CAcreateserial \
+"$OPENSSL_BIN" req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -sha256 -nodes -keyout /tmp/lantern-ios-relay.key -out /tmp/lantern-ios-relay.csr -subj '/CN=localhost'
+printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature' 'extendedKeyUsage=serverAuth' 'subjectAltName=IP:127.0.0.1,DNS:localhost' > /tmp/lantern-ios-relay.ext
+"$OPENSSL_BIN" x509 -req -in /tmp/lantern-ios-relay.csr -CA /tmp/lantern-ios-root.crt -CAkey /tmp/lantern-ios-root.key -CAcreateserial \
   -out /tmp/lantern-ios-relay.crt -days 1 -sha256 -extfile /tmp/lantern-ios-relay.ext
-openssl x509 -in /tmp/lantern-ios-root.crt -outform DER -out /tmp/lantern-ios-root.der
+"$OPENSSL_BIN" verify -CAfile /tmp/lantern-ios-root.crt -purpose sslserver -verify_ip 127.0.0.1 /tmp/lantern-ios-relay.crt
+"$OPENSSL_BIN" x509 -in /tmp/lantern-ios-root.crt -outform DER -out /tmp/lantern-ios-root.der
 python3 - <<'PY'
 import base64, pathlib, xml.etree.ElementTree as ET
 path = pathlib.Path('ios/Lantern.xcodeproj/xcshareddata/xcschemes/Lantern.xcscheme')

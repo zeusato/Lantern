@@ -29,7 +29,7 @@ Giữ bundle ID `vn.lantern.companion` và cùng danh tính ký khi cập nhật
 Cần Xcode có SDK iOS, XcodeGen và .NET 10 SDK (cho kiểm thử).
 
 ```sh
-brew install xcodegen
+brew install xcodegen openssl@3
 bash scripts/build-ios.sh
 bash scripts/test-ios.sh
 ```
