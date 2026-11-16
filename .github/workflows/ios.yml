@@ -26,6 +26,12 @@ jobs:
         run: bash scripts/build-ios.sh
       - name: Test on iOS Simulator with real .NET TLS
         run: bash scripts/test-ios.sh
+      - name: Collect simulator screenshots
+        if: always()
+        run: |
+          if [ -d ios/build/Tests.xcresult ]; then
+            xcrun xcresulttool export attachments --path ios/build/Tests.xcresult --output-path ios/build/screenshots
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: Lantern-iOS-unsigned

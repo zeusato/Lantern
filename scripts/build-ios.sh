@@ -11,7 +11,12 @@ ditto ios/build/device/Build/Products/Release-iphoneos/Lantern.app ios/build/pac
 # This device binary intentionally has no Apple signature or provisioning profile. Scarlet signs it.
 test -f ios/build/package/Payload/Lantern.app/Lantern
 test ! -e ios/build/package/Payload/Lantern.app/embedded.mobileprovision
+test ! -e ios/build/package/Payload/Lantern.app/Simulator.entitlements
 file ios/build/package/Payload/Lantern.app/Lantern | grep -q arm64
+if strings ios/build/package/Payload/Lantern.app/Lantern | grep -F 'LANTERN_UI_FIXTURE_PIN'; then
+  echo 'Simulator fixture configuration leaked into Release.' >&2
+  exit 1
+fi
 mkdir -p ios/output
 (cd ios/build/package && /usr/bin/zip -qry ../../output/Lantern-iOS-unsigned.ipa Payload)
 (cd ios/output && shasum -a 256 Lantern-iOS-unsigned.ipa > IOS-SHA256SUMS.txt)

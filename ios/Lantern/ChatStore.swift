@@ -34,6 +34,7 @@ import CryptoKit
     private var previewMessage: Message?
     private var locallyLocked: Set<String> = []
     private var transferGeneration = 0
+    private var accessGeneration = 0
 
     var current: Conversation? { conversations.first { $0.id == selected } }
     var locked: Bool { current?.locked ?? true }
@@ -104,6 +105,7 @@ import CryptoKit
         }
     }
     private func disconnected() {
+        accessGeneration += 1
         connected = false; serial = 0; hashes.removeAll(); shown.removeAll(); downloaded.removeAll()
         transferGeneration += 1; transfer?.cancel(); transfer = nil; transferProgress = nil; preview = nil; previewMessage = nil; clearTemporaryFiles()
         conversations = conversations.map { conversation in
@@ -190,11 +192,14 @@ import CryptoKit
     }
     func unlock(_ password: String) async {
         guard let pc = connection, connected else { return }; let id = selected
+        accessGeneration += 1; let accessToken = accessGeneration
         do {
             let response = try await pc.request(["type": "unlock", "conversation": id, "password": password])
-            guard connection === pc, selected == id else { return }
+            guard connection === pc, selected == id, accessToken == accessGeneration else { return }
+            // A newer push may arrive before this continuation. Remove the local mask,
+            // then sync authoritative state instead of discarding a successful unlock.
+            locallyLocked.remove(id)
             if response.int("serial") >= serial {
-                locallyLocked.remove(id)
                 conversations = conversations.map { c in var p = c.raw; if c.id == id { p["locked"] = false }; return Conversation(raw: p) }
                 // MobilePacket includes an empty conversations array for non-list responses.
                 // Unlock supplies history only; it must not erase the contact list.
@@ -205,6 +210,7 @@ import CryptoKit
     }
     func lock() async {
         let id = selected
+        accessGeneration += 1
         locallyLocked.insert(id)
         conversations = conversations.map { c in var p = c.raw; if c.id == id { p["locked"] = true }; return Conversation(raw: p) }
         snapshots.removeValue(forKey: id); outbox.removeAll { $0.string("conversationId") == id }; replyTo = nil; preview = nil; previewMessage = nil; clearTemporaryFiles(); refresh()

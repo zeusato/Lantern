@@ -33,6 +33,6 @@ RELAY_PID=$!
 xcodebuild -project ios/Lantern.xcodeproj -scheme Lantern -configuration Debug \
   -destination "platform=iOS Simulator,id=$DEVICE_ID" -derivedDataPath ios/build/simulator \
   -resultBundlePath ios/build/Tests.xcresult CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
-  -parallel-testing-enabled NO test
-xcrun xcresulttool export attachments --path ios/build/Tests.xcresult --output-path ios/build/screenshots
+  -parallel-testing-enabled NO -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 180 test
 xcrun simctl io "$DEVICE_ID" screenshot ios/build/ios-simulator.png
