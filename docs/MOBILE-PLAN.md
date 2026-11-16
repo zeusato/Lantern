@@ -1,5 +1,7 @@
 # Lantern Android — thiết bị liên kết PC
 
+Phương án companion cho iPhone và các cách cài ngoài App Store: [IOS-PLAN.md](IOS-PLAN.md).
+
 Lantern 1.2 bổ sung Android companion. Điện thoại dùng danh tính PC; PC giữ lịch sử chính và tiếp tục chat P2P với các máy LAN. Kênh riêng trong Lantern không cài VPN, không đổi định tuyến toàn máy và không cần chuyển tiếp cổng router.
 
 ## Đường kết nối

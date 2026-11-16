@@ -1,4 +1,12 @@
-# Lantern 1.2.2
+# Lantern 1.2.3
+
+- Sửa ô soạn tin Android mất focus sau khi gửi hoặc nhận cập nhật. Tự cuộn lịch sử giữ focus ở ô nhập; xóa nội dung vừa gửi ngay trong bộ đệm đang soạn, tiếp tục gõ tin kế tiếp bằng bàn phím đang mở.
+- Kiểm thử gửi liên tiếp không chạm lại ô nhập, sau khi PC xác nhận và đẩy tin đến; kiểm tra focus, kết nối bàn phím và chữ đã được bố trí hiển thị.
+- Có phương án iOS tại `docs/IOS-PLAN.md`: ghép QR cùng PC, kênh riêng qua LAN/relay, lưu lịch sử cục bộ và các cách phân phối IPA/TestFlight.
+
+Cài đè APK để giữ ghép đôi. PC 1.2.2 tương thích với bản sửa Android này; gói PC 1.2.3 giữ cùng phiên bản phát hành.
+
+## Cải tiến từ 1.2.2
 
 - Bấm gửi trên Android: tin hiện ngay trong hội thoại, ô nhập trống ngay; truyền về PC chạy nền. Phân biệt Đang gửi, PC đã nhận, Đã nhận/Đã đọc và Chạm để thử lại.
 - Tin chưa xác nhận giữ nguyên mã gửi khi thử lại, kể cả sau khi mở lại app. Hàng đợi được mã hóa trên điện thoại; không tự phát lại sau khi khởi động. Tin đã tự hủy không bị tạo lại bởi lần thử gửi cũ.

@@ -109,7 +109,8 @@ public final class MainActivity extends Activity {
             if(message.has("localRequest")){time.setTextColor("retry".equals(message.optString("status"))?Color.rgb(241,176,88):MUTED);time.setOnClickListener(v->{ConnectionService service=ConnectionService.current;if(service!=null)service.retrySend(message.optString("id"));});}
             else {bubble.setOnLongClickListener(v->{messageMenu(message);return true;});time.setOnClickListener(v->messageMenu(message));}
         }catch(Exception ignored){}
-        scroll.post(()->{if(bottom)scroll.fullScroll(View.FOCUS_DOWN);else scroll.scrollTo(0,previousY);updateVisibleMessages();});
+        // fullScroll performs focus navigation and can move the IME away from the composer.
+        scroll.post(()->{scroll.scrollTo(0,bottom?messagesBox.getBottom():previousY);updateVisibleMessages();});
     }
     private void updateVisibleMessages(){
         java.util.Set<String> ids=new java.util.HashSet<>();
@@ -117,7 +118,7 @@ public final class MainActivity extends Activity {
         ConnectionService.displayed=new ConnectionService.ReadState(ConnectionService.selected,java.util.Collections.unmodifiableSet(ids));
     }
     private void showAction(String value){if(actionStatus!=null){actionStatus.setText(value);actionStatus.setVisibility(value.isEmpty()?View.GONE:View.VISIBLE);}}
-    private void send(){String content=composer.getText().toString().trim();if(content.isEmpty())return;ConnectionService service=ConnectionService.current;if(service==null){showAction("Đang nối lại PC. Nội dung đang soạn vẫn được giữ.");return;}String error=service.sendText(ConnectionService.selected,content,replyTo);if(error!=null){showAction(error);return;}composer.setText("");replyTo="";quote.setVisibility(View.GONE);showAction("");renderMessages();scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));}
+    private void send(){String content=composer.getText().toString().trim();if(content.isEmpty())return;ConnectionService service=ConnectionService.current;if(service==null){showAction("Đang nối lại PC. Nội dung đang soạn vẫn được giữ.");return;}String error=service.sendText(ConnectionService.selected,content,replyTo);if(error!=null){showAction(error);return;}composer.getText().clear();composer.requestFocus();replyTo="";quote.setVisibility(View.GONE);showAction("");renderMessages();scroll.post(()->scroll.scrollTo(0,messagesBox.getBottom()));}
     private void unlock(){
         String conversation=ConnectionService.selected;LinearLayout form=column();form.setPadding(dp(20),dp(8),dp(20),dp(8));EditText password=new EditText(this);password.setContentDescription("Mật khẩu hội thoại");password.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);password.setSingleLine();form.addView(password);
         TextView state=text("",13,MUTED);state.setPadding(0,dp(12),0,0);form.addView(state);ProgressBar progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setIndeterminate(true);progress.setVisibility(View.GONE);form.addView(progress);
