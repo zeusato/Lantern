@@ -102,7 +102,6 @@ public sealed class MobileServer : IAsyncDisposable
     public async Task<string> CreateInvitationAsync()
     {
         CancelInvitation(); var state = Registry.Snapshot();
-        if (state.Devices.Count >= 8) throw new InvalidOperationException("Tối đa 8 điện thoại.");
         var route = state.Relay.Enabled ? new MobileRoute() : null;
         if (route is not null) { using var api = new RelayApi(state.Relay); await api.Register(route, life.Token); }
         var pending = new MobileInvitation(MobileRoute.Secret(), DateTimeOffset.UtcNow.AddMinutes(2), route);
@@ -133,7 +132,11 @@ public sealed class MobileServer : IAsyncDisposable
             var hello = await MobileProtocol.ReadAsync(ssl, helloTimeout.Token);
             if (hello.Type != "hello") throw new AuthenticationException();
             var known = Registry.Snapshot().Devices.Find(d => d.Id == deviceId);
-            if (known is null)
+            bool freshInvitation;
+            lock (invitationGate) freshInvitation = invitation is { } candidate && candidate.Nonce.Length == 43 && candidate.Expires > DateTimeOffset.UtcNow && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(candidate.Nonce), Encoding.UTF8.GetBytes(hello.Nonce));
+            // A fresh QR can re-pair the same phone after it forgot its local configuration.
+            // An already approved phone may also retry a lost welcome without consuming another QR.
+            if (known is null || freshInvitation)
             {
                 MobileInvitation pending;
                 lock (invitationGate)

@@ -46,7 +46,8 @@ public sealed class MobileRegistry
     {
         lock (gate)
         {
-            if (state.Devices.Any(d => d.Id == device.Id)) throw new InvalidOperationException("Thiết bị đã ghép đôi.");
+            var existing = state.Devices.FindIndex(d => d.Id == device.Id);
+            if (existing >= 0) { state.Devices[existing] = Copy(device); Save(); return; }
             if (state.Devices.Count >= 8) throw new InvalidOperationException("Tối đa 8 điện thoại. Hãy gỡ thiết bị cũ.");
             state.Devices.Add(Copy(device)); Save();
         }
