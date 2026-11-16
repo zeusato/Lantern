@@ -28,6 +28,8 @@ jobs:
         timeout-minutes: 15
         run: |
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
@@ -53,9 +55,10 @@ jobs:
           adb pull /sdcard/Android/data/vn.lantern.companion/files/. build/screenshots/
       - name: Emulator diagnostics
         if: failure()
+        timeout-minutes: 1
         run: |
           cat /tmp/lantern-emulator.log || true
-          adb logcat -d -t 200 || true
+          timeout 10 adb logcat -d -t 200 || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

@@ -30,6 +30,7 @@ public final class MainActivity extends Activity {
     private int dp(float n){return (int)(getResources().getDisplayMetrics().density*n+.5f);}
     private GradientDrawable shape(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
     private TextView text(String value,int size,int color){TextView view=new TextView(this);view.setText(value);view.setTextSize(size);view.setTextColor(color);return view;}
+    private String delivery(String state){return switch(state){case "queued"->"Đang gửi";case "delivered"->"Đã nhận";case "read"->"Đã đọc";case "offered"->"Đã gửi";case "receiving"->"Đang nhận";case "received"->"Đã nhận";case "declined"->"Đã từ chối";case "error"->"Lỗi gửi";default->"Đã gửi";};}
     private Button button(String label,Runnable click){Button b=new Button(this);b.setText(label);b.setTextColor(TEXT);b.setTextSize(14);b.setAllCaps(false);b.setBackground(shape(SURFACE,14));b.setPadding(dp(14),dp(8),dp(14),dp(8));b.setOnClickListener(v->click.run());return b;}
     private LinearLayout column(){LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);return panel;}
     public void onCreate(Bundle state){super.onCreate(state);getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,WindowManager.LayoutParams.FLAG_SECURE);build();}
@@ -69,7 +70,7 @@ public final class MainActivity extends Activity {
         for(int i=0;i<ConnectionService.conversations.length();i++)try{
             JSONObject conversation=ConnectionService.conversations.getJSONObject(i);String id=conversation.getString("id"),name=conversation.getString("name");
             LinearLayout row=new LinearLayout(this);row.setGravity(Gravity.CENTER_VERTICAL);row.setBackground(shape(SURFACE,18));row.setPadding(dp(14),dp(16),dp(14),dp(16));LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(10);rows.addView(row,rp);
-            TextView avatar=text(name.isEmpty()?"L":name.substring(0,1).toUpperCase(),20,TEXT);avatar.setGravity(Gravity.CENTER);avatar.setBackground(shape(Color.rgb(28,92,88),18));row.addView(avatar,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            TextView avatar=text(name.isEmpty()?"L":name.substring(0,name.offsetByCodePoints(0,1)).toUpperCase(java.util.Locale.getDefault()),20,TEXT);avatar.setGravity(Gravity.CENTER);avatar.setBackground(shape(Color.rgb(28,92,88),18));row.addView(avatar,new LinearLayout.LayoutParams(dp(48),dp(48)));
             LinearLayout names=column();names.setPadding(dp(14),0,0,0);TextView labelName=text(name,17,TEXT);labelName.setTypeface(null,Typeface.BOLD);names.addView(labelName);
             String presence=conversation.optString("presence");String state=switch(presence){case "online"->"● Online";case "idle"->"● Vắng mặt";case "dnd"->"● Không làm phiền";case "group"->"Nhóm";default->"● Offline";};
             names.addView(text((conversation.optBoolean("locked")?"🔒  ":"")+state,12,switch(presence){case "online"->ACCENT;case "idle"->Color.rgb(220,168,34);case "dnd"->Color.rgb(217,74,83);default->MUTED;}));row.addView(names,new LinearLayout.LayoutParams(0,-2,1));
@@ -99,7 +100,7 @@ public final class MainActivity extends Activity {
                 boolean ready=own||"received".equals(message.optString("status"));bubble.addView(button(ready?"Mở tệp":"Nhận tệp",()->attachment(message,ready)));
             }
             String stamp="";try{stamp=OffsetDateTime.parse(message.getString("time")).atZoneSameInstant(java.time.ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"));}catch(Exception ignored){}
-            TextView time=text(stamp+(own?" · "+message.optString("status"):"")+(message.optInt("disappearAfterSeconds")>0?" · ◷":""),10,MUTED);time.setGravity(Gravity.RIGHT);bubble.addView(time);
+            TextView time=text(stamp+(own?" · "+delivery(message.optString("status")):"")+(message.optInt("disappearAfterSeconds")>0?" · ◷":""),10,MUTED);time.setGravity(Gravity.RIGHT);bubble.addView(time);
             JSONObject reactions=message.optJSONObject("reactions");if(reactions!=null){StringBuilder emojis=new StringBuilder();java.util.Iterator<String> keys=reactions.keys();while(keys.hasNext()){String e=reactions.optString(keys.next());if(!e.isEmpty())emojis.append(e);}if(emojis.length()>0)bubble.addView(text(emojis.toString(),15,TEXT));}
             bubble.setOnLongClickListener(v->{messageMenu(message);return true;});time.setOnClickListener(v->messageMenu(message));
         }catch(Exception ignored){}
