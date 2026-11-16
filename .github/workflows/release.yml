@@ -28,7 +28,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create $env:GITHUB_REF_NAME release-output/Lantern-Windows-x64.zip release-output/SHA256SUMS.txt --verify-tag --notes-file docs/RELEASE-NOTES.md --title "Lantern $env:GITHUB_REF_NAME"
+          gh release create $env:GITHUB_REF_NAME release-output/Lantern-Windows-x64.zip release-output/SHA256SUMS.txt --draft --verify-tag --notes-file docs/RELEASE-NOTES.md --title "Lantern $env:GITHUB_REF_NAME"
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }
   android:
     needs: release
@@ -52,10 +52,13 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$LANTERN_KEYSTORE"
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease lintRelease --console=plain
+          ./gradlew assembleRelease lintRelease "-PreleaseVersion=${GITHUB_REF_NAME#v}" --console=plain
           cp app/build/outputs/apk/release/app-release.apk Lantern-Android.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose Lantern-Android.apk
           sha256sum Lantern-Android.apk > ANDROID-SHA256SUMS.txt
       - name: Publish APK to matching release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" android/Lantern-Android.apk android/ANDROID-SHA256SUMS.txt --clobber
+        run: |
+          gh release upload "$GITHUB_REF_NAME" android/Lantern-Android.apk android/ANDROID-SHA256SUMS.txt --clobber
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

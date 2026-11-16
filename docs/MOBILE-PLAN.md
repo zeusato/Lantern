@@ -40,4 +40,6 @@ Credential relay cá nhân không nằm trong Git, ZIP PC hoặc APK. Cấu hìn
 
 PC dùng .NET 10/WPF và `scripts/Package-Release.ps1`. Android dùng Java 17, SDK 35, AGP 8.9.2, Gradle 8.11.1; wrapper có checksum cố định. `android/gradlew assembleDebug lintDebug` tạo APK thử nghiệm. APK release cần khóa ký riêng ngoài Git và phải dùng cùng khóa qua các lần cập nhật.
 
+Workflow release lấy phiên bản Android từ tag `vMAJOR.MINOR.PATCH`, tăng `versionCode` theo phiên bản và ký bằng hai GitHub Actions Secrets `ANDROID_KEYSTORE_BASE64` / `ANDROID_STORE_PASSWORD`. Minor và patch giới hạn dưới 100. Release chỉ công bố sau khi có đủ ZIP PC, APK đã xác thực chữ ký và hai tệp SHA-256. Bản sao khóa ký được giữ riêng trên PC; không đưa keystore vào source hoặc gói phát hành.
+
 Kiểm thử: peer thật trên loopback, TLS xuyên relay Sites công khai, khóa/thu hồi thiết bị, SHA-256 tệp và UI WPF. Android có instrumented tests cho Keystore, QR và màn hội thoại. Vẫn cần kiểm chứng trên điện thoại thật dùng 4G/5G với mạng công ty, chế độ sleep PC và tiết kiệm pin. Hai client cùng máy đi qua relay không thay thế kiểm thử 4G/firewall thực tế.

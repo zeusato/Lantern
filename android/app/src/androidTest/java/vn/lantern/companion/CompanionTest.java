@@ -17,6 +17,16 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class CompanionTest {
+    @Test public void tls12ThroughAdbForward() throws Exception { tlsThroughAdb("TLSv1.2"); }
+    @Test public void tls13ThroughAdbForward() throws Exception { tlsThroughAdb("TLSv1.3"); }
+    private void tlsThroughAdb(String protocol) throws Exception {
+        String pin=InstrumentationRegistry.getArguments().getString("pcPin");org.junit.Assume.assumeNotNull(pin);
+        try(javax.net.ssl.SSLSocket socket=(javax.net.ssl.SSLSocket)DeviceKeys.tls(pin).createSocket("127.0.0.1",45854)){
+            socket.setSoTimeout(10000);socket.setEnabledProtocols(new String[]{protocol});socket.startHandshake();
+            byte[] hello="{\"type\":\"hello\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8);DataOutputStream output=new DataOutputStream(socket.getOutputStream());output.writeInt(hello.length);output.write(hello);output.flush();
+            DataInputStream input=new DataInputStream(socket.getInputStream());byte[] bytes=new byte[input.readInt()];input.readFully(bytes);assertEquals(DeviceKeys.id(),new JSONObject(new String(bytes,java.nio.charset.StandardCharsets.UTF_8)).getString("text"));
+        }
+    }
     @Test public void androidKeystoreAuthenticatesToDotNetAndRejectsWrongPcKey() throws Exception {
         String pin=InstrumentationRegistry.getArguments().getString("pcPin");org.junit.Assume.assumeNotNull(pin);
         JSONObject config=new JSONObject().put("pc",pin).put("port",45854).put("addresses",new JSONArray().put("10.0.2.2")).put("nonce","q".repeat(43));
@@ -52,7 +62,8 @@ public class CompanionTest {
     }
     private static JSONObject message(String text,boolean outgoing)throws Exception{return new JSONObject().put("id",UUID.randomUUID().toString().replace("-","")).put("kind","text").put("text",text).put("outgoing",outgoing).put("senderName","Minh Anh").put("time","2026-11-16T10:00:00+07:00").put("status","delivered");}
     private static void snapshot(MainActivity activity,String name)throws Exception{
-        View view=activity.getWindow().getDecorView();int width=Math.max(1,view.getWidth()),height=Math.max(1,view.getHeight());Bitmap bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);view.draw(new Canvas(bitmap));
+        View view=activity.getWindow().getDecorView();int width=activity.getResources().getDisplayMetrics().widthPixels,height=activity.getResources().getDisplayMetrics().heightPixels;view.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));view.layout(0,0,width,height);Bitmap bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);view.draw(new Canvas(bitmap));
         try(FileOutputStream out=new FileOutputStream(new File(activity.getExternalFilesDir(null),name))){bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
+        try(android.os.ParcelFileDescriptor result=InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("sh -c 'mkdir -p /data/local/tmp/lantern-qa; cp "+new File(activity.getExternalFilesDir(null),name).getAbsolutePath()+" /data/local/tmp/lantern-qa/"+name+"'")){try(FileInputStream in=new FileInputStream(result.getFileDescriptor())){while(in.read()!=-1){}}}
     }
 }

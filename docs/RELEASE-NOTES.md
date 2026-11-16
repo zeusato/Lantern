@@ -12,4 +12,4 @@ Bản PC Windows x64 và Android companion liên kết bằng QR. Giải nén **
 
 Credential relay cá nhân không nằm trong bản công khai. PC khác cần cấu hình relay riêng. Android bản đầu chưa có lịch sử offline, resume tệp, push FCM, khóa app Android riêng hoặc đầy đủ màn cài đặt như PC. Hạn chế mạng nền của Android vẫn áp dụng; xem **docs/MOBILE-PLAN.md**.
 
-Đã kiểm thử 133 trường hợp core, 72 trường hợp UI WPF, build/lint Android và TLS qua relay Sites công khai. Cần kiểm chứng thêm trên điện thoại thật dùng 4G/5G với mạng công ty; không khẳng định đã thử mọi firewall/Doze. EXE PC chưa ký Authenticode; APK dùng khóa phát hành riêng.
+Đã kiểm thử 135 trường hợp core, 72 trường hợp UI WPF, build/lint Android và TLS qua relay Sites công khai. Cần kiểm chứng thêm trên điện thoại thật dùng 4G/5G với mạng công ty; không khẳng định đã thử mọi firewall/Doze. EXE PC chưa ký Authenticode; APK dùng khóa phát hành riêng.

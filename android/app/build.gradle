@@ -1,8 +1,11 @@
 plugins { id 'com.android.application' }
+def releaseVersion = providers.gradleProperty('releaseVersion').getOrElse('1.2.0')
+if (!(releaseVersion ==~ /\d{1,3}\.\d{1,2}\.\d{1,2}/)) throw new GradleException('releaseVersion must be major.minor.patch (minor/patch below 100)')
+def versionParts = releaseVersion.tokenize('.').collect { it.toInteger() }
 android {
     namespace 'vn.lantern.companion'
     compileSdk 35
-    defaultConfig { applicationId 'vn.lantern.companion'; minSdk 26; targetSdk 35; versionCode 1; versionName '1.2.0'; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+    defaultConfig { applicationId 'vn.lantern.companion'; minSdk 26; targetSdk 35; versionCode versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2]; versionName releaseVersion; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     signingConfigs {
         release {

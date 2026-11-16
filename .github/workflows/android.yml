@@ -51,11 +51,12 @@ jobs:
             sleep 1
           done
           PC_PIN=$(jq -r .pc /tmp/lantern-interop.json)
+          adb reverse tcp:45854 tcp:45854
           timeout 5 openssl s_client -connect 127.0.0.1:45854 -brief < /dev/null || true
           cd android
           ./gradlew connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.pcPin=$PC_PIN" --console=plain
           mkdir -p build/screenshots
-          adb pull /sdcard/Android/data/vn.lantern.companion/files/. build/screenshots/
+          adb pull /data/local/tmp/lantern-qa/. build/screenshots/
       - name: Emulator diagnostics
         if: failure()
         timeout-minutes: 1
@@ -67,7 +68,7 @@ jobs:
         if: always()
         run: |
           mkdir -p android/build/screenshots
-          timeout 10 "$ANDROID_HOME/platform-tools/adb" pull /sdcard/Android/data/vn.lantern.companion/files/. android/build/screenshots/ || true
+          timeout 10 "$ANDROID_HOME/platform-tools/adb" pull /data/local/tmp/lantern-qa/. android/build/screenshots/ || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
