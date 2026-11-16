@@ -21,6 +21,7 @@ public sealed class MobilePacket
     public long Offset { get; set; }
     public long Size { get; set; }
     public bool Locked { get; set; }
+    public long Serial { get; set; }
     public List<MobileConversation> Conversations { get; set; } = [];
     public List<ChatMessage> Messages { get; set; } = [];
     public List<string> VisibleIds { get; set; } = [];

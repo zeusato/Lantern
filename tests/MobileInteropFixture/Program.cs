@@ -36,7 +36,7 @@ while (true)
         using var remote = X509CertificateLoader.LoadCertificate(ssl.RemoteCertificate!.GetRawCertData());
         using var remoteKey = remote.GetECDsaPublicKey() ?? throw new AuthenticationException();
         var phone = Convert.ToHexString(SHA256.HashData(remoteKey.ExportSubjectPublicKeyInfo()));
-        bool unlocked = false;
+        bool unlocked = false, pushEnabled = false; long serial = 0;
         while (true)
         {
             var header = new byte[4]; await ssl.ReadExactlyAsync(header, timeout.Token); var length = BinaryPrimitives.ReadInt32BigEndian(header);
@@ -44,7 +44,9 @@ while (true)
             var data = new byte[length]; await ssl.ReadExactlyAsync(data, timeout.Token); using var request = JsonDocument.Parse(data);
             var type = request.RootElement.GetProperty("type").GetString();
             var reply = new Dictionary<string, object?> { ["type"] = type == "hello" ? "welcome" : "ok", ["id"] = pc, ["text"] = phone, ["name"] = "QA PC" };
-            if (type == "hello") reply["capabilities"] = new[] { "sync-v1" };
+            if (type == "hello") { reply["capabilities"] = new[] { "sync-v1", "push-v1" }; pushEnabled = request.RootElement.TryGetProperty("capabilities", out var caps) && caps.EnumerateArray().Any(c => c.GetString() == "push-v1"); }
+            else if (request.RootElement.TryGetProperty("id", out var requestId)) reply["id"] = requestId.GetString();
+            reply["serial"] = ++serial; reply["conversation"] = request.RootElement.TryGetProperty("conversation", out var selected) ? selected.GetString() : "";
             if (type is "list" or "sync") { reply["conversations"] = new[] { new Dictionary<string, object?> { ["id"] = conversation, ["name"] = "QA contact", ["presence"] = "online", ["unread"] = 0, ["locked"] = !unlocked, ["protected"] = true } }; reply["locked"] = !unlocked; }
             if (type == "unlock") { await Task.Delay(1200); unlocked = request.RootElement.GetProperty("password").GetString() == "qa-password"; if (!unlocked) { reply["type"] = "error"; reply["text"] = "Mật khẩu chưa đúng"; } }
             if (type == "history" || (type is "sync" or "unlock") && unlocked) { var hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(messages))); reply["hash"] = hash; reply["messages"] = messages; if (request.RootElement.TryGetProperty("hash", out var previous) && previous.GetString() == hash) { reply["type"] = "unchanged"; reply["messages"] = Array.Empty<object>(); } }
@@ -52,6 +54,12 @@ while (true)
             if (type == "download") { await Task.Delay(80); int offset = request.RootElement.GetProperty("offset").GetInt32(); reply["data"] = Convert.ToBase64String(imageBytes, offset, Math.Min(32768, imageBytes.Length - offset)); }
             var response = JsonSerializer.SerializeToUtf8Bytes(reply);
             var frame = new byte[4 + response.Length]; BinaryPrimitives.WriteInt32BigEndian(frame, response.Length); response.CopyTo(frame, 4); await ssl.WriteAsync(frame, timeout.Token);
+            if (type == "send" && pushEnabled)
+            {
+                if (!messages.Any(m => (string?)m["text"] == "Incoming immediately after send")) messages.Add(new() { ["id"] = new string('9',32), ["kind"] = "text", ["text"] = "Incoming immediately after send", ["outgoing"] = false, ["time"] = DateTimeOffset.UtcNow, ["status"] = "delivered" });
+                var push = JsonSerializer.SerializeToUtf8Bytes(new { type = "ok", id = "", serial = ++serial, conversation, locked = !unlocked, hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(messages))), messages, conversations = new[] { new { id = conversation, name = "QA contact", presence = "online", unread = 0, locked = !unlocked, @protected = true } } });
+                var pushed = new byte[4 + push.Length]; BinaryPrimitives.WriteInt32BigEndian(pushed, push.Length); push.CopyTo(pushed, 4); await ssl.WriteAsync(pushed, timeout.Token);
+            }
         }
     }
     catch (Exception ex) when (ex is IOException or AuthenticationException or OperationCanceledException) { Console.Error.WriteLine(ex); }

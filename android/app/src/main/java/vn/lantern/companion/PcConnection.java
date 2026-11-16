@@ -6,10 +6,15 @@ import java.net.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.concurrent.*;
 
 final class PcConnection implements AutoCloseable {
     private SSLSocket socket; private RelayBridge relay; private DataInputStream input; private DataOutputStream output;
-    boolean fastSync;
+    boolean fastSync,pushSync;
+    volatile java.util.function.Consumer<JSONObject> onPush=ignored->{};
+    private final ConcurrentHashMap<String,CompletableFuture<JSONObject>> pending=new ConcurrentHashMap<>();
+    private volatile boolean closed;
+    private final Object writeGate=new Object();
     static JSONObject validateQr(String text) throws Exception {
         if(text.length()>12000)throw new IOException("Mã QR không hợp lệ");JSONObject config=new JSONObject(text);
         if(config.getInt("v")!=1||!config.getString("pc").matches("[A-F0-9]{64}")||!config.getString("nonce").matches("[A-Za-z0-9_-]{43}")||config.getLong("expires")<System.currentTimeMillis()/1000)throw new IOException("QR không hợp lệ hoặc đã hết hạn");
@@ -33,21 +38,28 @@ final class PcConnection implements AutoCloseable {
         input=new DataInputStream(socket.getInputStream());output=new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(),65536));
         try {
             progress.accept(config.optString("nonce").isEmpty()?"Đang xác nhận thiết bị với PC…":"Đang chờ xác nhận ghép đôi trên PC…");
-            JSONObject hello=new JSONObject().put("type","hello").put("nonce",config.optString("nonce")).put("name",android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL);
+            JSONObject hello=new JSONObject().put("type","hello").put("nonce",config.optString("nonce")).put("name",android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL).put("capabilities",new JSONArray().put("push-v1"));
             JSONObject welcome=request(hello);if(!"welcome".equals(welcome.optString("type")))throw new IOException("PC chưa chấp nhận ghép đôi");
-            JSONArray capabilities=welcome.optJSONArray("capabilities");if(capabilities!=null)for(int i=0;i<capabilities.length();i++)if("sync-v1".equals(capabilities.optString(i)))fastSync=true;
+            JSONArray capabilities=welcome.optJSONArray("capabilities");if(capabilities!=null)for(int i=0;i<capabilities.length();i++){if("sync-v1".equals(capabilities.optString(i)))fastSync=true;if("push-v1".equals(capabilities.optString(i)))pushSync=true;}
             socket.setSoTimeout(30000);
+            if(pushSync){Thread reader=new Thread(this::readLoop,"lantern-pc-events");reader.setDaemon(true);reader.start();}
         }catch(Exception e){close();throw e;}
     }
     private void connect(String address,int port,String pin,int timeout) throws Exception {
         Socket raw=new Socket();try{raw.setTcpNoDelay(true);raw.connect(new InetSocketAddress(address,port),timeout);raw.setSoTimeout(timeout==2500?8000:45000);socket=(SSLSocket)DeviceKeys.tls(pin).createSocket(raw,address,port,true);socket.setSoTimeout(timeout==2500?8000:45000);socket.startHandshake();socket.setSoTimeout(120000);}catch(Exception e){raw.close();throw e;}
     }
-    synchronized JSONObject request(JSONObject request) throws Exception {
+    JSONObject request(JSONObject request) throws Exception {
         if(!request.has("id"))request.put("id",UUID.randomUUID().toString().replace("-",""));byte[] bytes=request.toString().getBytes(StandardCharsets.UTF_8);
-        if(bytes.length>2*1024*1024)throw new IOException("Nội dung quá lớn");output.writeInt(bytes.length);output.write(bytes);output.flush();
-        int length=input.readInt();if(length<2||length>2*1024*1024)throw new IOException("Gói PC không hợp lệ");byte[] response=new byte[length];input.readFully(response);return new JSONObject(new String(response,StandardCharsets.UTF_8));
+        if(bytes.length>2*1024*1024)throw new IOException("Nội dung quá lớn");
+        if(!pushSync)synchronized(writeGate){output.writeInt(bytes.length);output.write(bytes);output.flush();return read();}
+        String id=request.getString("id");CompletableFuture<JSONObject> reply=new CompletableFuture<>();pending.put(id,reply);
+        try{ synchronized(writeGate){if(closed)throw new EOFException();output.writeInt(bytes.length);output.write(bytes);output.flush();}return reply.get(30,TimeUnit.SECONDS);}
+        catch(ExecutionException e){if(e.getCause() instanceof Exception cause)throw cause;throw new IOException(e);}
+        finally{pending.remove(id);}
     }
+    private JSONObject read()throws Exception{int length=input.readInt();if(length<2||length>2*1024*1024)throw new IOException("Gói PC không hợp lệ");byte[] response=new byte[length];input.readFully(response);return new JSONObject(new String(response,StandardCharsets.UTF_8));}
+    private void readLoop(){try{while(!closed){JSONObject response=read();String id=response.optString("id");if(id.isEmpty())onPush.accept(response);else{CompletableFuture<JSONObject> reply=pending.get(id);if(reply!=null)reply.complete(response);}}}catch(Exception error){for(CompletableFuture<JSONObject> reply:pending.values())reply.completeExceptionally(error);}finally{close();}}
     private void closeSocket(){try{if(socket!=null)socket.close();}catch(Exception ignored){}socket=null;}
     String transport(){return relay==null?"Wi-Fi/LAN":"Internet";}
-    public void close(){closeSocket();if(relay!=null)relay.close();}
+    public void close(){closed=true;closeSocket();if(relay!=null)relay.close();for(CompletableFuture<JSONObject> reply:pending.values())reply.completeExceptionally(new EOFException());}
 }

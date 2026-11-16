@@ -49,8 +49,9 @@ public class CompanionFlowTest {
             AtomicBoolean cleared=new AtomicBoolean();until(()->{scenario.onActivity(activity->{try{java.lang.reflect.Field field=MainActivity.class.getDeclaredField("composer");field.setAccessible(true);cleared.set(((EditText)field.get(activity)).getText().length()==0);}catch(Exception e){throw new AssertionError(e);}});return cleared.get();});
             assertEquals("Optimistic message must be present before waiting for server history",1,countText(text));
             assertTrue("Composer must clear immediately after a real touch with keyboard open",android.os.SystemClock.elapsedRealtime()-start<1500);
-            onView(withContentDescription("Gửi tin nhắn")).perform(click(),click(),click());
             until(()->acknowledged(text));assertTrue("PC acknowledgement must arrive within 2 seconds during 8 MB preview",android.os.SystemClock.elapsedRealtime()-start<2000);
+            until(()->countText("Incoming immediately after send")==1);assertTrue("Incoming push must bypass image download and polling",android.os.SystemClock.elapsedRealtime()-start<2000);
+            onView(withContentDescription("Gửi tin nhắn")).perform(click(),click(),click());
             until(()->countText(text)==1);assertEquals(1,countText(text));
             scenario.onActivity(activity->{ConnectionService.current.select("");ConnectionService.current.select(conversation);assertEquals("Cached history should be immediately available",1,countText(text));});
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);Thread.sleep(1600);scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);until(()->countText(text)==1);

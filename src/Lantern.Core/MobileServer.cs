@@ -30,6 +30,8 @@ public sealed class MobileServer : IAsyncDisposable
         public CancellationTokenSource Stop { get; } = stop;
         public ConcurrentDictionary<string, byte> Unlocked { get; } = new();
         public Upload? Upload { get; set; }
+        public string Selected { get; set; } = "";
+        public string Hash { get; set; } = "";
     }
     private sealed record Upload(string Id, string Conversation, string Path, long Size, string Hash);
     public MobileServer(PeerNode node, WorkspaceVault vault)
@@ -110,7 +112,7 @@ public sealed class MobileServer : IAsyncDisposable
         return JsonSerializer.Serialize(new { v = 1, name = node.Identity.Name, pc = node.Identity.Id, addresses = PeerNode.LocalAddresses(), port = Port, nonce = pending.Nonce, expires = pending.Expires.ToUnixTimeSeconds(), relay = route is null ? null : new { url = state.Relay.Url, token = state.Relay.ServiceToken, id = route.Id, key = route.ClientKey } }, MobileProtocol.Json);
     }
     public void CancelInvitation() { lock (invitationGate) invitation = null; }
-    public void LockConversation(string id) { foreach (var client in clients.Values) client.Unlocked.TryRemove(id, out _); }
+    public void LockConversation(string id) { foreach (var client in clients.Values) client.Unlocked.TryRemove(id, out _); Changed?.Invoke(); }
     public async Task RevokeAsync(string id)
     {
         var device = Registry.Remove(id); if (clients.TryRemove(id, out var client)) client.Stop.Cancel();
@@ -123,6 +125,9 @@ public sealed class MobileServer : IAsyncDisposable
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(life.Token);
         using var ssl = new SslStream(transport, true, (_, cert, _, _) => cert is not null);
         string deviceId = ""; var client = new Client(stop);
+        using var writes = new SemaphoreSlim(1, 1);
+        using var updates = new SemaphoreSlim(0, 1);
+        Task? pushing = null; Action? onChange = null; long serial = 0;
         try
         {
             using var helloTimeout = CancellationTokenSource.CreateLinkedTokenSource(stop.Token); helloTimeout.CancelAfter(TimeSpan.FromSeconds(70));
@@ -152,20 +157,44 @@ public sealed class MobileServer : IAsyncDisposable
             }
             else if (routeId is not null && known.Route?.Id != routeId) throw new AuthenticationException();
             if (clients.TryGetValue(deviceId, out var old)) old.Stop.Cancel(); clients[deviceId] = client;
-            await MobileProtocol.WriteAsync(ssl, new MobilePacket { Type = "welcome", Name = node.Identity.Name, Id = node.Identity.Id, Capabilities = ["sync-v1"] }, stop.Token);
+            await MobileProtocol.WriteAsync(ssl, new MobilePacket { Type = "welcome", Name = node.Identity.Name, Id = node.Identity.Id, Capabilities = ["sync-v1", "push-v1"] }, stop.Token);
+            if (hello.Capabilities?.Contains("push-v1") == true)
+            {
+                onChange = () => { try { if (updates.CurrentCount == 0) updates.Release(); } catch (SemaphoreFullException) { } catch (ObjectDisposedException) { } };
+                node.Changed += onChange; Changed += onChange;
+                pushing = Task.Run(async () =>
+                {
+                    try
+                    {
+                        while (!stop.IsCancellationRequested)
+                        {
+                            await updates.WaitAsync(stop.Token); await Task.Delay(25, stop.Token);
+                            await writes.WaitAsync(stop.Token);
+                            try { var update = await Handle(client, deviceId, new MobilePacket { Type = "sync", Conversation = client.Selected }, stop.Token); update.Id = ""; update.Serial = ++serial; await MobileProtocol.WriteAsync(ssl, update, stop.Token); }
+                            finally { writes.Release(); }
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException) { stop.Cancel(); }
+                });
+            }
             while (!stop.IsCancellationRequested)
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stop.Token); timeout.CancelAfter(TimeSpan.FromSeconds(90));
                 var request = await MobileProtocol.ReadAsync(ssl, timeout.Token);
                 if (!Registry.Contains(deviceId)) throw new AuthenticationException();
-                MobilePacket response;
-                try { response = await Handle(client, deviceId, request, stop.Token); }
-                catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException) { response = new() { Type = "error", Text = ex.Message }; }
-                response.Id = request.Id; await MobileProtocol.WriteAsync(ssl, response, timeout.Token);
+                await writes.WaitAsync(stop.Token);
+                try
+                {
+                    MobilePacket response;
+                    try { response = await Handle(client, deviceId, request, stop.Token); }
+                    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException) { response = new() { Type = "error", Text = ex.Message }; }
+                    response.Id = request.Id; response.Serial = ++serial; await MobileProtocol.WriteAsync(ssl, response, timeout.Token);
+                }
+                finally { writes.Release(); }
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException) { }
-        finally { if (client.Upload is { } upload) { try { File.Delete(upload.Path); } catch (IOException) { } } if (clients.TryGetValue(deviceId, out var current) && ReferenceEquals(current, client)) clients.TryRemove(deviceId, out _); Changed?.Invoke(); }
+        finally { if (onChange is not null) { node.Changed -= onChange; Changed -= onChange; } stop.Cancel(); if (pushing is not null) try { await pushing; } catch (Exception) { } if (client.Upload is { } upload) { try { File.Delete(upload.Path); } catch (IOException) { } } if (clients.TryGetValue(deviceId, out var current) && ReferenceEquals(current, client)) clients.TryRemove(deviceId, out _); Changed?.Invoke(); }
     }
     private bool Locked(Client client, string id) => vault.IsConversationLocked(id) && !client.Unlocked.ContainsKey(id);
     private void ValidateConversation(Client client, string id)
@@ -178,6 +207,7 @@ public sealed class MobileServer : IAsyncDisposable
         var reply = new MobilePacket { Type = "ok", Conversation = request.Conversation };
         if (request.Type is "list" or "sync")
         {
+            if (request.Type == "sync") client.Selected = request.Conversation;
             var unread = node.Store.UnreadCounts();
             reply.Conversations = node.Peers.Where(p => p.Trusted && !p.Blocked).Select(p => new MobileConversation(p.Id, p.DisplayName, p.Connected ? p.Presence : "offline", unread.GetValueOrDefault(p.Id), Locked(client, p.Id), false, vault.IsConversationLocked(p.Id)))
                 .Concat(node.Store.Groups().Where(g => g.Members.Contains(node.Identity.Id)).Select(g => new MobileConversation(g.Id, g.Name, "group", unread.GetValueOrDefault(g.Id), Locked(client, g.Id), true, vault.IsConversationLocked(g.Id)))).ToList();
@@ -190,6 +220,7 @@ public sealed class MobileServer : IAsyncDisposable
                     // Store read state synchronously, but do not wait for LAN receipt delivery.
                     if (request.VisibleIds.Count > 0) Track(node.MarkReadAsync(request.Conversation, request.VisibleIds.ToHashSet()));
                     FillHistory(reply, request.Hash);
+                    client.Hash = reply.Hash;
                 }
             }
             return reply;
@@ -199,7 +230,7 @@ public sealed class MobileServer : IAsyncDisposable
             // Failed attempts remain throttled; a correct password need not wait artificially.
             if (!vault.VerifyConversation(request.Conversation, request.Password)) { await Task.Delay(1500, ct); throw new UnauthorizedAccessException("Mật khẩu chưa đúng."); }
             client.Unlocked[request.Conversation] = 0;
-            ValidateConversation(client, request.Conversation); FillHistory(reply, ""); return reply;
+            ValidateConversation(client, request.Conversation); FillHistory(reply, ""); client.Hash = reply.Hash; return reply;
         }
         if (request.Type == "lock") { client.Unlocked.TryRemove(request.Conversation, out _); return reply; }
         ValidateConversation(client, request.Conversation);

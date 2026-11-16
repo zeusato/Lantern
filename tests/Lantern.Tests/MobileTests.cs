@@ -124,5 +124,6 @@ internal static class MobileTests
             check(oldClosed, "Re-pairing closes the phone's previous connection");
         }
         finally { firstPair.Tls.Dispose(); firstPair.Tcp.Dispose(); await server.RevokeAsync(phone.Id); }
+        await MobileLatencyTests.Run(node, other, server, phone, check, relay);
     }
 }
