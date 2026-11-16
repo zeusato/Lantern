@@ -221,7 +221,7 @@ public sealed class MobileServer : IAsyncDisposable
         }
         if (request.Type == "history")
         {
-            reply.Messages = node.Store.Messages(request.Conversation, limit: 50).Select(m => { m.FilePath = ""; m.Error = ""; return m; }).ToList(); return reply;
+            reply.Messages = MobileProtocol.BoundedHistory(node.Store.Messages(request.Conversation, limit: 50)); return reply;
         }
         if (request.Type == "read") { await node.MarkReadAsync(request.Conversation, request.VisibleIds.ToHashSet()); return reply; }
         if (request.Type == "send")

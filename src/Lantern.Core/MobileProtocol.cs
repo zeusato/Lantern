@@ -32,6 +32,18 @@ public static class MobileProtocol
     public const int MaxFrame = 2 * 1024 * 1024;
     public const long MaxMobileFile = 100 * 1024 * 1024;
     public static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true, MaxDepth = 20 };
+    public static List<ChatMessage> BoundedHistory(IEnumerable<ChatMessage> messages)
+    {
+        var result = new List<ChatMessage>(); int bytes = 4096;
+        foreach (var message in messages.Reverse())
+        {
+            message.FilePath = ""; message.Error = "";
+            bytes += JsonSerializer.SerializeToUtf8Bytes(message, Json).Length + 1;
+            if (bytes > MaxFrame) break;
+            result.Add(message);
+        }
+        result.Reverse(); return result;
+    }
     public static async Task WriteAsync(Stream stream, MobilePacket packet, CancellationToken ct)
     {
         var bytes = JsonSerializer.SerializeToUtf8Bytes(packet, Json);

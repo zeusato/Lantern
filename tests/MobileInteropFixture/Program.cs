@@ -33,5 +33,5 @@ while (true)
             var frame = new byte[4 + response.Length]; BinaryPrimitives.WriteInt32BigEndian(frame, response.Length); response.CopyTo(frame, 4); await ssl.WriteAsync(frame, timeout.Token);
         }
     }
-    catch (Exception ex) when (ex is IOException or AuthenticationException or OperationCanceledException) { }
+    catch (Exception ex) when (ex is IOException or AuthenticationException or OperationCanceledException) { Console.Error.WriteLine(ex); }
 }

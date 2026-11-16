@@ -10,8 +10,14 @@ internal static class MobileTests
 {
     public static async Task Run(string root, Action<bool, string> check, RelayConfiguration? relay = null)
     {
+        var longHistory = Enumerable.Range(0, 50).Select(i => new ChatMessage { Id = i.ToString("x32"), Text = new string('ễ', 16000), FilePath = "private-pc-path" });
+        var bounded = new MobilePacket { Messages = MobileProtocol.BoundedHistory(longHistory) };
+        check(JsonSerializer.SerializeToUtf8Bytes(bounded, MobileProtocol.Json).Length <= MobileProtocol.MaxFrame && bounded.Messages.Last().Id == 49.ToString("x32") && bounded.Messages.All(m => m.FilePath.Length == 0), "Long Unicode history stays within mobile frame size while keeping the newest messages");
         var path = Path.Combine(root, "mobile-" + Guid.NewGuid().ToString("N"));
         using var vault = WorkspaceVault.Create(path, "Mobile-test-password!");
+        var forged = Path.Combine(path, "forged"); Directory.CreateDirectory(forged); File.WriteAllText(Path.Combine(forged, "mobile-devices.enc"), "{\"devices\":[]}");
+        bool plaintextRejected = false; try { _ = new MobileRegistry(forged, vault); } catch (InvalidDataException) { plaintextRejected = true; }
+        check(plaintextRejected, "Plaintext device authorization cannot bypass the encrypted registry");
         using var identity = new Identity(path, "PC thử nghiệm", vault);
         using var store = new LocalStore(path, vault);
         await using var node = new PeerNode(identity, store);

@@ -37,7 +37,14 @@ public sealed class MobileRegistry
     public MobileRegistry(string directory, WorkspaceVault vault)
     {
         this.vault = vault; file = Path.Combine(directory, "mobile-devices.enc");
-        state = File.Exists(file) ? JsonSerializer.Deserialize<MobileState>(vault.Unseal(File.ReadAllText(file)), MobileProtocol.Json) ?? new() : new();
+        if (File.Exists(file))
+        {
+            var sealedState = File.ReadAllText(file);
+            // Unlike legacy chat storage, device authorization has no plaintext migration format.
+            if (!sealedState.StartsWith("enc:v1:", StringComparison.Ordinal)) throw new InvalidDataException("Danh sách thiết bị không được mã hóa hoặc đã bị thay đổi.");
+            state = JsonSerializer.Deserialize<MobileState>(vault.Unseal(sealedState), MobileProtocol.Json) ?? throw new InvalidDataException("Danh sách thiết bị không hợp lệ.");
+        }
+        else state = new();
     }
     private static T Copy<T>(T value) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, MobileProtocol.Json), MobileProtocol.Json)!;
     public MobileState Snapshot() { lock (gate) return Copy(state); }

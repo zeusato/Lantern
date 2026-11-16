@@ -2,7 +2,9 @@ name: Android checks
 on:
   push:
     branches: [main]
+    paths: ['android/**', 'tests/MobileInteropFixture/**', '.github/workflows/android.yml']
   pull_request:
+    paths: ['android/**', 'tests/MobileInteropFixture/**', '.github/workflows/android.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,7 +45,7 @@ jobs:
           done
           test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = '1'
           dotnet build tests/MobileInteropFixture -c Release --nologo
-          dotnet tests/MobileInteropFixture/bin/Release/net10.0/MobileInteropFixture.dll > /tmp/lantern-interop.json &
+          dotnet tests/MobileInteropFixture/bin/Release/net10.0/MobileInteropFixture.dll > /tmp/lantern-interop.json 2> /tmp/lantern-interop.log &
           for n in $(seq 1 20); do
             if [ -s /tmp/lantern-interop.json ]; then break; fi
             sleep 1
@@ -58,7 +60,13 @@ jobs:
         timeout-minutes: 1
         run: |
           cat /tmp/lantern-emulator.log || true
+          cat /tmp/lantern-interop.log || true
           timeout 10 adb logcat -d -t 200 || true
+      - name: Collect Android screenshots
+        if: always()
+        run: |
+          mkdir -p android/build/screenshots
+          timeout 10 adb pull /sdcard/Android/data/vn.lantern.companion/files/. android/build/screenshots/ || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
