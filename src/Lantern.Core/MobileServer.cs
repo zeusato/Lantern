@@ -55,7 +55,7 @@ public sealed class MobileServer : IAsyncDisposable
         }
         catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException) { }
     }
-    private async Task RunTcp(TcpClient tcp) { using (tcp) { try { await Serve(tcp.GetStream(), null); } finally { slots.Release(); } } }
+    private async Task RunTcp(TcpClient tcp) { using (tcp) { tcp.NoDelay = true; try { await Serve(tcp.GetStream(), null); } finally { slots.Release(); } } }
     public void ConfigureRelay(RelayConfiguration config)
     {
         if (Registry.Snapshot().Devices.Count > 0) throw new InvalidOperationException("Gỡ các thiết bị trước khi đổi relay.");
@@ -179,14 +179,13 @@ public sealed class MobileServer : IAsyncDisposable
         if (request.Type == "list")
         {
             var unread = node.Store.UnreadCounts();
-            reply.Conversations = node.Peers.Where(p => p.Trusted && !p.Blocked).Select(p => new MobileConversation(p.Id, p.DisplayName, p.Connected ? p.Presence : "offline", unread.GetValueOrDefault(p.Id), Locked(client, p.Id), false))
-                .Concat(node.Store.Groups().Where(g => g.Members.Contains(node.Identity.Id)).Select(g => new MobileConversation(g.Id, g.Name, "group", unread.GetValueOrDefault(g.Id), Locked(client, g.Id), true))).ToList(); return reply;
+            reply.Conversations = node.Peers.Where(p => p.Trusted && !p.Blocked).Select(p => new MobileConversation(p.Id, p.DisplayName, p.Connected ? p.Presence : "offline", unread.GetValueOrDefault(p.Id), Locked(client, p.Id), false, vault.IsConversationLocked(p.Id)))
+                .Concat(node.Store.Groups().Where(g => g.Members.Contains(node.Identity.Id)).Select(g => new MobileConversation(g.Id, g.Name, "group", unread.GetValueOrDefault(g.Id), Locked(client, g.Id), true, vault.IsConversationLocked(g.Id)))).ToList(); return reply;
         }
         if (request.Type == "unlock")
         {
-            // Rate limit expensive password derivation per connected device.
-            await Task.Delay(1500, ct);
-            if (!vault.VerifyConversation(request.Conversation, request.Password)) throw new UnauthorizedAccessException("Mật khẩu chưa đúng.");
+            // Failed attempts remain throttled; a correct password need not wait artificially.
+            if (!vault.VerifyConversation(request.Conversation, request.Password)) { await Task.Delay(1500, ct); throw new UnauthorizedAccessException("Mật khẩu chưa đúng."); }
             client.Unlocked[request.Conversation] = 0; return reply;
         }
         if (request.Type == "lock") { client.Unlocked.TryRemove(request.Conversation, out _); return reply; }
@@ -221,7 +220,10 @@ public sealed class MobileServer : IAsyncDisposable
         }
         if (request.Type == "history")
         {
-            reply.Messages = MobileProtocol.BoundedHistory(node.Store.Messages(request.Conversation, limit: 50)); return reply;
+            reply.Messages = MobileProtocol.BoundedHistory(node.Store.Messages(request.Conversation, limit: 50));
+            reply.Hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(reply.Messages, MobileProtocol.Json)));
+            if (reply.Hash == request.Hash) { reply.Type = "unchanged"; reply.Messages = []; }
+            return reply;
         }
         if (request.Type == "read") { await node.MarkReadAsync(request.Conversation, request.VisibleIds.ToHashSet()); return reply; }
         if (request.Type == "send")

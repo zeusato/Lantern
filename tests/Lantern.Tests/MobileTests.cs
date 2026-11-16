@@ -53,6 +53,7 @@ internal static class MobileTests
             check(!registryText.Contains(phone.Id) && (relay is null || !registryText.Contains(relay.ServiceToken)), "Device credentials are encrypted in the workspace");
             check((await Call(new() { Type = "list" })).Conversations.Any(c => c.Id == otherId.Id), "Phone uses the PC contact list");
             vault.SetConversationPassword(otherId.Id, "conversation-secret");
+            check((await Call(new() { Type = "list" })).Conversations.Single(c => c.Id == otherId.Id).Protected, "Phone knows protected conversations must stay locked in offline cache");
             check((await Call(new() { Type = "history", Conversation = otherId.Id })).Type == "error", "Locked conversation denies mobile history");
             check((await Call(new() { Type = "send", Id = Guid.NewGuid().ToString("N"), Conversation = otherId.Id, Text = "blocked" })).Type == "error", "Locked conversation denies mobile sending");
             check((await Call(new() { Type = "unlock", Conversation = otherId.Id, Password = "wrong" })).Type == "error", "Wrong conversation password is rejected");
@@ -65,12 +66,15 @@ internal static class MobileTests
             check(otherStore.Message(sent.MessageId)?.SenderId == identity.Id, "LAN partner receives phone message from the PC identity");
             var history = await Call(new() { Type = "history", Conversation = otherId.Id });
             check(history.Messages.Count == 1 && history.Messages.All(m => m.FilePath == ""), "History is authorized and never exposes PC file paths");
+            var unchanged = await Call(new() { Type = "history", Conversation = otherId.Id, Hash = history.Hash });
+            check(history.Hash.Length == 64 && unchanged.Type == "unchanged" && unchanged.Messages.Count == 0, "Unchanged history avoids downloading the same messages again");
             await Call(new() { Type = "list" });
             check((await Call(new() { Type = "history", Conversation = otherId.Id })).Type == "ok", "Switching screens retains conversation unlock within session");
             var reply = await Call(new() { Type = "send", Id = Guid.NewGuid().ToString("N"), Conversation = otherId.Id, Text = "Trích dẫn", ReplyTo = sent.MessageId });
             check(store.Message(reply.MessageId)?.ReplyToId == sent.MessageId, "Mobile quote reaches PC history");
             await Call(new() { Type = "react", Conversation = otherId.Id, MessageId = sent.MessageId, Emoji = "❤️" });
             check(store.Message(sent.MessageId)?.Reactions.GetValueOrDefault(identity.Id) == "❤️", "Phone reaction uses PC identity");
+            check((await Call(new() { Type = "history", Conversation = otherId.Id, Hash = history.Hash })).Type == "ok", "Changed history invalidates the phone snapshot hash");
             var shown = await other.SendTextAsync(identity.Id, "Đã hiển thị trên điện thoại");
             var unseen = await other.SendTextAsync(identity.Id, "Chưa hiển thị trên điện thoại");
             for (int i = 0; i < 100 && store.Message(unseen.Id) is null; i++) await Task.Delay(30);

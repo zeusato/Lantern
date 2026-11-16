@@ -10,6 +10,10 @@ permissions:
   contents: read
 jobs:
   android:
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [34, 35]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -26,7 +30,7 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug assembleDebugAndroidTest lintDebug --console=plain
-      - name: Test on Android 15 emulator
+      - name: Test on Android API ${{ matrix.api }} emulator
         timeout-minutes: 15
         run: |
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
@@ -35,8 +39,8 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-          sdkmanager 'system-images;android-35;google_apis;x86_64' 'emulator'
-          echo no | avdmanager create avd --force --name lantern-test --package 'system-images;android-35;google_apis;x86_64' --device pixel_6
+          sdkmanager 'system-images;android-${{ matrix.api }};google_apis;x86_64' 'emulator'
+          echo no | avdmanager create avd --force --name lantern-test --package 'system-images;android-${{ matrix.api }};google_apis;x86_64' --device pixel_6
           "$ANDROID_HOME/emulator/emulator" -avd lantern-test -no-window -no-audio -no-snapshot -gpu swiftshader_indirect > /tmp/lantern-emulator.log 2>&1 &
           if ! timeout 180 adb wait-for-device; then cat /tmp/lantern-emulator.log; exit 1; fi
           for n in $(seq 1 120); do
@@ -72,7 +76,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: android-qa
+          name: android-qa-${{ matrix.api }}
           path: |
             android/app/build/reports/
             android/build/screenshots/

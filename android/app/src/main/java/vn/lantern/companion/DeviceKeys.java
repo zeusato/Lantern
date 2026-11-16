@@ -74,5 +74,12 @@ final class DeviceKeys {
         String[] parts=value.split(":",2); Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.DECRYPT_MODE,store().getKey(SECRET,null),new GCMParameterSpec(128,Base64.decode(parts[0],Base64.NO_WRAP)));
         return new JSONObject(new String(cipher.doFinal(Base64.decode(parts[1],Base64.NO_WRAP)),java.nio.charset.StandardCharsets.UTF_8));
     }
-    static void forget(Context context) {context.getSharedPreferences("private",0).edit().remove("connection").commit();}
+    static byte[] sealCache(byte[] plain,String scope) throws Exception {
+        ensure();Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.ENCRYPT_MODE,store().getKey(SECRET,null));cipher.updateAAD(scope.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        byte[] encrypted=cipher.doFinal(plain),result=new byte[12+encrypted.length];System.arraycopy(cipher.getIV(),0,result,0,12);System.arraycopy(encrypted,0,result,12,encrypted.length);return result;
+    }
+    static byte[] openCache(byte[] encrypted,String scope) throws Exception {
+        if(encrypted.length<28)throw new java.io.IOException("Cache bị hỏng");Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,store().getKey(SECRET,null),new GCMParameterSpec(128,encrypted,0,12));cipher.updateAAD(scope.getBytes(java.nio.charset.StandardCharsets.UTF_8));return cipher.doFinal(encrypted,12,encrypted.length-12);
+    }
+    static void forget(Context context) {context.getSharedPreferences("private",0).edit().remove("connection").commit();HistoryCache.clearAll(context);}
 }

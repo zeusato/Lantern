@@ -25,7 +25,7 @@ public sealed class MobilePacket
     public List<ChatMessage> Messages { get; set; } = [];
     public List<string> VisibleIds { get; set; } = [];
 }
-public sealed record MobileConversation(string Id, string Name, string Presence, int Unread, bool Locked, bool IsGroup);
+public sealed record MobileConversation(string Id, string Name, string Presence, int Unread, bool Locked, bool IsGroup, bool Protected = false);
 public static class MobileProtocol
 {
     public const int Version = 1;
