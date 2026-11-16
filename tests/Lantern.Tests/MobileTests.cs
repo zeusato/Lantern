@@ -90,6 +90,10 @@ internal static class MobileTests
             var chunk = await Call(new() { Type = "download", Conversation = otherId.Id, MessageId = upload.MessageId });
             check(Convert.FromBase64String(chunk.Data).SequenceEqual(bytes[..32768]), "Mobile attachment download returns verified message-owned bytes");
             server.LockConversation(otherId.Id);
+            var expired = store.Message(sent.MessageId)!; expired.DisappearAfterSeconds = 10; expired.ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(-1); store.SaveMessage(expired); store.RemoveExpired(DateTimeOffset.UtcNow);
+            await Call(new() { Type = "unlock", Conversation = otherId.Id, Password = "conversation-secret" });
+            check((await Call(new() { Type = "send", Id = requestId, Conversation = otherId.Id, Text = "Xin chào từ điện thoại 🙂" })).Type == "gone" && store.Message(sent.MessageId) is null, "Retry after message expiry never resurrects deleted content");
+            server.LockConversation(otherId.Id);
             check((await Call(new() { Type = "download", Conversation = otherId.Id, MessageId = upload.MessageId })).Type == "error", "PC manual lock also denies mobile attachment access");
             await server.RevokeAsync(phone.Id);
             bool denied = false; try { await Call(new() { Type = "list" }); } catch (Exception) { denied = true; }

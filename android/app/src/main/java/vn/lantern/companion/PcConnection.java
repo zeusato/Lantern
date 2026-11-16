@@ -12,6 +12,7 @@ final class PcConnection implements AutoCloseable {
     private SSLSocket socket; private RelayBridge relay; private DataInputStream input; private DataOutputStream output;
     boolean fastSync,pushSync;
     volatile java.util.function.Consumer<JSONObject> onPush=ignored->{};
+    volatile Runnable onDisconnect=()->{};
     private final ConcurrentHashMap<String,CompletableFuture<JSONObject>> pending=new ConcurrentHashMap<>();
     private volatile boolean closed;
     private final Object writeGate=new Object();
@@ -61,5 +62,5 @@ final class PcConnection implements AutoCloseable {
     private void readLoop(){try{while(!closed){JSONObject response=read();String id=response.optString("id");if(id.isEmpty())onPush.accept(response);else{CompletableFuture<JSONObject> reply=pending.get(id);if(reply!=null)reply.complete(response);}}}catch(Exception error){for(CompletableFuture<JSONObject> reply:pending.values())reply.completeExceptionally(error);}finally{close();}}
     private void closeSocket(){try{if(socket!=null)socket.close();}catch(Exception ignored){}socket=null;}
     String transport(){return relay==null?"Wi-Fi/LAN":"Internet";}
-    public void close(){closed=true;closeSocket();if(relay!=null)relay.close();for(CompletableFuture<JSONObject> reply:pending.values())reply.completeExceptionally(new EOFException());}
+    public void close(){boolean wasClosed=closed;closed=true;closeSocket();if(relay!=null)relay.close();for(CompletableFuture<JSONObject> reply:pending.values())reply.completeExceptionally(new EOFException());if(!wasClosed)onDisconnect.run();}
 }

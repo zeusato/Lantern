@@ -65,7 +65,7 @@ public class CompanionTest {
         }finally{ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}
     }
     private static JSONObject message(String text,boolean outgoing)throws Exception{return new JSONObject().put("id",UUID.randomUUID().toString().replace("-","")).put("kind","text").put("text",text).put("outgoing",outgoing).put("senderName","Minh Anh").put("time","2026-11-16T10:00:00+07:00").put("status","delivered");}
-    private static void snapshot(MainActivity activity,String name)throws Exception{
+    static void snapshot(MainActivity activity,String name)throws Exception{
         View view=activity.getWindow().getDecorView();int width=activity.getResources().getDisplayMetrics().widthPixels,height=activity.getResources().getDisplayMetrics().heightPixels;view.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));view.layout(0,0,width,height);Bitmap bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);view.draw(new Canvas(bitmap));
         try(FileOutputStream out=new FileOutputStream(new File(activity.getExternalFilesDir(null),name))){bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
         for(String command:new String[]{"mkdir -p /data/local/tmp/lantern-qa","cp "+new File(activity.getExternalFilesDir(null),name).getAbsolutePath()+" /data/local/tmp/lantern-qa/"+name})try(InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command))){while(in.read()!=-1){}}

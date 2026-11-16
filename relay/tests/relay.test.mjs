@@ -37,6 +37,9 @@ test('batched polling preserves order, bounded queues and acknowledgements under
  assert.equal((await call(path,client,{session:active,after:0,seq:32,data:'YQ=='})).status,200);
  assert.equal((await call(path,client,{session:active,after:0,seq:32,data:'Yg=='})).status,409);
  const received=await call(path,host,{session:active,after:0,batch:4});assert.deepEqual(received.body.packets.map(p=>p.seq),[1,2,3,4]);
+ assert.equal((await call(path,'z'.repeat(43),{session:active,after:32,seq:1,data:'Yg=='})).status,401);
+ assert.equal((await call(path,host,{session:'f'.repeat(32),after:32,seq:1,data:'Yg=='})).status,409);
+ assert.deepEqual((await call(path,host,{session:active,after:0,batch:4})).body.packets.map(p=>p.seq),[1,2,3,4]);
  const sent=await call(path,host,{session:active,after:4,seq:1,data:'Yg==',pushOnly:true});assert.equal(sent.body.packets.length,0);
  assert.equal((await call(path,client,{session:active,after:0,seq:33,data:'YQ=='})).status,200);
  assert.deepEqual((await call(path,host,{session:active,after:4,batch:4})).body.packets.map(p=>p.seq),[5,6,7,8]);await call('/v1/routes/'+route+'/revoke',host,{});

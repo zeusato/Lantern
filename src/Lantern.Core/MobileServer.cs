@@ -223,6 +223,8 @@ public sealed class MobileServer : IAsyncDisposable
                     client.Hash = reply.Hash;
                 }
             }
+            var policies = node.Store.Policies().ToDictionary(p => p.Id, p => p.DisappearSeconds);
+            reply.Conversations = reply.Conversations.Select(c => c with { DisappearSeconds = policies.GetValueOrDefault(c.Id) }).ToList();
             return reply;
         }
         if (request.Type == "unlock")
@@ -273,7 +275,7 @@ public sealed class MobileServer : IAsyncDisposable
             if (!Guid.TryParseExact(request.Id, "N", out _)) throw new ArgumentException("Mã gửi không hợp lệ.");
             var id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(deviceId + request.Id)))[..32].ToLowerInvariant();
             await mutations.WaitAsync(ct);
-            try { var sent = await node.SendTextAsync(request.Conversation, request.Text, request.ReplyTo, id, deliverInBackground: true); reply.MessageId = sent.Id; reply.Messages = MobileProtocol.BoundedHistory([sent]); }
+            try { if (node.Store.WasDeleted(id)) { reply.Type = "gone"; reply.MessageId = id; return reply; } var sent = await node.SendTextAsync(request.Conversation, request.Text, request.ReplyTo, id, deliverInBackground: true); reply.MessageId = sent.Id; reply.Messages = MobileProtocol.BoundedHistory([sent]); }
             finally { mutations.Release(); }
             return reply;
         }

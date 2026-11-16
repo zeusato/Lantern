@@ -35,6 +35,13 @@ public class CompanionFlowTest {
         String first=cache.sendId(conversation,"Hello","");assertEquals(first,new HistoryCache(context,"A".repeat(64)).sendId(conversation,"Hello",""));cache.confirmSend(conversation,first);assertNotEquals(first,cache.sendId(conversation,"Hello",""));
         HistoryCache.clearAll(context);assertEquals(0,cache.messages(conversation).length());assertThrows(IOException.class,()->cache.saveMessages(conversation,new JSONArray().put(new JSONObject().put("text","stale writer"))));
     }
+    @Test public void outboxSurvivesRestartAndExcludesExpiringText()throws Exception{
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();DeviceKeys.ensure();HistoryCache.clearAll(context);HistoryCache cache=new HistoryCache(context,"C".repeat(64));
+        cache.saveOutbox(new JSONArray().put(new JSONObject().put("id","stable-request").put("text","pending-canary")).put(new JSONObject().put("text","ephemeral-canary").put("disappearAfterSeconds",10)));
+        JSONArray restored=new HistoryCache(context,"C".repeat(64)).outbox();assertEquals(1,restored.length());assertEquals("stable-request",restored.getJSONObject(0).getString("id"));assertEquals(0,new HistoryCache(context,"D".repeat(64)).outbox().length());
+        for(File f:new File(context.getFilesDir(),"history-cache").listFiles())assertFalse(new String(Files.readAllBytes(f.toPath()),StandardCharsets.UTF_8).contains("pending-canary"));
+        HistoryCache.clearAll(context);assertEquals(0,cache.outbox().length());
+    }
     @Test public void unlockAndSendStayResponsiveDuringSlowImageDownload()throws Exception{
         String pin=InstrumentationRegistry.getArguments().getString("pcPin");org.junit.Assume.assumeNotNull(pin);Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         try(InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("pm grant vn.lantern.companion android.permission.POST_NOTIFICATIONS"))){while(in.read()!=-1){}}
@@ -55,6 +62,7 @@ public class CompanionFlowTest {
             until(()->countText(text)==1);assertEquals(1,countText(text));
             scenario.onActivity(activity->{ConnectionService.current.select("");ConnectionService.current.select(conversation);assertEquals("Cached history should be immediately available",1,countText(text));});
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);Thread.sleep(1600);scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);until(()->countText(text)==1);
+            scenario.onActivity(activity->{try{CompanionTest.snapshot(activity,"android-live-chat.png");}catch(Exception e){throw new AssertionError(e);}});
             context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);
             assertTrue(ConnectionService.conversations.getJSONObject(0).getBoolean("locked"));assertEquals(0,ConnectionService.messages.length());
         }finally{context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);DeviceKeys.forget(context);ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}

@@ -1,6 +1,32 @@
 const ID=/^[a-f0-9]{32}$/;const KEY=/^[A-Za-z0-9_-]{43}$/;const MAX_BODY=90000;
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),x=>x.toString(16).padStart(2,'0')).join('');
+async function exchange(env,id,authHash,body,now){
+ if(!ID.test(body.session??'')||!Number.isSafeInteger(body.after)||body.after<0||body.after>1e9)return json({error:'invalid_ack'},400);
+ if(body.data&&(typeof body.data!=='string'||body.data.length>65536||!/^[A-Za-z0-9+/]+={0,2}$/.test(body.data)||body.data.length%4!==0||!Number.isSafeInteger(body.seq)||body.seq<1||body.seq>1e9))return json({error:'invalid_packet'},400);
+ // Authenticate and exchange atomically in ONE database round trip. Every mutation and
+ // packet read repeats the authorization predicate; invalid credentials cannot change queues.
+ const auth='EXISTS(SELECT 1 FROM relay_routes r WHERE r.id=? AND r.session=? AND r.expires>? AND (r.host_hash=? OR r.client_hash=?))';
+ const credentials=[id,body.session,now,authHash,authHash];
+ const side="(SELECT CASE WHEN host_hash=? THEN 'host' ELSE 'client' END FROM relay_routes WHERE id=?)";
+ const other="(SELECT CASE WHEN host_hash=? THEN 'client' ELSE 'host' END FROM relay_routes WHERE id=?)";
+ const statements=[
+  env.DB.prepare('SELECT session,expires,(host_hash=? OR client_hash=?) AS authorized FROM relay_routes WHERE id=?').bind(authHash,authHash,id),
+  env.DB.prepare(`DELETE FROM relay_packets WHERE ${auth} AND route=? AND session=? AND side=${other} AND seq<=?`).bind(...credentials,id,body.session,authHash,id,body.after),
+  env.DB.prepare(`DELETE FROM relay_packets WHERE ${auth} AND route=? AND created<?`).bind(...credentials,id,now-120)
+ ];
+ if(body.data){
+  statements.push(env.DB.prepare(`INSERT OR IGNORE INTO relay_packets(route,session,side,seq,body,created) SELECT ?,?,${side},?,?,? WHERE ${auth} AND (SELECT COUNT(*) FROM relay_packets WHERE route=? AND session=? AND side=${side})<32`).bind(id,body.session,authHash,id,body.seq,body.data,now,...credentials,id,body.session,authHash,id));
+  statements.push(env.DB.prepare(`SELECT body FROM relay_packets WHERE ${auth} AND route=? AND session=? AND side=${side} AND seq=?`).bind(...credentials,id,body.session,authHash,id,body.seq));
+ }
+ statements.push(env.DB.prepare(`SELECT seq,body AS data FROM relay_packets WHERE ${auth} AND route=? AND session=? AND side=${other} AND seq>? ORDER BY seq LIMIT ?`).bind(...credentials,id,body.session,authHash,id,body.after,body.pushOnly===true?0:body.batch===4?4:1));
+ const results=await env.DB.batch(statements),route=results[0].results?.[0];
+ if(!route||route.expires<=now)return json({error:'route_unavailable'},404);
+ if(!route.authorized)return json({error:'unauthorized'},401);
+ if(route.session!==body.session)return json({error:'session_changed'},409);
+ if(body.data){const stored=results[4].results?.[0];if(!stored)return json({error:'backpressure'},429);if(stored.body!==body.data)return json({error:'conflicting_packet'},409);}
+ return json({session:body.session,packets:results.at(-1).results});
+}
 export default {async fetch(request,env){
  try{
  const url=new URL(request.url);if(url.pathname==='/health')return json({service:'Lantern private encrypted relay',protocol:1});
@@ -18,7 +44,8 @@ export default {async fetch(request,env){
    return json({ok:true});
  }
  const match=url.pathname.match(/^\/v1\/routes\/([a-f0-9]{32})\/(state|open|exchange|close|revoke)$/);if(!match)return json({error:'not_found'},404);
- const [,id,action]=match;const route=await env.DB.prepare('SELECT * FROM relay_routes WHERE id=? AND expires>?').bind(id,now).first();if(!route)return json({error:'route_unavailable'},404);
+ const [,id,action]=match;if(action==='exchange'&&request.method==='POST')return await exchange(env,id,authHash,body,now);
+ const route=await env.DB.prepare('SELECT * FROM relay_routes WHERE id=? AND expires>?').bind(id,now).first();if(!route)return json({error:'route_unavailable'},404);
  const isHost=authHash===route.host_hash,isClient=authHash===route.client_hash;if(!isHost&&!isClient)return json({error:'unauthorized'},401);
  if(action==='state'&&request.method==='GET'){if(!isHost)return json({error:'forbidden'},403);return json({session:route.session})}
  if(request.method!=='POST')return json({error:'method'},405);
@@ -29,19 +56,6 @@ export default {async fetch(request,env){
  }
  if(!ID.test(body.session??'')||body.session!==route.session)return json({error:'session_changed'},409);
  if(action==='close'){await env.DB.batch([env.DB.prepare("UPDATE relay_routes SET session='' WHERE id=? AND session=?").bind(id,body.session),env.DB.prepare('DELETE FROM relay_packets WHERE route=? AND session=?').bind(id,body.session)]);return json({ok:true})}
- const side=isHost?'host':'client',other=isHost?'client':'host';
- if(!Number.isSafeInteger(body.after)||body.after<0||body.after>1e9)return json({error:'invalid_ack'},400);
- // One transaction after authorization instead of six sequential database round trips.
- // Acknowledgements still commit under backpressure, so simultaneous writers cannot deadlock.
- const statements=[env.DB.prepare('DELETE FROM relay_packets WHERE route=? AND session=? AND side=? AND seq<=?').bind(id,body.session,other,body.after),env.DB.prepare('DELETE FROM relay_packets WHERE route=? AND created<?').bind(id,now-120)];
- if(body.data){
-   if(typeof body.data!=='string'||body.data.length>65536||!/^[A-Za-z0-9+/]+={0,2}$/.test(body.data)||body.data.length%4!==0||!Number.isSafeInteger(body.seq)||body.seq<1||body.seq>1e9)return json({error:'invalid_packet'},400);
-   statements.push(env.DB.prepare('INSERT OR IGNORE INTO relay_packets(route,session,side,seq,body,created) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM relay_routes WHERE id=? AND session=?) AND (SELECT COUNT(*) FROM relay_packets WHERE route=? AND session=? AND side=?)<32').bind(id,body.session,side,body.seq,body.data,now,id,body.session,id,body.session,side));
-   statements.push(env.DB.prepare('SELECT body FROM relay_packets WHERE route=? AND session=? AND side=? AND seq=?').bind(id,body.session,side,body.seq));
- }
- statements.push(env.DB.prepare('SELECT seq,body AS data FROM relay_packets WHERE route=? AND session=? AND side=? AND seq>? ORDER BY seq LIMIT ?').bind(id,body.session,other,body.after,body.pushOnly===true?0:body.batch===4?4:1));
- const results=await env.DB.batch(statements);
- if(body.data){const stored=results[3].results?.[0];if(!stored)return json({error:'backpressure'},429);if(stored.body!==body.data)return json({error:'conflicting_packet'},409);}
- return json({session:body.session,packets:results.at(-1).results});
+ return json({error:'method'},405);
  }catch{return json({error:'relay_unavailable'},503)}
 }};

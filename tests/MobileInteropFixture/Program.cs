@@ -56,7 +56,7 @@ while (true)
             var frame = new byte[4 + response.Length]; BinaryPrimitives.WriteInt32BigEndian(frame, response.Length); response.CopyTo(frame, 4); await ssl.WriteAsync(frame, timeout.Token);
             if (type == "send" && pushEnabled)
             {
-                if (!messages.Any(m => (string?)m["text"] == "Incoming immediately after send")) messages.Add(new() { ["id"] = new string('9',32), ["kind"] = "text", ["text"] = "Incoming immediately after send", ["outgoing"] = false, ["time"] = DateTimeOffset.UtcNow, ["status"] = "delivered" });
+                if (!messages.Any(m => (string?)m.GetValueOrDefault("text") == "Incoming immediately after send")) messages.Add(new() { ["id"] = new string('9',32), ["kind"] = "text", ["text"] = "Incoming immediately after send", ["outgoing"] = false, ["time"] = DateTimeOffset.UtcNow, ["status"] = "delivered" });
                 var push = JsonSerializer.SerializeToUtf8Bytes(new { type = "ok", id = "", serial = ++serial, conversation, locked = !unlocked, hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(messages))), messages, conversations = new[] { new { id = conversation, name = "QA contact", presence = "online", unread = 0, locked = !unlocked, @protected = true } } });
                 var pushed = new byte[4 + push.Length]; BinaryPrimitives.WriteInt32BigEndian(pushed, push.Length); push.CopyTo(pushed, 4); await ssl.WriteAsync(pushed, timeout.Token);
             }
