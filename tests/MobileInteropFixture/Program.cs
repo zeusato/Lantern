@@ -19,6 +19,9 @@ while (true)
     using var ssl = new SslStream(tcp.GetStream(), false, (_, clientCertificate, _, _) => clientCertificate is not null);
     try
     {
+        var first = new byte[5];
+        var count = await tcp.Client.ReceiveAsync(first, SocketFlags.Peek, timeout.Token);
+        Console.Error.WriteLine($"TLS first bytes: {Convert.ToHexString(first.AsSpan(0, count))}");
         await ssl.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = certificate, ClientCertificateRequired = true, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, CertificateRevocationCheckMode = X509RevocationMode.NoCheck }, timeout.Token);
         using var remote = X509CertificateLoader.LoadCertificate(ssl.RemoteCertificate!.GetRawCertData());
         using var remoteKey = remote.GetECDsaPublicKey() ?? throw new AuthenticationException();

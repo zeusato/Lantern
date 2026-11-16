@@ -34,7 +34,7 @@ final class PcConnection implements AutoCloseable {
         }catch(Exception e){close();throw e;}
     }
     private void connect(String address,int port,String pin,int timeout) throws Exception {
-        Socket raw=new Socket();try{raw.connect(new InetSocketAddress(address,port),timeout);raw.setSoTimeout(120000);socket=(SSLSocket)DeviceKeys.tls(pin).createSocket(raw,"lantern.local",port,true);socket.setSoTimeout(120000);socket.startHandshake();}catch(Exception e){raw.close();throw e;}
+        Socket raw=new Socket();try{raw.connect(new InetSocketAddress(address,port),timeout);raw.setSoTimeout(120000);socket=(SSLSocket)DeviceKeys.tls(pin).createSocket(raw,address,port,true);socket.setSoTimeout(120000);socket.startHandshake();}catch(Exception e){raw.close();throw e;}
     }
     synchronized JSONObject request(JSONObject request) throws Exception {
         if(!request.has("id"))request.put("id",UUID.randomUUID().toString().replace("-",""));byte[] bytes=request.toString().getBytes(StandardCharsets.UTF_8);
