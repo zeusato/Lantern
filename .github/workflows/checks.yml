@@ -17,4 +17,3 @@ jobs:
       - run: dotnet build src/Lantern.App/Lantern.App.csproj -c Release --nologo
       - run: dotnet run --project tests/Lantern.Tests/Lantern.Tests.csproj -c Release
       - run: ./scripts/Test-UpdateInstaller.ps1
-      - run: ./scripts/Test-UpdateInstaller.ps1

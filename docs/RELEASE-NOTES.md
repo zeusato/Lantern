@@ -1,17 +1,13 @@
-# Lantern 1.1.0
+# Lantern 1.1.1
 
-Chat P2P trong LAN cho Windows 10/11 x64. Giải nén **Lantern-Windows-x64.zip**, chạy **Lantern.exe**. Bản portable đã kèm runtime.
+Chat P2P trong LAN cho Windows 10/11 x64. Giải nén **Lantern-Windows-x64.zip**, chạy **Lantern.exe**; bản portable đã kèm runtime. Bản 1.1.0 có thể tải qua mục Cập nhật trong app.
 
-- Đổi tên công khai, đặt tên riêng cho đối tác chỉ trên máy mình.
-- Badge chưa đọc trên tray và từng hội thoại; toast tin mới mặc định tắt, bật trong Cài đặt.
-- Emoji picker và tự đổi ký hiệu; react, quote và dán ảnh clipboard.
-- Chấm online/offline/idle sau 15 phút/Không làm phiền; DND không hiện toast tin nhắn.
-- Hội thoại mở khóa một lần cho cả phiên, có nút khóa ngay trên tiêu đề.
-- Bảng thông tin chia Chia sẻ, Tìm kiếm, Cài đặt; nội dung chia Media/Tệp/Link.
-- Tin tự hủy theo thời gian sau khi đọc, đồng bộ giữa các máy; nhóm tính từ lượt đọc đầu tiên. Tính năng này yêu cầu các thành viên dùng bản 1.1 trở lên.
-- Chia sẻ liên hệ và tìm tên qua các máy đã ghép đôi, vẫn xác minh danh tính khi kết nối mới.
-- Tự kiểm tra/tải bản mới từ GitHub, xác minh SHA-256, thông báo sẵn sàng và cài khi người dùng chọn khởi động lại.
+- Toast có hai chế độ: hiện tên người gửi và nội dung, hoặc chỉ báo có tin nhắn mới. Chọn trong Hồ sơ và cài đặt; mặc định vẫn tắt. App/hội thoại khóa luôn ẩn tên và nội dung; Không làm phiền vẫn chặn toast.
+- Sửa ảnh dán từ clipboard bị trong suốt do kênh alpha bằng 0. Ưu tiên PNG chuẩn để giữ transparency hợp lệ; ảnh clipboard lỗi từ bản cũ được phục hồi khi xem/lưu ra ngoài, không sửa tệp lưu trữ gốc.
+- Emoji màu Microsoft Fluent 3D trong picker, log chat và reaction; sao chép vẫn giữ Unicode.
+- Nút trả lời và react hiện khi rê chuột lên tin, không chiếm hàng riêng phía dưới.
+- Media trong bảng thông tin hiển thị thumbnail vuông cho ảnh/video; link có ảnh Open Graph và tiêu đề khi trang hỗ trợ.
 
-Đã qua 94 kiểm thử core, 16 kiểm thử WPF trên desktop và kiểm thử helper cập nhật Windows PowerShell. Kết nối LAN được kiểm thử bằng các peer thật trên loopback; cần kiểm tra thêm trên các máy/vùng mạng thực tế của người dùng. Quét tự động phụ thuộc UDP trong LAN; có thể dùng IP, thẻ liên hệ hoặc tìm qua peer khi UDP bị chặn.
+Đã qua 102 kiểm thử core, 35 kiểm thử WPF trên desktop và kiểm thử helper cập nhật Windows PowerShell. Kết nối được kiểm thử bằng các peer thật trên loopback; chưa kiểm chứng hai máy vật lý hoặc mọi chính sách firewall/VLAN.
 
-Mật khẩu workspace và lịch sử hiện có được giữ khi thay bản portable. Bản exe chưa ký Authenticode. Tin tự hủy không xóa các bản sao người dùng đã lưu bên ngoài app.
+Cập nhật giữ mật khẩu, workspace và lịch sử. Bản exe chưa ký Authenticode.

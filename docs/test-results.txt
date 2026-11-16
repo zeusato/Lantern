@@ -95,4 +95,13 @@ PASS: Checksum mismatch rejects update and cleans partial files
 PASS: Updater rejects release assets outside the configured GitHub repository
 PASS: Zip traversal is rejected before extracting any file
 
-94 checks passed. Test data: isolated QA workspace
+PASS: Open Graph parses reversed attributes, entities and relative images
+PASS: Link preview falls back to page title without Open Graph
+PASS: Link previews reject local endpoints and embedded credentials
+PASS: Link preview fetches image once and reuses cached metadata
+PASS: Redirects cannot make the preview fetch a private address
+PASS: Full toast includes sender and message
+PASS: Private or locked toast reveals neither sender nor message
+PASS: Toast privacy choice persists in settings
+
+102 checks passed. Test data: isolated QA workspace

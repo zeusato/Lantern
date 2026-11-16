@@ -70,7 +70,7 @@
      </StackPanel>
      <TabControl x:Name="InfoTabs" Background="Transparent" BorderThickness="0" FontSize="11">
       <TabItem Header="Chia sẻ"><TabControl Background="Transparent" BorderThickness="0" Margin="0,12,0,0" FontSize="11">
-       <TabItem Header="Media"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="4,14"><TextBlock x:Name="NoMedia" Text="Ảnh và video được chia sẻ xuất hiện ở đây." Style="{StaticResource Muted}" TextWrapping="Wrap"/><StackPanel x:Name="SharedMedia"/></StackPanel></ScrollViewer></TabItem>
+       <TabItem Header="Media"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="4,14"><TextBlock x:Name="NoMedia" Text="Ảnh và video được chia sẻ xuất hiện ở đây." Style="{StaticResource Muted}" TextWrapping="Wrap"/><WrapPanel x:Name="SharedMedia"/></StackPanel></ScrollViewer></TabItem>
        <TabItem Header="Tệp"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="4,14"><TextBlock x:Name="NoFiles" Text="Chưa có tệp được chia sẻ." Style="{StaticResource Muted}" TextWrapping="Wrap"/><StackPanel x:Name="SharedFiles"/></StackPanel></ScrollViewer></TabItem>
        <TabItem Header="Link"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="4,14"><TextBlock x:Name="NoLinks" Text="Link trong tin nhắn xuất hiện ở đây." Style="{StaticResource Muted}" TextWrapping="Wrap"/><StackPanel x:Name="SharedLinks"/></StackPanel></ScrollViewer></TabItem>
       </TabControl></TabItem>

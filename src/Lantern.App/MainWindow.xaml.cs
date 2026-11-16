@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer sessionTimer;
     private readonly DispatcherTimer updateTimer;
     private readonly UpdateController updates = new();
+    private readonly LinkPreviews linkPreviews = new();
     private int sessionTicks;
     private readonly Dictionary<string, (TextBlock Label, DateTimeOffset Deadline)> expiryLabels = [];
     private TrayIcon? tray;
@@ -53,6 +54,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        EmojiButton.Content = EmojiAssets.Icon("🙂", 25);
         identity = new Identity(App.DataDirectory, App.Settings.Name, App.Vault);
         store = new LocalStore(App.DataDirectory, App.Vault); node = new PeerNode(identity, store);
         node.Changed += QueueRefresh;
@@ -123,8 +125,8 @@ public partial class MainWindow : Window
         if (closing || !App.Settings.MessageToasts || App.Settings.DoNotDisturb || IsConversationVisible(message.ConversationId)) return;
         bool locked = appLocking || App.Vault.IsConversationLocked(message.ConversationId) && !unlockedConversations.Contains(message.ConversationId);
         var name = node.FindPeer(message.SenderId)?.DisplayName ?? "Tin nhắn mới";
-        tray?.ShowMessage(message.ConversationId, locked ? "Lantern · Tin nhắn mới" : name,
-            locked ? "Có tin nhắn mới trong hội thoại được khóa." : message.Kind == "text" ? message.Text : message.Kind == "contact" ? "Đã chia sẻ một liên hệ" : "Đã gửi " + (message.Kind == "image" ? "ảnh: " : message.Kind == "video" ? "video: " : "tệp: ") + message.FileName);
+        var notification = MessageNotifications.Create(message, name, App.Settings.MessageToastMode, locked);
+        tray?.ShowMessage(message.ConversationId, notification.Title, notification.Body);
     }
     private void OpenNotification(string id)
     {
@@ -230,14 +232,22 @@ public partial class MainWindow : Window
         NoMedia.Visibility = shared.Any(m => m.Kind is "image" or "video") ? Visibility.Collapsed : Visibility.Visible;
         foreach (var file in shared)
         {
+            if (file.Kind is "image" or "video")
+            {
+                SharedMedia.Children.Add(new MediaThumbnail(file, () => { if (!File.Exists(file.FilePath)) GoToMessage(file.Id); else if (file.Kind == "image") ShowImage(file); else OpenAttachment(file); }, uiLifetime.Token)); continue;
+            }
             var button = new Button { HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(10), ToolTip = file.FileName };
             var content = new StackPanel(); var title = Paragraph(file.FileName, 12, true); title.MaxWidth = 175; title.TextTrimming = TextTrimming.CharacterEllipsis; title.TextWrapping = TextWrapping.NoWrap; title.Margin = new Thickness(0, 0, 0, 4); content.Children.Add(title);
             var subtitle = Paragraph(FormatBytes(file.FileSize), 11, muted: true); subtitle.Margin = new Thickness(); content.Children.Add(subtitle); button.Content = content;
-            button.Click += (_, _) => { if (File.Exists(file.FilePath)) OpenAttachment(file); else GoToMessage(file.Id); }; (file.Kind == "file" ? SharedFiles : SharedMedia).Children.Add(button);
+            button.Click += (_, _) => { if (File.Exists(file.FilePath)) OpenAttachment(file); else GoToMessage(file.Id); }; SharedFiles.Children.Add(button);
         }
         var links = history.Where(m => m.Kind == "text").SelectMany(m => System.Text.RegularExpressions.Regex.Matches(m.Text, @"https?://[^\s<>]+", System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(200)).Select(match => match.Value.TrimEnd('.', ',', '!', '?', ')', ']'))).Distinct().TakeLast(100).Reverse().ToList();
         NoLinks.Visibility = links.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var link in links) { var button = new Button { Content = new TextBlock { Text = link, TextWrapping = TextWrapping.Wrap, MaxWidth = 215 }, HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 8), ToolTip = link }; button.Click += (_, _) => { if (Uri.TryCreate(link, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http") Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); }; SharedLinks.Children.Add(button); }
+        foreach (var link in links)
+        {
+            if (!Uri.TryCreate(link, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http")) continue;
+            SharedLinks.Children.Add(new LinkPreviewCard(uri, linkPreviews, () => { try { Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); } catch (Exception ex) { ShowError(ex); } }));
+        }
         if (shouldScroll) Dispatcher.BeginInvoke(() => ChatScroll.ScrollToEnd(), DispatcherPriority.Loaded);
     }
     private FrameworkElement MessageBubble(ChatMessage msg)
@@ -246,7 +256,11 @@ public partial class MainWindow : Window
         if (!msg.Outgoing && msg.GroupId.Length > 0) { var author = Paragraph(node.FindPeer(msg.SenderId)?.DisplayName ?? msg.SenderName, 11, true, true); author.Margin = new Thickness(4, 0, 0, 5); outer.Children.Add(author); }
         var bubble = new Border { CornerRadius = new CornerRadius(14, 14, msg.Outgoing ? 4 : 14, msg.Outgoing ? 14 : 4), Padding = new Thickness(15, 11, 15, 11), BorderThickness = new Thickness(msg.Outgoing ? 0 : 1) };
         bubble.SetResourceReference(Border.BackgroundProperty, msg.Outgoing ? "OwnBrush" : "SurfaceBrush"); bubble.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
-        var content = new StackPanel(); bubble.Child = content; outer.Children.Add(bubble);
+        var content = new StackPanel(); bubble.Child = content;
+        var bubbleLayer = new Grid { MinWidth = 86 }; bubbleLayer.Children.Add(bubble); outer.Children.Add(bubbleLayer);
+        var overlay = new Canvas { ClipToBounds = false }; Panel.SetZIndex(overlay, 2); bubbleLayer.Children.Add(overlay);
+        var toolbar = new MessageActions(outer, () => BeginReply(msg), emoji => ToggleReaction(msg.Id, emoji));
+        Canvas.SetRight(toolbar, 5); Canvas.SetTop(toolbar, -18); overlay.Children.Add(toolbar);
         outer.Tag = msg.Id;
         if (msg.ReplyToId.Length > 0)
         {
@@ -264,8 +278,7 @@ public partial class MainWindow : Window
         }
         else if (msg.Kind == "text")
         {
-            var text = new TextBox { Text = msg.Text, IsReadOnly = true, IsReadOnlyCaretVisible = false, TextWrapping = TextWrapping.Wrap, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), MinHeight = 0, MinWidth = 30, FontSize = 14, VerticalContentAlignment = VerticalAlignment.Top };
-            text.SetResourceReference(Control.ForegroundProperty, "TextBrush"); content.Children.Add(text);
+            content.Children.Add(EmojiAssets.MessageText(msg.Text));
         }
         else
         {
@@ -274,7 +287,7 @@ public partial class MainWindow : Window
             {
                 try
                 {
-                    var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.DecodePixelWidth = 640; bitmap.UriSource = new Uri(msg.FilePath); bitmap.EndInit(); bitmap.Freeze();
+                    var bitmap = ClipboardImages.LoadLocal(msg.FilePath, 640);
                     var image = new Image { Source = bitmap, MaxWidth = 380, MaxHeight = 280, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 0, 10), Cursor = Cursors.Hand };
                     image.MouseLeftButtonUp += (_, _) => ShowImage(msg); content.Children.Add(image);
                 }
@@ -298,20 +311,16 @@ public partial class MainWindow : Window
             if (!string.IsNullOrEmpty(msg.Error)) content.Children.Add(Paragraph(msg.Error, 11, muted: true));
         }
         var footer = Paragraph(msg.Time.LocalDateTime.ToString("HH:mm") + "  ·  " + StatusText(msg), 10, muted: true); footer.HorizontalAlignment = msg.Outgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left; footer.Margin = new Thickness(4, 6, 4, 0); outer.Children.Add(footer);
-        var actions = new WrapPanel { Margin = new Thickness(0, 5, 0, 0) };
-        AddButton(actions, "↩ Trả lời", () => BeginReply(msg));
-        var react = new Button { Content = "☺", ToolTip = "Thả biểu cảm", Padding = new Thickness(9, 4, 9, 4), MinHeight = 30, Margin = new Thickness(0, 3, 6, 0) };
-        var menu = new ContextMenu();
-        foreach (var emoji in PeerNode.ReactionEmoji) { var item = new MenuItem { Header = emoji, FontSize = 20, FontFamily = new FontFamily("Segoe UI Emoji") }; item.Click += async (_, _) => await ToggleReaction(msg.Id, emoji); menu.Items.Add(item); }
-        react.Click += (_, _) => { menu.PlacementTarget = react; menu.IsOpen = true; }; actions.Children.Add(react);
+        var actions = new WrapPanel { Margin = new Thickness(0, 4, 0, 0) };
         foreach (var reaction in msg.Reactions.Where(r => r.Value.Length > 0).GroupBy(r => r.Value))
         {
             var emoji = reaction.Key; var mine = msg.Reactions.GetValueOrDefault(identity.Id) == emoji;
-            var count = new Button { Content = emoji + " " + reaction.Count(), FontFamily = new FontFamily("Segoe UI Emoji"), Padding = new Thickness(9, 4, 9, 4), MinHeight = 30, Margin = new Thickness(0, 3, 6, 0), ToolTip = string.Join(", ", reaction.Select(r => r.Key == identity.Id ? "Bạn" : node.FindPeer(r.Key)?.DisplayName ?? "Thành viên")) };
+            var reactionContent = new StackPanel { Orientation = Orientation.Horizontal }; reactionContent.Children.Add(EmojiAssets.Icon(emoji, 20)); reactionContent.Children.Add(new TextBlock { Text = reaction.Count().ToString(), Margin = new Thickness(5, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+            var count = new Button { Content = reactionContent, Padding = new Thickness(8, 3, 8, 3), MinHeight = 28, Margin = new Thickness(0, 2, 5, 0), ToolTip = string.Join(", ", reaction.Select(r => r.Key == identity.Id ? "Bạn" : node.FindPeer(r.Key)?.DisplayName ?? "Thành viên")) };
             if (mine) count.SetResourceReference(Control.BackgroundProperty, "AccentSoftBrush");
             count.Click += async (_, _) => await ToggleReaction(msg.Id, emoji); actions.Children.Add(count);
         }
-        outer.Children.Add(actions);
+        if (actions.Children.Count > 0) outer.Children.Add(actions);
         if (msg.DisappearAfterSeconds > 0)
         {
             var expiry = Paragraph(msg.ExpiresAt is { } deadline ? "Tự hủy sau " + Duration(Math.Max(0, (int)Math.Ceiling((deadline - DateTimeOffset.UtcNow).TotalSeconds))) : "Tự hủy sau " + Duration(msg.DisappearAfterSeconds) + " kể từ lúc đọc", 10, muted: true);
@@ -382,16 +391,21 @@ public partial class MainWindow : Window
     }
     private void ShowImage(ChatMessage msg)
     {
-        var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.UriSource = new Uri(msg.FilePath); bitmap.EndInit(); bitmap.Freeze();
-        var image = new Image { Source = bitmap, Stretch = Stretch.Uniform, Margin = new Thickness(16) };
-        var window = new Window { Title = msg.FileName, Owner = this, Width = 900, Height = 650, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = image };
-        mediaWindows.Add(window); window.Closed += (_, _) => mediaWindows.Remove(window);
-        window.Show();
+        try
+        {
+            var bitmap = ClipboardImages.LoadLocal(msg.FilePath, 0);
+            var image = new Image { Source = bitmap, Stretch = Stretch.Uniform, Margin = new Thickness(16) };
+            var window = new Window { Title = msg.FileName, Owner = this, Width = 900, Height = 650, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = image };
+            mediaWindows.Add(window); window.Closed += (_, _) => mediaWindows.Remove(window);
+            window.Show();
+        }
+        catch (Exception ex) when (ex is IOException or NotSupportedException or ArgumentException or UnauthorizedAccessException) { ShowError(ex); }
     }
     private void OpenAttachment(ChatMessage msg)
     {
         try
         {
+            if (msg.Kind == "image") { ShowImage(msg); return; }
             var ext = Path.GetExtension(msg.FilePath).ToLowerInvariant();
             if (new[] { ".exe", ".com", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".msi", ".scr", ".lnk", ".hta", ".reg", ".url" }.Contains(ext))
             { ShowToast("Với tệp thực thi, hãy lưu ra thư mục và kiểm tra trước khi mở."); SaveAttachment(msg); return; }
@@ -403,7 +417,17 @@ public partial class MainWindow : Window
     {
         var dialog = new SaveFileDialog { FileName = msg.FileName, Filter = "Tất cả tệp|*.*" };
         if (dialog.ShowDialog(this) != true) return;
-        try { if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(msg.FilePath), StringComparison.OrdinalIgnoreCase)) File.Copy(msg.FilePath, dialog.FileName, true); ShowToast("Đã lưu tệp."); } catch (Exception ex) { ShowError(ex); }
+        try
+        {
+            if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(msg.FilePath), StringComparison.OrdinalIgnoreCase))
+            {
+                if (msg.Kind == "image" && ClipboardImages.IsLegacyClipboardPath(msg.FilePath))
+                { var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(ClipboardImages.LoadLocal(msg.FilePath, 0))); using var output = File.Create(dialog.FileName); encoder.Save(output); }
+                else File.Copy(msg.FilePath, dialog.FileName, true);
+            }
+            ShowToast("Đã lưu tệp.");
+        }
+        catch (Exception ex) { ShowError(ex); }
     }
     private void ContactSelected(object sender, SelectionChangedEventArgs e)
     {
@@ -431,15 +455,15 @@ public partial class MainWindow : Window
     private void ComposerCanPaste(object sender, CanExecuteRoutedEventArgs e)
     {
         if (e.Command != ApplicationCommands.Paste || !Composer.IsEnabled || appLocking || ConversationProtected) return;
-        try { if (Clipboard.ContainsImage()) { e.CanExecute = true; e.Handled = true; } } catch (System.Runtime.InteropServices.ExternalException) { }
+        try { if (ClipboardImages.ContainsImage()) { e.CanExecute = true; e.Handled = true; } } catch (System.Runtime.InteropServices.ExternalException) { }
     }
     private async void ComposerPaste(object sender, ExecutedRoutedEventArgs e)
     {
         if (e.Command != ApplicationCommands.Paste || !Composer.IsEnabled || appLocking || ConversationProtected) return;
         try
         {
-            if (!Clipboard.ContainsImage()) return;
-            e.Handled = true; var bitmap = Clipboard.GetImage(); if (bitmap is null) return;
+            if (!ClipboardImages.ContainsImage()) return;
+            e.Handled = true; var bitmap = ClipboardImages.Read(); if (bitmap is null) return;
             await SendClipboardImage(bitmap);
         }
         catch (Exception ex) { ShowError(ex); }
@@ -447,7 +471,7 @@ public partial class MainWindow : Window
     private async Task SendClipboardImage(BitmapSource bitmap)
     {
         var directory = Path.Combine(Path.GetTempPath(), "Lantern-clipboard-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
-        var file = Path.Combine(directory, "Anh-dan-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png");
+        var file = Path.Combine(directory, "Anh-clipboard-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png");
         try
         {
             var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
@@ -480,15 +504,16 @@ public partial class MainWindow : Window
         var border = new Border { Child = panel, Padding = new Thickness(18), CornerRadius = new CornerRadius(16), BorderThickness = new Thickness(1) };
         border.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush"); border.SetResourceReference(Border.BorderBrushProperty, "LineBrush"); popup.Child = border;
         var faces = new WrapPanel(); panel.Children.Add(faces);
-        foreach (var face in new[] { "😀", "😃", "😄", "😁", "😂", "🤣", "🙂", "😉", "😊", "😍", "🥰", "😘", "😎", "🤔", "😮", "😛", "😢", "😭", "😡", "🥳", "👍", "👎", "👏", "🙏", "👋", "💪", "❤️", "💔", "🔥", "🎉", "✅", "✨" })
+        foreach (var asset in EmojiAssets.Catalog)
         {
-            var button = new Button { Content = face, FontFamily = new FontFamily("Segoe UI Emoji"), FontSize = 24, Width = 41, Height = 42, Padding = new Thickness(0), ToolTip = face };
+            var face = asset.Emoji;
+            var button = new Button { Content = EmojiAssets.Icon(face, 30), Width = 41, Height = 42, Padding = new Thickness(4), Background = Brushes.Transparent, BorderThickness = new Thickness(0), ToolTip = asset.Name };
             button.Click += (_, _) => { var at = Composer.SelectionStart; Composer.SelectedText = face; Composer.CaretIndex = at + face.Length; popup.IsOpen = false; Composer.Focus(); }; faces.Children.Add(button);
         }
         var auto = new CheckBox { Content = "Tự đổi ký hiệu thành emoji", IsChecked = App.Settings.AutoEmoticons, Margin = new Thickness(0, 14, 0, 8) };
         auto.SetResourceReference(Control.ForegroundProperty, "TextBrush");
         auto.Click += (_, _) => { App.Settings.AutoEmoticons = auto.IsChecked == true; App.SaveSettings(); }; panel.Children.Add(auto);
-        panel.Children.Add(Paragraph(":) → 🙂   :D → 😃   ;) → 😉   <3 → ❤️", 12, muted: true));
+        panel.Children.Add(EmojiAssets.MessageText(":) → 🙂   :D → 😃   ;) → 😉   <3 → ❤️"));
         popup.IsOpen = true;
     }
     private void WindowKeyDown(object sender, KeyEventArgs e)
@@ -565,6 +590,8 @@ public partial class MainWindow : Window
         panel.Children.Add(Paragraph("Tên hiển thị", bold: true)); var name = new TextBox { Text = identity.Name, MaxLength = 80 }; panel.Children.Add(name);
         panel.Children.Add(Paragraph("Tên mới được cập nhật tới các máy đã ghép đôi. Nếu người khác đã đặt tên riêng cho bạn, họ vẫn thấy tên riêng đó.", 12, muted: true));
         var toasts = new CheckBox { Content = "Hiện thông báo Windows khi có tin nhắn mới", IsChecked = App.Settings.MessageToasts, Margin = new Thickness(0, 0, 0, 16) }; toasts.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(toasts);
+        var toastMode = new ComboBox { ItemsSource = new[] { "Hiện người gửi và nội dung", "Chỉ báo có tin nhắn mới" }, SelectedIndex = App.Settings.MessageToastMode == "private" ? 1 : 0, IsEnabled = App.Settings.MessageToasts, Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 18) }; panel.Children.Add(toastMode);
+        toasts.Click += (_, _) => toastMode.IsEnabled = toasts.IsChecked == true;
         panel.Children.Add(Paragraph("Giao diện", bold: true)); var theme = new ComboBox { ItemsSource = new[] { "Theo Windows", "Sáng", "Tối" }, SelectedIndex = App.Settings.Theme == "dark" ? 2 : App.Settings.Theme == "light" ? 1 : 0, Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 18) }; panel.Children.Add(theme);
         panel.Children.Add(Paragraph("Danh tính cố định", bold: true)); panel.Children.Add(new TextBox { Text = identity.Fingerprint, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas"), FontSize = 12, Margin = new Thickness(0, 0, 0, 18) });
         var actions = new WrapPanel(); AddButton(actions, "Sao lưu danh tính", ExportIdentity); AddButton(actions, "Khôi phục danh tính", ImportIdentity); panel.Children.Add(actions);
@@ -582,7 +609,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                App.Settings.Name = PeerNode.ValidateDisplayName(name.Text); App.Settings.MessageToasts = toasts.IsChecked == true; App.Settings.Theme = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" }; App.SaveSettings();
+                App.Settings.Name = PeerNode.ValidateDisplayName(name.Text); App.Settings.MessageToasts = toasts.IsChecked == true; App.Settings.MessageToastMode = toastMode.SelectedIndex == 1 ? "private" : "full"; App.Settings.Theme = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" }; App.SaveSettings();
                 await node.UpdateDisplayNameAsync(App.Settings.Name);
                 App.ApplyTheme(App.Settings.Theme); MyInitials.Text = Initials(identity.Name); Title = "Lantern · " + identity.Name; renderKey = ""; Refresh(); ShowToast("Đã lưu hồ sơ và cập nhật tên hiển thị.");
             }
@@ -808,7 +835,7 @@ public partial class MainWindow : Window
     {
         if (closing) return;
         e.Cancel = true; closing = true; refreshTimer.Stop(); uiLifetime.Cancel(); Microsoft.Win32.SystemEvents.UserPreferenceChanged -= SystemThemeChanged;
-        sessionTimer.Stop(); updateTimer.Stop(); updates.Dispose();
+        sessionTimer.Stop(); updateTimer.Stop(); updates.Dispose(); linkPreviews.Dispose();
         tray?.Dispose();
         if (emojiPopup is not null) emojiPopup.IsOpen = false;
         foreach (var player in players) player.Close();

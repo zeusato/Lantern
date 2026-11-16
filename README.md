@@ -1,6 +1,6 @@
 # Lantern
 
-Ứng dụng Windows để chat và chia sẻ ảnh, video, tệp trong mạng LAN IPv4. Chat không cần máy chủ trung tâm, tài khoản cloud hoặc Internet; không có telemetry. Mỗi bản app lắng nghe kết nối của các peer khác. Chức năng cập nhật tùy chọn kết nối GitHub Releases của `zeusato/Lantern`.
+Ứng dụng Windows để chat và chia sẻ ảnh, video, tệp trong mạng LAN IPv4. Chat không cần máy chủ trung tâm, tài khoản cloud hoặc Internet; không có telemetry. Mỗi bản app lắng nghe kết nối của các peer khác. Chức năng cập nhật tùy chọn kết nối GitHub Releases của `zeusato/Lantern`. Khi mở tab Link, app truy cập trang web công khai và ảnh Open Graph để hiện bản xem trước; không có Internet vẫn hiện đường dẫn.
 
 ## Chạy bản phát hành
 
@@ -30,12 +30,12 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 - Mật khẩu riêng cho từng cuộc trò chuyện; mở một lần cho cả phiên, khóa chủ động bằng nút khóa ở đầu hội thoại. Khóa hoặc thoát ứng dụng khóa lại tất cả hội thoại.
 - Sửa tên bản thân; đặt tên riêng cho đối tác chỉ trên máy mình, giữ nguyên khi đối tác đổi tên/IP.
 - Số tin chưa đọc trên từng hội thoại và icon tray, hiển thị `99+` khi vượt 99. Nhấp đúp tray để mở app; nút X vẫn thoát app.
-- Emoji picker, tự đổi `:)`, `:D`, `;)`, `<3` khi kết thúc ký hiệu hoặc gửi. Có thể tắt tự đổi trong bảng emoji; URL, đường dẫn và khối mã được giữ nguyên.
-- React bằng emoji (mỗi người một biểu cảm; bấm lại để gỡ), trả lời có trích dẫn và nhảy tới tin gốc.
+- Emoji màu Microsoft Fluent 3D đóng gói sẵn trong picker, log chat và reaction; tự đổi `:)`, `:D`, `;)`, `<3` khi kết thúc ký hiệu hoặc gửi. Có thể tắt tự đổi trong bảng emoji; URL, đường dẫn và khối mã được giữ nguyên. Sao chép tin nhắn vẫn giữ Unicode emoji.
+- Rê chuột lên tin để hiện nút trả lời và react. Mỗi người một biểu cảm; bấm lại để gỡ. Trả lời có trích dẫn và nhảy tới tin gốc.
 - Ctrl+V dán ảnh clipboard thành ảnh PNG, gửi theo luồng nhận tệp thông thường.
-- Toast Windows khi có tin mới: **mặc định tắt**, bật trong Hồ sơ và cài đặt. Không hiện nội dung hội thoại bị khóa; Windows có thể ẩn thông báo theo cấu hình hệ thống.
+- Toast Windows khi có tin mới: **mặc định tắt**, bật trong Hồ sơ và cài đặt. Chọn **Hiện người gửi và nội dung** hoặc **Chỉ báo có tin nhắn mới**. App/hội thoại bị khóa luôn dùng thông báo chung, không hiện tên hoặc nội dung; Windows có thể ẩn thông báo theo cấu hình hệ thống.
 - Chấm trạng thái dưới tên: xanh online, xám offline, vàng khi máy không có thao tác 15 phút, đỏ Không làm phiền. Bấm chấm trạng thái ở thanh trái để đổi. Không làm phiền chặn toast tin nhắn, vẫn đếm tin chưa đọc.
-- Bảng thông tin có Chia sẻ, Tìm kiếm và Cài đặt; Chia sẻ chia thành Media, Tệp và Link.
+- Bảng thông tin có Chia sẻ, Tìm kiếm và Cài đặt; Chia sẻ chia thành Media, Tệp và Link. Media là lưới thumbnail vuông; video dùng thumbnail Windows nếu codec hỗ trợ. Link có ảnh Open Graph ở trên và tiêu đề nếu trang cung cấp. Không tải preview cho địa chỉ LAN/nội bộ.
 - Tin tự hủy: Cài đặt hội thoại → Tin nhắn tự hủy → chọn 10 giây đến 7 ngày. Chỉ áp dụng cho tin gửi sau khi đổi cài đặt; đếm từ lúc người nhận đọc (nhóm: lượt đọc đầu tiên), đồng bộ hạn xóa. Khi offline, hạn xóa được đồng bộ lại lúc kết nối; máy đang chạy kiểm tra hạn mỗi giây. Hai bên cần dùng bản 1.1 trở lên.
 - Chia sẻ liên hệ đã ghép đôi bằng thẻ tên/IP/danh tính. Tên riêng không được gửi. Người nhận vẫn phải xác minh trước khi tin cậy.
 - Nút kính lúp ở thanh trái tìm theo tên công khai qua danh bạ các máy đã ghép đôi đang online. Kết quả không tự cấp quyền tin cậy. Nếu chưa ai biết người cần tìm, dùng IP hoặc nhờ chia sẻ liên hệ.
@@ -90,11 +90,11 @@ Các máy đã ghép đôi giữ tên liên hệ đã xác nhận. Đổi tên c
 - LAN có VLAN, client isolation hoặc multicast bị chặn có thể không tự tìm được máy. Thêm IP giúp khi định tuyến trực tiếp vẫn được phép; nó không vượt qua firewall.
 - Discovery chưa được xác thực. **Không cấp quyền dựa trên tên hoặc IP trong gói discovery.** Chỉ chứng thư có public key phù hợp và quan hệ ghép đôi đã xác nhận mới được xử lý chat/file.
 
-## Giới hạn bản 1.0
+## Giới hạn
 
 - Người gửi và nhận phải có lúc cùng online để chuyển tin/tệp. Không có peer giữ hộ khi cả hai không đồng thời online.
 - Nhóm có danh sách thành viên cố định. Tạo nhóm mới nếu cần đổi danh sách. Tất cả thành viên cần ghép đôi trực tiếp với nhau. Chủ nhóm phải online để phân phối lời mời ban đầu cho từng người.
-- Chưa có cuộc gọi thoại/video, thông báo Windows Toast, tự cập nhật, đăng nhập tập trung, nhiều thiết bị cùng danh tính hoặc server chuyển tiếp.
+- Chưa có cuộc gọi thoại/video, đăng nhập tập trung, nhiều thiết bị cùng danh tính hoặc server chuyển tiếp.
 - Video tải xong mới phát. Codec phụ thuộc Windows; không phải mọi định dạng đều xem được trong app. Có nút **Mở** bằng ứng dụng hệ thống.
 - Ảnh GIF được hiển thị như ảnh tĩnh; định dạng ảnh không được Windows hỗ trợ có thể mở ngoài app.
 - Đang phát video có thể dừng khi cuộc hội thoại được dựng lại do tin mới/theme; có thể bấm phát lại.

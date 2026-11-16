@@ -1,0 +1,36 @@
+PASS UI: Tray updates while main window is minimized
+PASS UI: Conversation row shows unread count
+PASS UI: Synthetic conversation credential verifies
+PASS UI: Conversation remains unlocked when switching away and back
+PASS UI: Local alias appears in chat header
+PASS UI: Composer replaces completed emoticons
+PASS UI: Reply composer sends quote and expands trailing emoticon
+PASS UI: Reaction button updates remote message
+PASS UI: Zero-alpha clipboard bitmap preserves RGB and becomes visible
+PASS UI: Invalid zero-alpha Pbgra32 is repaired before unpremultiplication
+PASS UI: Legacy clipboard image previews recover without rewriting original file
+PASS UI: Explicit PNG clipboard data preserves intended transparency
+PASS UI: Clipboard image follows normal PNG transfer and receipt
+PASS UI: Received clipboard PNG retains visible colored pixels
+PASS UI: Info panel separates shared links and media
+PASS UI: Media panel displays square image thumbnails
+PASS UI: Copying a colored emoji message preserves original Unicode text
+PASS UI: Colored emoji messages retain the app typography
+PASS UI: Fluent emoji assets contain actual color pixels
+PASS UI: Message action toolbar is hidden at rest
+PASS UI: Hover reveals quote and reaction controls
+PASS UI: Leaving the message hides its actions
+PASS UI: Presence indicator receives idle state
+PASS UI: Do-not-disturb indicator is red
+PASS UI: Hover toolbar overlays the message without adding a row
+PASS UI: Emoji picker opens
+PASS UI: Message document foreground follows dark theme
+PASS UI: Header lock immediately protects the conversation
+PASS UI: Locked conversation keeps incoming message unread
+PASS UI: Message notifications remain opt-in
+PASS UI: Settings offer both toast modes while notifications default to off
+PASS UI: Saving settings applies the private toast mode
+PASS UI: Link cards show Open Graph image and decoded title
+PASS UI: Reported clipboard image recovers without changing the user's original file
+PASS UI: Windows creates a real MP4 video thumbnail
+35 UI checks passed. Screenshots: isolated QA workspace

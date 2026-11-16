@@ -272,4 +272,5 @@ Check(Emoticons.Replace(":)", false) == ":)" && Emoticons.Replace(":) ", false) 
 Check(Emoticons.Replace("🙂 ❤️ tiếng Việt") == "🙂 ❤️ tiếng Việt", "Existing emoji and Vietnamese remain unchanged");
 Check(!new AppSettings().MessageToasts, "Message toasts are disabled by default");
 await UpdaterTests.Run(root, Check);
+await PreviewTests.Run(Check);
 Console.WriteLine($"\n{passed} checks passed. Test data: {root}");
