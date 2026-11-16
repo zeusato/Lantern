@@ -31,17 +31,17 @@ export default {async fetch(request,env){
  if(action==='close'){await env.DB.batch([env.DB.prepare("UPDATE relay_routes SET session='' WHERE id=? AND session=?").bind(id,body.session),env.DB.prepare('DELETE FROM relay_packets WHERE route=? AND session=?').bind(id,body.session)]);return json({ok:true})}
  const side=isHost?'host':'client',other=isHost?'client':'host';
  if(!Number.isSafeInteger(body.after)||body.after<0||body.after>1e9)return json({error:'invalid_ack'},400);
- // Apply acknowledgements even under backpressure, so simultaneous writers cannot deadlock.
- await env.DB.prepare('DELETE FROM relay_packets WHERE route=? AND session=? AND side=? AND seq<=?').bind(id,body.session,other,body.after).run();
- const statements=[];
+ // One transaction after authorization instead of six sequential database round trips.
+ // Acknowledgements still commit under backpressure, so simultaneous writers cannot deadlock.
+ const statements=[env.DB.prepare('DELETE FROM relay_packets WHERE route=? AND session=? AND side=? AND seq<=?').bind(id,body.session,other,body.after),env.DB.prepare('DELETE FROM relay_packets WHERE route=? AND created<?').bind(id,now-120)];
  if(body.data){
    if(typeof body.data!=='string'||body.data.length>65536||!/^[A-Za-z0-9+/]+={0,2}$/.test(body.data)||body.data.length%4!==0||!Number.isSafeInteger(body.seq)||body.seq<1||body.seq>1e9)return json({error:'invalid_packet'},400);
-   const existing=await env.DB.prepare('SELECT body FROM relay_packets WHERE route=? AND session=? AND side=? AND seq=?').bind(id,body.session,side,body.seq).first();if(existing&&existing.body!==body.data)return json({error:'conflicting_packet'},409);
-   const pending=await env.DB.prepare('SELECT COUNT(*) AS n FROM relay_packets WHERE route=? AND session=? AND side=?').bind(id,body.session,side).first();if(pending.n>=32&&!existing)return json({error:'backpressure'},429);
-   statements.push(env.DB.prepare('INSERT OR IGNORE INTO relay_packets(route,session,side,seq,body,created) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM relay_routes WHERE id=? AND session=?)').bind(id,body.session,side,body.seq,body.data,now,id,body.session));
+   statements.push(env.DB.prepare('INSERT OR IGNORE INTO relay_packets(route,session,side,seq,body,created) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM relay_routes WHERE id=? AND session=?) AND (SELECT COUNT(*) FROM relay_packets WHERE route=? AND session=? AND side=?)<32').bind(id,body.session,side,body.seq,body.data,now,id,body.session,id,body.session,side));
+   statements.push(env.DB.prepare('SELECT body FROM relay_packets WHERE route=? AND session=? AND side=? AND seq=?').bind(id,body.session,side,body.seq));
  }
- statements.push(env.DB.prepare('DELETE FROM relay_packets WHERE route=? AND created<?').bind(id,now-120));await env.DB.batch(statements);
- const packets=await env.DB.prepare('SELECT seq,body AS data FROM relay_packets WHERE route=? AND session=? AND side=? AND seq>? ORDER BY seq LIMIT 1').bind(id,body.session,other,body.after).all();
- return json({session:body.session,packets:packets.results});
+ statements.push(env.DB.prepare('SELECT seq,body AS data FROM relay_packets WHERE route=? AND session=? AND side=? AND seq>? ORDER BY seq LIMIT ?').bind(id,body.session,other,body.after,body.pushOnly===true?0:body.batch===4?4:1));
+ const results=await env.DB.batch(statements);
+ if(body.data){const stored=results[3].results?.[0];if(!stored)return json({error:'backpressure'},429);if(stored.body!==body.data)return json({error:'conflicting_packet'},409);}
+ return json({session:body.session,packets:results.at(-1).results});
  }catch{return json({error:'relay_unavailable'},503)}
 }};

@@ -44,10 +44,13 @@ public class CompanionFlowTest {
             until(()->ConnectionService.connected&&ConnectionService.conversations.length()>0);
             onView(withText("QA contact")).perform(click());onView(withText("Mở khóa hội thoại")).perform(click());
             onView(withContentDescription("Mật khẩu hội thoại")).perform(typeText("qa-password"));onView(withText("Mở khóa")).perform(pendingClick(false));
-            until(()->ConnectionService.messages.length()>=2);
-            onView(withContentDescription("Soạn tin nhắn")).perform(typeText(text));long start=android.os.SystemClock.elapsedRealtime();onView(withContentDescription("Gửi tin nhắn")).perform(pendingClick(true));
+            until(()->ConnectionService.messages.length()>=30);
+            onView(withContentDescription("Soạn tin nhắn")).perform(typeText(text));long start=android.os.SystemClock.elapsedRealtime();onView(withContentDescription("Gửi tin nhắn")).perform(click());
             AtomicBoolean cleared=new AtomicBoolean();until(()->{scenario.onActivity(activity->{try{java.lang.reflect.Field field=MainActivity.class.getDeclaredField("composer");field.setAccessible(true);cleared.set(((EditText)field.get(activity)).getText().length()==0);}catch(Exception e){throw new AssertionError(e);}});return cleared.get();});
-            assertTrue("A send must not wait for the entire 8 MB preview",android.os.SystemClock.elapsedRealtime()-start<5000);
+            assertEquals("Optimistic message must be present before waiting for server history",1,countText(text));
+            assertTrue("Composer must clear immediately after a real touch with keyboard open",android.os.SystemClock.elapsedRealtime()-start<1500);
+            onView(withContentDescription("Gửi tin nhắn")).perform(click(),click(),click());
+            until(()->acknowledged(text));assertTrue("PC acknowledgement must arrive within 2 seconds during 8 MB preview",android.os.SystemClock.elapsedRealtime()-start<2000);
             until(()->countText(text)==1);assertEquals(1,countText(text));
             scenario.onActivity(activity->{ConnectionService.current.select("");ConnectionService.current.select(conversation);assertEquals("Cached history should be immediately available",1,countText(text));});
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);Thread.sleep(1600);scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);until(()->countText(text)==1);
@@ -56,4 +59,5 @@ public class CompanionFlowTest {
         }finally{context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);DeviceKeys.forget(context);ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}
     }
     private static int countText(String text){JSONArray messages=ConnectionService.messages;int count=0;for(int i=0;i<messages.length();i++)if(text.equals(messages.optJSONObject(i).optString("text")))count++;return count;}
+    private static boolean acknowledged(String text){JSONArray messages=ConnectionService.messages;for(int i=0;i<messages.length();i++){JSONObject m=messages.optJSONObject(i);if(text.equals(m.optString("text"))&&!m.has("localRequest"))return true;}return false;}
 }

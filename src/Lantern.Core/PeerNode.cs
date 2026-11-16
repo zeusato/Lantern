@@ -315,11 +315,12 @@ public sealed class PeerNode : IAsyncDisposable
         if (seconds > 0 && recipients.Any(id => peers[id].ProtocolVersion < 2)) throw new InvalidOperationException("Tin tự hủy yêu cầu tất cả thành viên dùng Lantern 1.1 trở lên.");
         return seconds;
     }
-    public async Task<ChatMessage> SendTextAsync(string conversationId, string text, string replyToId = "", string? stableId = null)
+    public async Task<ChatMessage> SendTextAsync(string conversationId, string text, string replyToId = "", string? stableId = null, bool deliverInBackground = false)
     {
         if (stableId is not null)
         {
             if (!Protocol.ValidId(stableId)) throw new ArgumentException("Mã tin nhắn không hợp lệ.");
+            if (Store.WasDeleted(stableId)) throw new InvalidOperationException("Tin này đã bị xóa hoặc tự hủy; không gửi lại.");
             var existing = Store.Message(stableId);
             if (existing is not null) { if (!existing.Outgoing || existing.ConversationId != conversationId) throw new ArgumentException("Mã tin nhắn trùng."); return existing; }
         }
@@ -331,7 +332,8 @@ public sealed class PeerNode : IAsyncDisposable
         if (stableId is not null) msg.Id = stableId;
         msg.DisappearAfterSeconds = DisappearSeconds(conversationId, recipients);
         Store.SaveMessage(msg); Changed?.Invoke();
-        foreach (var peerId in recipients) await SendTo(peerId, new WireMessage { Type = "message", Message = ForWire(msg) });
+        async Task Deliver() { foreach (var peerId in recipients) await SendTo(peerId, new WireMessage { Type = "message", Message = ForWire(msg) }); }
+        if (deliverInBackground) Track(Deliver()); else await Deliver();
         return msg;
     }
     private bool ConversationHasPeer(ChatMessage message, string peerId) => message.GroupId.Length == 0

@@ -38,42 +38,60 @@ public sealed class HttpRelayStream : Stream
     private readonly Task pump;
     private byte[] current = []; private int position;
     private readonly RelayApi api; private readonly string path, key, session;
+    private long received;
     public HttpRelayStream(RelayApi api, MobileRoute route, string session, bool host, CancellationToken ct)
     {
         this.api = api; this.session = session; key = host ? route.HostKey : route.ClientKey; path = "v1/routes/" + route.Id + "/exchange";
-        life = CancellationTokenSource.CreateLinkedTokenSource(ct); pump = Pump();
+        life = CancellationTokenSource.CreateLinkedTokenSource(ct); pump = Task.WhenAll(Receive(), Send());
     }
-    private async Task Pump()
+    private async Task Receive()
     {
         Exception? failure = null;
         try
         {
-            long after = 0, seq = 0; byte[]? pending = null; var lastSuccess = DateTime.UtcNow;
+            var lastSuccess = DateTime.UtcNow;
             while (!life.IsCancellationRequested)
             {
-                if (pending is null && outgoing.Reader.TryRead(out pending)) seq++;
                 JsonElement reply;
                 try
                 {
-                    reply = await api.Call(path, key, pending is null ? new { session, after } : (object)new { session, after, seq, data = Convert.ToBase64String(pending) }, life.Token);
+                    reply = await api.Call(path, key, new { session, after = Interlocked.Read(ref received), batch = 4 }, life.Token);
                     lastSuccess = DateTime.UtcNow;
                 }
                 catch (Exception ex) when ((ex is HttpRequestException { StatusCode: null } or HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests } or TaskCanceledException) && !life.IsCancellationRequested && DateTime.UtcNow - lastSuccess < TimeSpan.FromSeconds(45))
                 { await Task.Delay(700, life.Token); continue; }
-                pending = null;
                 if (reply.TryGetProperty("packets", out var packets) && packets.GetArrayLength() > 0)
                 {
-                    var packet = packets[0];
-                    var next = packet.GetProperty("seq").GetInt64(); if (next != after + 1) throw new IOException("Relay mất thứ tự gói tin.");
+                    foreach (var packet in packets.EnumerateArray()) {
+                    var next = packet.GetProperty("seq").GetInt64(); if (next != Interlocked.Read(ref received) + 1) throw new IOException("Relay mất thứ tự gói tin.");
                     var bytes = Convert.FromBase64String(packet.GetProperty("data").GetString()!);
                     if (bytes.Length is < 1 or > 49152) throw new IOException("Gói relay không hợp lệ.");
-                    await incoming.Writer.WriteAsync(bytes, life.Token); after = next;
+                    await incoming.Writer.WriteAsync(bytes, life.Token); Interlocked.Exchange(ref received, next); }
                 }
-                else if (!outgoing.Reader.TryPeek(out _)) await Task.Delay(350, life.Token);
+                else await Task.Delay(50, life.Token);
             }
         }
         catch (Exception ex) { failure = ex; }
-        finally { incoming.Writer.TryComplete(failure); outgoing.Writer.TryComplete(failure); }
+        finally { incoming.Writer.TryComplete(failure); outgoing.Writer.TryComplete(failure); life.Cancel(); }
+    }
+    private async Task Send()
+    {
+        Exception? failure = null;
+        try
+        {
+            long seq = 0;
+            while (!life.IsCancellationRequested)
+            {
+                var first = await outgoing.Reader.ReadAsync(life.Token);
+                using var bytes = new MemoryStream(); bytes.Write(first);
+                while (outgoing.Reader.TryPeek(out var next) && bytes.Length + next.Length <= 49152 && outgoing.Reader.TryRead(out next)) bytes.Write(next);
+                var data = Convert.ToBase64String(bytes.ToArray()); seq++; var started = DateTime.UtcNow;
+                while (true) try { await api.Call(path, key, new { session, after = Interlocked.Read(ref received), seq, data, pushOnly = true }, life.Token); break; }
+                catch (Exception ex) when ((ex is HttpRequestException { StatusCode: null } or HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests } or TaskCanceledException) && !life.IsCancellationRequested && DateTime.UtcNow - started < TimeSpan.FromSeconds(45)) { await Task.Delay(150, life.Token); }
+            }
+        }
+        catch (Exception ex) { failure = ex; }
+        finally { incoming.Writer.TryComplete(failure); outgoing.Writer.TryComplete(failure); life.Cancel(); }
     }
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {

@@ -9,6 +9,7 @@ import java.util.UUID;
 
 final class PcConnection implements AutoCloseable {
     private SSLSocket socket; private RelayBridge relay; private DataInputStream input; private DataOutputStream output;
+    boolean fastSync;
     static JSONObject validateQr(String text) throws Exception {
         if(text.length()>12000)throw new IOException("Mã QR không hợp lệ");JSONObject config=new JSONObject(text);
         if(config.getInt("v")!=1||!config.getString("pc").matches("[A-F0-9]{64}")||!config.getString("nonce").matches("[A-Za-z0-9_-]{43}")||config.getLong("expires")<System.currentTimeMillis()/1000)throw new IOException("QR không hợp lệ hoặc đã hết hạn");
@@ -34,6 +35,7 @@ final class PcConnection implements AutoCloseable {
             progress.accept(config.optString("nonce").isEmpty()?"Đang xác nhận thiết bị với PC…":"Đang chờ xác nhận ghép đôi trên PC…");
             JSONObject hello=new JSONObject().put("type","hello").put("nonce",config.optString("nonce")).put("name",android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL);
             JSONObject welcome=request(hello);if(!"welcome".equals(welcome.optString("type")))throw new IOException("PC chưa chấp nhận ghép đôi");
+            JSONArray capabilities=welcome.optJSONArray("capabilities");if(capabilities!=null)for(int i=0;i<capabilities.length();i++)if("sync-v1".equals(capabilities.optString(i)))fastSync=true;
             socket.setSoTimeout(30000);
         }catch(Exception e){close();throw e;}
     }

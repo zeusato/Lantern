@@ -152,7 +152,7 @@ public sealed class MobileServer : IAsyncDisposable
             }
             else if (routeId is not null && known.Route?.Id != routeId) throw new AuthenticationException();
             if (clients.TryGetValue(deviceId, out var old)) old.Stop.Cancel(); clients[deviceId] = client;
-            await MobileProtocol.WriteAsync(ssl, new MobilePacket { Type = "welcome", Name = node.Identity.Name, Id = node.Identity.Id }, stop.Token);
+            await MobileProtocol.WriteAsync(ssl, new MobilePacket { Type = "welcome", Name = node.Identity.Name, Id = node.Identity.Id, Capabilities = ["sync-v1"] }, stop.Token);
             while (!stop.IsCancellationRequested)
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stop.Token); timeout.CancelAfter(TimeSpan.FromSeconds(90));
@@ -176,17 +176,30 @@ public sealed class MobileServer : IAsyncDisposable
     private async Task<MobilePacket> Handle(Client client, string deviceId, MobilePacket request, CancellationToken ct)
     {
         var reply = new MobilePacket { Type = "ok", Conversation = request.Conversation };
-        if (request.Type == "list")
+        if (request.Type is "list" or "sync")
         {
             var unread = node.Store.UnreadCounts();
             reply.Conversations = node.Peers.Where(p => p.Trusted && !p.Blocked).Select(p => new MobileConversation(p.Id, p.DisplayName, p.Connected ? p.Presence : "offline", unread.GetValueOrDefault(p.Id), Locked(client, p.Id), false, vault.IsConversationLocked(p.Id)))
-                .Concat(node.Store.Groups().Where(g => g.Members.Contains(node.Identity.Id)).Select(g => new MobileConversation(g.Id, g.Name, "group", unread.GetValueOrDefault(g.Id), Locked(client, g.Id), true, vault.IsConversationLocked(g.Id)))).ToList(); return reply;
+                .Concat(node.Store.Groups().Where(g => g.Members.Contains(node.Identity.Id)).Select(g => new MobileConversation(g.Id, g.Name, "group", unread.GetValueOrDefault(g.Id), Locked(client, g.Id), true, vault.IsConversationLocked(g.Id)))).ToList();
+            if (request.Type == "sync" && request.Conversation.Length > 0)
+            {
+                reply.Locked = reply.Conversations.Find(c => c.Id == request.Conversation)?.Locked ?? true;
+                if (!reply.Locked)
+                {
+                    ValidateConversation(client, request.Conversation);
+                    // Store read state synchronously, but do not wait for LAN receipt delivery.
+                    if (request.VisibleIds.Count > 0) Track(node.MarkReadAsync(request.Conversation, request.VisibleIds.ToHashSet()));
+                    FillHistory(reply, request.Hash);
+                }
+            }
+            return reply;
         }
         if (request.Type == "unlock")
         {
             // Failed attempts remain throttled; a correct password need not wait artificially.
             if (!vault.VerifyConversation(request.Conversation, request.Password)) { await Task.Delay(1500, ct); throw new UnauthorizedAccessException("Mật khẩu chưa đúng."); }
-            client.Unlocked[request.Conversation] = 0; return reply;
+            client.Unlocked[request.Conversation] = 0;
+            ValidateConversation(client, request.Conversation); FillHistory(reply, ""); return reply;
         }
         if (request.Type == "lock") { client.Unlocked.TryRemove(request.Conversation, out _); return reply; }
         ValidateConversation(client, request.Conversation);
@@ -220,9 +233,7 @@ public sealed class MobileServer : IAsyncDisposable
         }
         if (request.Type == "history")
         {
-            reply.Messages = MobileProtocol.BoundedHistory(node.Store.Messages(request.Conversation, limit: 50));
-            reply.Hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(reply.Messages, MobileProtocol.Json)));
-            if (reply.Hash == request.Hash) { reply.Type = "unchanged"; reply.Messages = []; }
+            FillHistory(reply, request.Hash);
             return reply;
         }
         if (request.Type == "read") { await node.MarkReadAsync(request.Conversation, request.VisibleIds.ToHashSet()); return reply; }
@@ -231,7 +242,7 @@ public sealed class MobileServer : IAsyncDisposable
             if (!Guid.TryParseExact(request.Id, "N", out _)) throw new ArgumentException("Mã gửi không hợp lệ.");
             var id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(deviceId + request.Id)))[..32].ToLowerInvariant();
             await mutations.WaitAsync(ct);
-            try { reply.MessageId = (await node.SendTextAsync(request.Conversation, request.Text, request.ReplyTo, id)).Id; }
+            try { var sent = await node.SendTextAsync(request.Conversation, request.Text, request.ReplyTo, id, deliverInBackground: true); reply.MessageId = sent.Id; reply.Messages = MobileProtocol.BoundedHistory([sent]); }
             finally { mutations.Release(); }
             return reply;
         }
@@ -248,6 +259,12 @@ public sealed class MobileServer : IAsyncDisposable
                 return reply;
             default: throw new ArgumentException("Chức năng mobile chưa được hỗ trợ.");
         }
+    }
+    private void FillHistory(MobilePacket reply, string previousHash)
+    {
+        reply.Messages = MobileProtocol.BoundedHistory(node.Store.Messages(reply.Conversation, limit: 50));
+        reply.Hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(reply.Messages, MobileProtocol.Json)));
+        if (reply.Hash == previousHash) { reply.Type = "unchanged"; reply.Messages = []; }
     }
     public async ValueTask DisposeAsync()
     {
