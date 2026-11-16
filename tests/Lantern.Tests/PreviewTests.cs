@@ -21,6 +21,7 @@ internal static class PreviewTests
         check(full.Title == "Private sender" && full.Body == "Private body", "Full toast includes sender and message");
         check(!hidden.Title.Contains("Private") && !hidden.Body.Contains("Private") && hidden == locked, "Private or locked toast reveals neither sender nor message");
         check(Codec.Decode<AppSettings>(Codec.Encode(new AppSettings { MessageToasts = true, MessageToastMode = "private" })).MessageToastMode == "private", "Toast privacy choice persists in settings");
+        check(!new AppSettings().CloseToTray && Codec.Decode<AppSettings>(Codec.Encode(new AppSettings { CloseToTray = true })).CloseToTray, "Close-to-tray is opt-in and persists in settings");
     }
     private sealed class PreviewHandler : HttpMessageHandler
     {

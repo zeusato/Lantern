@@ -29,8 +29,18 @@ PASS UI: Header lock immediately protects the conversation
 PASS UI: Locked conversation keeps incoming message unread
 PASS UI: Message notifications remain opt-in
 PASS UI: Settings offer both toast modes while notifications default to off
+PASS UI: Close-to-tray setting defaults to off
 PASS UI: Saving settings applies the private toast mode
+PASS UI: Close-to-tray choice is saved to disk
 PASS UI: Link cards show Open Graph image and decoded title
 PASS UI: Reported clipboard image recovers without changing the user's original file
 PASS UI: Windows creates a real MP4 video thumbnail
-35 UI checks passed. Screenshots: isolated QA workspace
+PASS UI: Close button hides to tray while keeping the peer connected
+PASS UI: Hidden app receives messages and updates unread tray badge
+PASS UI: Opening from tray restores the same unlocked session
+PASS UI: Closing the unlock prompt hides the app and keeps it locked
+PASS UI: Restoring a locked tray session requires the password again
+PASS UI: Real password verification unlocks the restored session
+PASS UI: Tray Exit really closes the hidden window, disconnects and removes the icon
+PASS UI: Close button exits normally when close-to-tray is disabled
+45 UI checks passed. Screenshots: isolated QA workspace

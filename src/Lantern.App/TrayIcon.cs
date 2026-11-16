@@ -26,7 +26,7 @@ internal sealed class TrayIcon : IDisposable
         menu.Items.Add("Mở Lantern", null, (_, _) => open());
         menu.Items.Add("Khóa ứng dụng", null, (_, _) => lockApp());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Thoát", null, (_, _) => exit());
+        menu.Items.Add("Thoát Lantern", null, (_, _) => exit());
         notification = new NotifyIcon { Icon = original, Text = "Lantern", ContextMenuStrip = menu, Visible = true };
         notification.DoubleClick += (_, _) => open();
         notification.BalloonTipClicked += (_, _) => openConversation(notificationConversation);

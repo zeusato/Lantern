@@ -29,7 +29,8 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 - Mật khẩu ứng dụng bắt buộc; khóa ngay bằng Ctrl+L; đổi mật khẩu có xác nhận mật khẩu hiện tại.
 - Mật khẩu riêng cho từng cuộc trò chuyện; mở một lần cho cả phiên, khóa chủ động bằng nút khóa ở đầu hội thoại. Khóa hoặc thoát ứng dụng khóa lại tất cả hội thoại.
 - Sửa tên bản thân; đặt tên riêng cho đối tác chỉ trên máy mình, giữ nguyên khi đối tác đổi tên/IP.
-- Số tin chưa đọc trên từng hội thoại và icon tray, hiển thị `99+` khi vượt 99. Nhấp đúp tray để mở app; nút X vẫn thoát app.
+- Số tin chưa đọc trên từng hội thoại và icon tray, hiển thị `99+` khi vượt 99. Nhấp đúp tray để mở app.
+- Tùy chọn **Đóng cửa sổ xuống khay hệ thống** trong Hồ sơ và cài đặt, mặc định tắt. Khi bật, nút X chỉ ẩn cửa sổ; app vẫn nhận tin và cập nhật badge. Nhấp đúp tray để mở lại, chọn **Thoát Lantern** trong menu tray để thoát hẳn. App đang khóa vẫn yêu cầu mật khẩu khi mở lại.
 - Emoji màu Microsoft Fluent 3D đóng gói sẵn trong picker, log chat và reaction; tự đổi `:)`, `:D`, `;)`, `<3` khi kết thúc ký hiệu hoặc gửi. Có thể tắt tự đổi trong bảng emoji; URL, đường dẫn và khối mã được giữ nguyên. Sao chép tin nhắn vẫn giữ Unicode emoji.
 - Rê chuột lên tin để hiện nút trả lời và react. Mỗi người một biểu cảm; bấm lại để gỡ. Trả lời có trích dẫn và nhảy tới tin gốc.
 - Ctrl+V dán ảnh clipboard thành ảnh PNG, gửi theo luồng nhận tệp thông thường.

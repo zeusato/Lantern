@@ -2,7 +2,7 @@
 
 Automated integration runner uses real TCP sockets and mutual TLS on IPv4 loopback, independent identities, SQLite stores and temporary data. It exits nonzero on failure.
 
-The current core suite passes 102 checks covering:
+The current core suite passes 103 checks covering:
 
 - Persistent identity, pairing codes, trust gating and certificate pinning.
 - UTF-8 chat, durable delivery/read receipts and replay deduplication.
@@ -28,10 +28,12 @@ The current core suite passes 102 checks covering:
 - Open Graph metadata parsing, image loading/cache and private-address/redirect rejection.
 - Full/private notification content, locked-conversation privacy and persisted toast preference.
 
-`tests/Lantern.UiTests` is a separate fixture host that runs the real WPF MainWindow with synthetic encrypted data and a real loopback peer. It does not modify production authentication or open the user's history. Its standard 33 checks cover tray/conversation badges, session unlock, aliases, emoticons, quotes/reactions, colored emoji and Unicode copying, zero-alpha clipboard repair and valid PNG transparency, PNG transfer/decoded pixels, square thumbnails, Open Graph cards, hover actions without layout shift, presence, manual lock, theme typography and both toast setting choices. Two optional read-only fixture checks verify the reported legacy clipboard PNG without changing its bytes and a real MP4 thumbnail: all 35 passed locally. It captures light/dark chat, emoji picker, toast settings and link-card renders. Run it only on an interactive Windows desktop.
+`tests/Lantern.UiTests` is a separate fixture host that runs the real WPF MainWindow with synthetic encrypted data and a real loopback peer. It does not modify production authentication or open the user's history. Its standard 43 checks cover tray/conversation badges, session unlock, aliases, emoticons, quotes/reactions, colored emoji and Unicode copying, zero-alpha clipboard repair and valid PNG transparency, PNG transfer/decoded pixels, square thumbnails, Open Graph cards, hover actions without layout shift, presence, manual lock, theme typography and both toast setting choices. Two optional read-only fixture checks verify the reported legacy clipboard PNG without changing its bytes and a real MP4 thumbnail: all 45 passed locally. It captures light/dark chat, emoji picker, toast settings and link-card renders. Run it only on an interactive Windows desktop.
 
 UI verification before password-gate integration exercised a real peer connection, image receipt/display and MP4 receipt/playback on the Windows desktop. The release is also opened at its startup password screen. OS credential prompts are deliberately not automated: the owner completes Windows Hello on their own device.
 
 Not verified: two physical LAN hosts, enterprise firewall/VLAN policies, sustained 32-member groups, 10 GB transfers, every Windows codec, all high-contrast/DPI combinations, or successful destructive Windows Hello approval with the user's credentials.
 
 `scripts/Test-UpdateInstaller.ps1` exercises the embedded update helper with Windows PowerShell 5.1 and a synthetic Windows executable: waiting for exit, backup, replacement, restart, and preserving a workspace argument containing spaces. No real app workspace is used. The script's UTF-8 BOM and the runtime's explicit BOM output preserve Vietnamese text under Windows PowerShell.
+
+Tray lifecycle checks cover the opt-in setting and its disk persistence, close-to-tray without disconnect, receiving unread messages while hidden, restoring the same session, closing the unlock prompt without exposing chat, reopening and entering the real synthetic workspace password, the actual tray Exit menu action, and normal close behavior when the setting is disabled.

@@ -122,6 +122,7 @@ internal sealed class UiHarness : Application
                     var mode = Visuals<ComboBox>(dialog).Single(combo => combo.Items.Count == 2);
                     Check(!mode.IsEnabled && mode.Items.Cast<string>().SequenceEqual(new[] { "Hiện người gửi và nội dung", "Chỉ báo có tin nhắn mới" }), "Settings offer both toast modes while notifications default to off");
                     var enable = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Hiện thông báo Windows khi có tin nhắn mới"); enable.IsChecked = true; enable.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); mode.SelectedIndex = 1;
+                    var closeToTray = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Đóng cửa sổ xuống khay hệ thống"); Check(closeToTray.IsChecked == false, "Close-to-tray setting defaults to off"); closeToTray.IsChecked = true;
                     Snapshot(dialog, Path.Combine(root, "toast-settings.png"));
                     Visuals<Button>(dialog).Single(button => button.Content as string == "Lưu thay đổi").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 }
@@ -130,6 +131,7 @@ internal sealed class UiHarness : Application
             Call(window, "SettingsClick", window, new RoutedEventArgs());
             if (settingsFailure is not null) throw settingsFailure;
             Check(Settings.MessageToasts && Settings.MessageToastMode == "private", "Saving settings applies the private toast mode");
+            Check(Settings.CloseToTray && Codec.Decode<AppSettings>(File.ReadAllText(Path.Combine(workspace, "settings.json"))).CloseToTray, "Close-to-tray choice is saved to disk");
             ApplyTheme("dark"); Call(window, "Refresh"); Snapshot(window, Path.Combine(root, "chat-locked-dark.png"));
             using var previewService = new LinkPreviews(new PreviewFixture(File.ReadAllBytes(remoteStore.Message(image.Id)!.FilePath)));
             var previewCard = new LinkPreviewCard(new Uri("https://example.test/design"), previewService, () => { });
@@ -138,10 +140,36 @@ internal sealed class UiHarness : Application
             Check(Visuals<TextBlock>(previewCard).Any(view => view.Text == "Thiết kế & màu sắc"), "Link cards show Open Graph image and decoded title"); Snapshot(previewCard, Path.Combine(root, "link-preview.png")); previewWindow.Close();
             if (e.Args.Length > 1) { var actualBytes = File.ReadAllBytes(e.Args[1]); Check(Pixels(ClipboardImages.LoadLocal(e.Args[1], 0))[3] == 255 && actualBytes.SequenceEqual(File.ReadAllBytes(e.Args[1])), "Reported clipboard image recovers without changing the user's original file"); }
             if (e.Args.Length > 2) { var videoThumb = await Task.Run(() => ShellThumbnail.Load(e.Args[2])); Check(videoThumb is { PixelWidth: > 0, PixelHeight: > 0 }, "Windows creates a real MP4 video thumbnail"); }
+            Settings.MessageToasts = false;
+            Field<HashSet<string>>(window, "unlockedConversations").Add(remoteIdentity.Id); Call(window, "Refresh"); window.Activate(); await Until(() => store.UnreadCount() == 0, "Read before hiding");
+            window.Close(); Check(!window.IsVisible && !Field<bool>(window, "closing") && node.IsConnected(remoteIdentity.Id), "Close button hides to tray while keeping the peer connected");
+            await remote.SendTextAsync(node.Identity.Id, "Tin nhận khi chạy dưới tray"); await Until(() => store.UnreadCount() == 1 && Field<int>(tray, "lastCount") == 1, "Hidden receive"); Check(true, "Hidden app receives messages and updates unread tray badge");
+            Call(window, "RestoreFromTray"); await Until(() => window.IsVisible && store.UnreadCount() == 0, "Tray restore"); Check(composer.IsEnabled, "Opening from tray restores the same unlocked session");
+            _ = Dispatcher.BeginInvoke(() => Windows.OfType<LoginWindow>().Single().Close()); Call(window, "LockApp");
+            Check(!window.IsVisible && Field<bool>(window, "appLocking") && node.IsConnected(remoteIdentity.Id), "Closing the unlock prompt hides the app and keeps it locked");
+            Exception? unlockFailure = null;
+            _ = Dispatcher.BeginInvoke(() =>
+            {
+                var login = Windows.OfType<LoginWindow>().Single();
+                try
+                {
+                    Check(login.IsVisible && ((FrameworkElement)window.FindName("Shell")).Visibility == Visibility.Hidden, "Restoring a locked tray session requires the password again");
+                    Visuals<PasswordBox>(login).Single().Password = "synthetic QA password only";
+                    Visuals<Button>(login).Single(button => button.Content as string == "Mở khóa").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                }
+                catch (Exception ex) { unlockFailure = ex; login.Close(); }
+            });
+            Call(window, "RestoreFromTray"); if (unlockFailure is not null) throw unlockFailure;
+            Check(window.IsVisible && !Field<bool>(window, "appLocking"), "Real password verification unlocks the restored session");
+            window.Close();
+            var closed = new TaskCompletionSource(); window.Closed += (_, _) => closed.TrySetResult();
+            Field<System.Windows.Forms.ContextMenuStrip>(tray, "menu").Items.Cast<System.Windows.Forms.ToolStripItem>().Single(item => item.Text == "Thoát Lantern").PerformClick(); await closed.Task.WaitAsync(TimeSpan.FromSeconds(8));
+            await Until(() => !remote.IsConnected(node.Identity.Id), "Exit disconnects peer"); Check(Field<bool>(tray, "disposed"), "Tray Exit really closes the hidden window, disconnects and removes the icon"); window = null;
+            Settings.CloseToTray = false; window = new MainWindow(); MainWindow = window; window.Show(); await Until(() => Field<PeerNode>(window, "node").Port > 0, "Second startup");
+            var closedDefault = new TaskCompletionSource(); window.Closed += (_, _) => closedDefault.TrySetResult(); window.Close(); await closedDefault.Task.WaitAsync(TimeSpan.FromSeconds(8)); Check(true, "Close button exits normally when close-to-tray is disabled"); window = null;
             Console.WriteLine($"{passed} UI checks passed. Screenshots: {root}");
-            var closed = new TaskCompletionSource(); window.Closed += (_, _) => closed.TrySetResult(); window.Close(); await closed.Task; window = null;
         }
-        catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; window?.Close(); await Task.Delay(700); }
+        catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; if (window is not null) Call(window, "ExitApplication"); await Task.Delay(700); }
         Vault.Dispose(); Shutdown(Environment.ExitCode);
     }
     private sealed class PreviewFixture(byte[] image) : HttpMessageHandler

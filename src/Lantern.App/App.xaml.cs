@@ -59,5 +59,10 @@ public partial class App : Application
             app.Resources["TextBrush"] = SystemColors.WindowTextBrush; app.Resources["MutedBrush"] = SystemColors.WindowTextBrush; app.Resources["LineBrush"] = SystemColors.WindowTextBrush; app.Resources["AccentBrush"] = SystemColors.HighlightBrush;
         }
     }
+    protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+    {
+        if (MainWindow is MainWindow window) window.PrepareForSystemShutdown();
+        base.OnSessionEnding(e);
+    }
     protected override void OnExit(ExitEventArgs e) { Vault?.Dispose(); profileLock?.Dispose(); base.OnExit(e); }
 }

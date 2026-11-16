@@ -49,6 +49,9 @@ public partial class MainWindow : Window
     private readonly List<Window> mediaWindows = [];
     private readonly HashSet<string> unlockedConversations = [];
     private bool appLocking;
+    private bool exitRequested, closeReady;
+    private LoginWindow? unlockWindow;
+    private Window[] hiddenByLock = [];
     private bool ConversationProtected => selectedId.Length > 0 && App.Vault.IsConversationLocked(selectedId) && !unlockedConversations.Contains(selectedId);
     private readonly CancellationTokenSource uiLifetime = new();
     public MainWindow()
@@ -103,7 +106,7 @@ public partial class MainWindow : Window
             MyInitials.Text = Initials(identity.Name);
             NetworkStatus.Text = App.TestMode ? $"Kiểm thử cục bộ · 127.0.0.1:{node.Port}" : $"LAN · {string.Join(" · ", PeerNode.LocalAddresses())} · Cổng {node.Port}";
             Title = $"Lantern · {identity.Name}";
-            tray = new TrayIcon(() => Dispatcher.BeginInvoke(RestoreFromTray), () => Dispatcher.BeginInvoke(LockApp), () => Dispatcher.BeginInvoke(Close), id => Dispatcher.BeginInvoke(() => OpenNotification(id)));
+            tray = new TrayIcon(() => Dispatcher.BeginInvoke(RestoreFromTray), () => Dispatcher.BeginInvoke(LockApp), () => Dispatcher.BeginInvoke(ExitApplication), id => Dispatcher.BeginInvoke(() => OpenNotification(id)));
             Refresh();
             if (App.Settings.AutoUpdates && !App.TestMode) _ = updates.CheckAsync(uiLifetime.Token);
         }
@@ -114,11 +117,24 @@ public partial class MainWindow : Window
     {
         if (closing) return;
         Show(); if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        if (appLocking && unlockWindow is null) { PromptUnlock(); return; }
         var dialog = OwnedWindows.Cast<Window>().LastOrDefault(w => w.IsVisible);
         if (dialog is not null) { if (dialog.WindowState == WindowState.Minimized) dialog.WindowState = WindowState.Normal; dialog.Activate(); }
         else Activate();
         refreshPending = true;
     }
+    private void HideToTray()
+    {
+        if (emojiPopup is not null) emojiPopup.IsOpen = false;
+        CloseMediaViews(); foreach (var player in players) player.Pause();
+        Hide(); refreshPending = true;
+    }
+    private void ExitApplication()
+    {
+        if (closing) return;
+        exitRequested = true; Close();
+    }
+    internal void PrepareForSystemShutdown() => exitRequested = true;
     private bool IsConversationVisible(string id) => !appLocking && IsActive && IsVisible && WindowState != WindowState.Minimized && selectedId == id && !ConversationProtected;
     private void NotifyMessage(ChatMessage message)
     {
@@ -592,6 +608,8 @@ public partial class MainWindow : Window
         var toasts = new CheckBox { Content = "Hiện thông báo Windows khi có tin nhắn mới", IsChecked = App.Settings.MessageToasts, Margin = new Thickness(0, 0, 0, 16) }; toasts.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(toasts);
         var toastMode = new ComboBox { ItemsSource = new[] { "Hiện người gửi và nội dung", "Chỉ báo có tin nhắn mới" }, SelectedIndex = App.Settings.MessageToastMode == "private" ? 1 : 0, IsEnabled = App.Settings.MessageToasts, Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 18) }; panel.Children.Add(toastMode);
         toasts.Click += (_, _) => toastMode.IsEnabled = toasts.IsChecked == true;
+        var closeToTray = new CheckBox { Content = "Đóng cửa sổ xuống khay hệ thống", IsChecked = App.Settings.CloseToTray, Margin = new Thickness(0, 0, 0, 6) }; closeToTray.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(closeToTray);
+        panel.Children.Add(Paragraph("Khi bật, nút X chỉ ẩn cửa sổ; Lantern vẫn nhận tin nhắn. Nhấp đúp icon tray để mở lại. Chọn Thoát Lantern ở tray để thoát hẳn.", 12, muted: true));
         panel.Children.Add(Paragraph("Giao diện", bold: true)); var theme = new ComboBox { ItemsSource = new[] { "Theo Windows", "Sáng", "Tối" }, SelectedIndex = App.Settings.Theme == "dark" ? 2 : App.Settings.Theme == "light" ? 1 : 0, Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 18) }; panel.Children.Add(theme);
         panel.Children.Add(Paragraph("Danh tính cố định", bold: true)); panel.Children.Add(new TextBox { Text = identity.Fingerprint, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas"), FontSize = 12, Margin = new Thickness(0, 0, 0, 18) });
         var actions = new WrapPanel(); AddButton(actions, "Sao lưu danh tính", ExportIdentity); AddButton(actions, "Khôi phục danh tính", ImportIdentity); panel.Children.Add(actions);
@@ -609,7 +627,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                App.Settings.Name = PeerNode.ValidateDisplayName(name.Text); App.Settings.MessageToasts = toasts.IsChecked == true; App.Settings.MessageToastMode = toastMode.SelectedIndex == 1 ? "private" : "full"; App.Settings.Theme = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" }; App.SaveSettings();
+                App.Settings.Name = PeerNode.ValidateDisplayName(name.Text); App.Settings.MessageToasts = toasts.IsChecked == true; App.Settings.MessageToastMode = toastMode.SelectedIndex == 1 ? "private" : "full"; App.Settings.CloseToTray = closeToTray.IsChecked == true; App.Settings.Theme = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" }; App.SaveSettings();
                 await node.UpdateDisplayNameAsync(App.Settings.Name);
                 App.ApplyTheme(App.Settings.Theme); MyInitials.Text = Initials(identity.Name); Title = "Lantern · " + identity.Name; renderKey = ""; Refresh(); ShowToast("Đã lưu hồ sơ và cập nhật tên hiển thị.");
             }
@@ -714,7 +732,7 @@ public partial class MainWindow : Window
         void Changed() { status.Text = updates.Status; install.IsEnabled = updates.DownloadedArchive is not null; }
         updates.Changed += Changed; window.Closed += (_, _) => updates.Changed -= Changed;
         check.Click += async (_, _) => { check.IsEnabled = false; await updates.CheckAsync(uiLifetime.Token); check.IsEnabled = true; };
-        install.Click += async (_, _) => { install.IsEnabled = false; try { await updates.StartInstallAsync(uiLifetime.Token); window.Close(); Close(); } catch (Exception ex) { install.IsEnabled = true; MessageBox.Show(window, ex.Message, "Cập nhật Lantern"); } };
+        install.Click += async (_, _) => { install.IsEnabled = false; try { await updates.StartInstallAsync(uiLifetime.Token); window.Close(); ExitApplication(); } catch (Exception ex) { install.IsEnabled = true; MessageBox.Show(window, ex.Message, "Cập nhật Lantern"); } };
         window.ShowDialog();
     }
     private void ExportIdentity()
@@ -729,7 +747,7 @@ public partial class MainWindow : Window
         var file = new OpenFileDialog { Filter = "Danh tính Lantern|*.lanternkey" }; if (file.ShowDialog(this) != true) return;
         var panel = new StackPanel(); panel.Children.Add(Paragraph("Khôi phục danh tính", 22, true)); panel.Children.Add(Paragraph("Thao tác thay danh tính đang dùng. App sẽ đóng để nạp lại khóa khi mở lần sau. Hãy sao lưu danh tính hiện tại trước.", muted: true)); var password = new PasswordBox { Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 16) }; panel.Children.Add(password);
         if (!ShowDialog("Khôi phục", panel, "Khôi phục và đóng app")) return;
-        try { Identity.Import(file.FileName, password.Password, App.DataDirectory, App.Vault); Close(); } catch (Exception ex) { ShowError(ex); }
+        try { Identity.Import(file.FileName, password.Password, App.DataDirectory, App.Vault); ExitApplication(); } catch (Exception ex) { ShowError(ex); }
     }
     private bool ShowDialog(string title, FrameworkElement content, string accept, Func<bool>? validate = null)
     {
@@ -818,12 +836,21 @@ public partial class MainWindow : Window
         if (appLocking || closing) return;
         if (emojiPopup is not null) emojiPopup.IsOpen = false;
         appLocking = true; CloseMediaViews(); foreach (var player in players) player.Close(); players.Clear();
-        var owned = OwnedWindows.Cast<Window>().ToArray(); foreach (var window in owned) window.Hide();
+        hiddenByLock = OwnedWindows.Cast<Window>().ToArray(); foreach (var window in hiddenByLock) window.Hide();
         Shell.Visibility = Visibility.Hidden; Title = "Lantern · Đã khóa"; unlockedConversations.Clear();
+        PromptUnlock();
+    }
+    private void PromptUnlock()
+    {
+        if (closing || unlockWindow is not null) return;
         var login = new LoginWindow(App.DataDirectory, false) { Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        if (login.ShowDialog() != true) { Close(); return; }
+        bool unlocked;
+        unlockWindow = login;
+        try { unlocked = login.ShowDialog() == true; } finally { unlockWindow = null; }
+        if (closing) { login.UnlockedVault?.Dispose(); return; }
+        if (!unlocked) { if (App.Settings.CloseToTray && tray is not null) HideToTray(); else ExitApplication(); return; }
         login.UnlockedVault?.Dispose(); Shell.Visibility = Visibility.Visible; Title = "Lantern · " + identity.Name; appLocking = false;
-        foreach (var window in owned) window.Show(); renderKey = ""; Refresh();
+        foreach (var window in hiddenByLock) if (OwnedWindows.Cast<Window>().Contains(window)) window.Show(); hiddenByLock = []; renderKey = ""; Refresh();
     }
     private void ShowToast(string text) { if (!closing) ToastText.Text = text; }
     private void ShowError(Exception ex)
@@ -833,12 +860,13 @@ public partial class MainWindow : Window
     }
     private async void WindowClosing(object? sender, CancelEventArgs e)
     {
-        if (closing) return;
+        if (closing) { e.Cancel = !closeReady; return; }
+        if (!exitRequested && App.Settings.CloseToTray && tray is not null) { e.Cancel = true; HideToTray(); return; }
         e.Cancel = true; closing = true; refreshTimer.Stop(); uiLifetime.Cancel(); Microsoft.Win32.SystemEvents.UserPreferenceChanged -= SystemThemeChanged;
         sessionTimer.Stop(); updateTimer.Stop(); updates.Dispose(); linkPreviews.Dispose();
         tray?.Dispose();
         if (emojiPopup is not null) emojiPopup.IsOpen = false;
         foreach (var player in players) player.Close();
-        await node.DisposeAsync(); store.Dispose(); identity.Dispose(); uiLifetime.Dispose(); Close();
+        await node.DisposeAsync(); store.Dispose(); identity.Dispose(); uiLifetime.Dispose(); closeReady = true; Close();
     }
 }

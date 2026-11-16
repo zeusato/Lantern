@@ -100,6 +100,7 @@ public sealed class AppSettings
     public bool AutoEmoticons { get; set; } = true;
     public bool MessageToasts { get; set; }
     public string MessageToastMode { get; set; } = "full";
+    public bool CloseToTray { get; set; }
     public bool DoNotDisturb { get; set; }
     public bool AutoUpdates { get; set; } = true;
 }
