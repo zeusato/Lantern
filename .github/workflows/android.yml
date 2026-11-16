@@ -16,12 +16,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: '10.0.x'
       - name: Build and lint
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug assembleDebugAndroidTest lintDebug --console=plain
       - name: Test on Android 15 emulator
+        timeout-minutes: 15
         run: |
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -30,13 +34,21 @@ jobs:
           sdkmanager 'system-images;android-35;google_apis;x86_64' 'emulator'
           echo no | avdmanager create avd --force --name lantern-test --package 'system-images;android-35;google_apis;x86_64' --device pixel_6
           "$ANDROID_HOME/emulator/emulator" -avd lantern-test -no-window -no-audio -no-snapshot -gpu swiftshader_indirect > /tmp/lantern-emulator.log 2>&1 &
-          adb wait-for-device
+          timeout 180 adb wait-for-device
           for n in $(seq 1 120); do
             if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = '1' ]; then break; fi
             sleep 2
           done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = '1'
+          dotnet build tests/MobileInteropFixture -c Release --nologo
+          dotnet tests/MobileInteropFixture/bin/Release/net10.0/MobileInteropFixture.dll > /tmp/lantern-interop.json &
+          for n in $(seq 1 20); do
+            if [ -s /tmp/lantern-interop.json ]; then break; fi
+            sleep 1
+          done
+          PC_PIN=$(jq -r .pc /tmp/lantern-interop.json)
           cd android
-          ./gradlew connectedDebugAndroidTest --console=plain
+          ./gradlew connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.pcPin=$PC_PIN" --console=plain
           mkdir -p build/screenshots
           adb pull /sdcard/Android/data/vn.lantern.companion/files/. build/screenshots/
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

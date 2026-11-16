@@ -95,5 +95,24 @@ internal static class MobileTests
         bool unauthorizedDenied = false;
         try { await MobileProtocol.WriteAsync(unauthorized, new() { Type = "hello", Name = "Unapproved", Nonce = qr.GetProperty("nonce").GetString()! }, denialTimeout.Token); await MobileProtocol.ReadAsync(unauthorized, denialTimeout.Token); } catch (Exception) { unauthorizedDenied = true; }
         check(unauthorizedDenied && !server.Registry.Contains(attacker.Id), "An unapproved certificate cannot replay a consumed QR nonce");
+        int approvals = 0; server.ApprovePairing = _ => { approvals++; return Task.FromResult(true); };
+        async Task<(TcpClient Tcp, SslStream Tls)> PairAgain(string name)
+        {
+            using var code = JsonDocument.Parse(await server.CreateInvitationAsync()); var socket = new TcpClient(); await socket.ConnectAsync("127.0.0.1", server.Port);
+            var tls = new SslStream(socket.GetStream(), false, (_, _, _, _) => true);
+            await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = "lantern.local", ClientCertificates = new X509CertificateCollection { phone.Certificate }, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, CertificateRevocationCheckMode = X509RevocationMode.NoCheck });
+            await MobileProtocol.WriteAsync(tls, new() { Type = "hello", Nonce = code.RootElement.GetProperty("nonce").GetString()!, Name = name }, CancellationToken.None);
+            var result = await MobileProtocol.ReadAsync(tls, CancellationToken.None); if (result.Type != "welcome") throw new Exception("Pairing failed"); return (socket, tls);
+        }
+        var firstPair = await PairAgain("Phone first pairing");
+        try
+        {
+            var secondPair = await PairAgain("Phone paired again"); using var secondTcp = secondPair.Tcp; using var secondTls = secondPair.Tls;
+            check(approvals == 2 && server.Registry.Snapshot().Devices.Count == 1 && server.Registry.Snapshot().Devices.Single().Name == "Phone paired again", "Re-pairing the same phone requires PC approval and replaces its route without duplicate devices");
+            bool oldClosed = false;
+            try { using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(5)); await MobileProtocol.WriteAsync(firstPair.Tls, new() { Type = "list" }, limit.Token); await MobileProtocol.ReadAsync(firstPair.Tls, limit.Token); } catch (Exception) { oldClosed = true; }
+            check(oldClosed, "Re-pairing closes the phone's previous connection");
+        }
+        finally { firstPair.Tls.Dispose(); firstPair.Tcp.Dispose(); await server.RevokeAsync(phone.Id); }
     }
 }

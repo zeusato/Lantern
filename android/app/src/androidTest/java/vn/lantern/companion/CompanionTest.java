@@ -17,6 +17,12 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class CompanionTest {
+    @Test public void androidKeystoreAuthenticatesToDotNetAndRejectsWrongPcKey() throws Exception {
+        String pin=InstrumentationRegistry.getArguments().getString("pcPin");org.junit.Assume.assumeNotNull(pin);
+        JSONObject config=new JSONObject().put("pc",pin).put("port",45854).put("addresses",new JSONArray().put("10.0.2.2")).put("nonce","q".repeat(43));
+        try(PcConnection pc=new PcConnection(config)){assertEquals(DeviceKeys.id(),pc.request(new JSONObject().put("type","list")).getString("text"));}
+        config.put("pc","B".repeat(64));assertThrows(Exception.class,()->{try(PcConnection ignored=new PcConnection(config)){fail("Wrong PC pin was accepted");}});
+    }
     @Test public void keysAndPrivateConfiguration() throws Exception {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();DeviceKeys.ensure();String id=DeviceKeys.id();assertTrue(id.matches("[A-F0-9]{64}"));assertEquals(id,DeviceKeys.id());
         JSONObject value=new JSONObject().put("test","private-token-canary");DeviceKeys.save(context,value);assertEquals("private-token-canary",DeviceKeys.load(context).getString("test"));
@@ -34,6 +40,7 @@ public class CompanionTest {
                 try{
                     snapshot(activity,"android-welcome.png");
                     ConnectionService.selected="a".repeat(64);ConnectionService.status="Đã kết nối · PC thử nghiệm";
+                    java.lang.reflect.Field selectedName=MainActivity.class.getDeclaredField("selectedName");selectedName.setAccessible(true);selectedName.set(activity,"Minh Anh");
                     ConnectionService.conversations=new JSONArray().put(new JSONObject().put("id",ConnectionService.selected).put("name","Minh Anh").put("locked",false));
                     ConnectionService.messages=new JSONArray().put(message("OK",false)).put(message("Em nhận rồi 👍",true)).put(message("Ảnh và tệp sẽ đi qua PC bằng kênh mã hóa riêng.",false));
                     Method build=MainActivity.class.getDeclaredMethod("build");build.setAccessible(true);build.invoke(activity);activity.getWindow().getDecorView().measure(View.MeasureSpec.makeMeasureSpec(1080,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1920,View.MeasureSpec.EXACTLY));activity.getWindow().getDecorView().layout(0,0,1080,1920);snapshot(activity,"android-chat.png");
