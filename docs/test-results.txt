@@ -1,0 +1,98 @@
+PASS: Unique public-key identities
+PASS: DPAPI identity survives restart
+PASS: Both peers derive the same verification code
+PASS: Discovery/connection never grants trust
+PASS: Mapped IPv4 endpoint normalized for automatic reconnect
+PASS: Unpaired peer cannot receive chat
+PASS: Own display name updates on an authenticated connection
+PASS: Local alias survives remote rename and never changes the remote profile
+PASS: Alias persists on disk
+PASS: Clearing alias restores latest advertised name
+PASS: Invalid display name cannot replace profile
+PASS: UTF-8 chat over mutual TLS with durable ACK
+PASS: Incoming text increments unread, outgoing text does not
+PASS: Read receipt
+PASS: Reading a conversation clears unread count
+PASS: Replay is idempotent
+PASS: Replay cannot resurrect unread badges
+PASS: Reactions sync without increasing unread message counts
+PASS: Changing and removing own reaction propagates
+PASS: Stale replay cannot resurrect a removed reaction
+PASS: File requires explicit acceptance
+PASS: File offer counts as an unread message
+PASS: Reading an attachment preserves its transfer state
+PASS: Chunk transfer resumes from partial file and verifies SHA-256
+PASS: Transfer completion does not make an already seen attachment unread
+PASS: Zero-byte attachment
+PASS: Corrupt partial content rejected
+PASS: Retry after integrity failure succeeds
+PASS: Decline attachment propagates to sender
+PASS: Three-peer group membership and direct fan-out
+PASS: Group messages contribute once to each recipient's unread count
+PASS: Group reactions preserve each authenticated actor
+PASS: Quoted reply references the original message on remote peers
+PASS: Cross-conversation quoting is rejected
+PASS: Path traversal filenames sanitized
+PASS: Public Internet targets rejected
+PASS: Null fields rejected before discovery/handshake processing
+PASS: Oversized network frame rejected before allocation
+INFO A: Chưa kết nối được: The remote certificate was rejected by the provided RemoteCertificateValidationCallback.
+PASS: Pinned peer ID rejects impostor certificate
+PASS: Password-protected identity export/import
+PASS: Wrong backup password rejected
+PASS: Offline text persists in outbox
+PASS: Reconnect at new endpoint preserves identity and delivers queue
+INFO A: Kết nối tạm ngắt; tin đang chờ sẽ được thử lại.
+PASS: Search persisted conversation
+PASS: Conversation reset removes history/media and retains tombstones
+PASS: Deleted history is not resurrected by remote replay
+PASS: New messages work after local history reset
+PASS: Workspace owner bound to Windows SID and DPAPI proof
+PASS: Reset requires exact workspace-specific phrase before Hello
+PASS: Different Windows owner cannot request destructive reset
+PASS: Owner proof cannot be moved to another workspace ID
+PASS: AES-GCM payload encryption roundtrip
+PASS: Modified ciphertext fails authentication
+PASS: Plaintext chat absent from SQLite file
+PASS: History cannot be read without unlocked vault
+PASS: Separate conversation password verification
+PASS: Conversation locks persist across app restart
+PASS: Wrong workspace password denied
+PASS: Old password revoked after change
+PASS: Password change preserves encrypted history
+PASS: Private network key also requires workspace password
+PASS: Encrypted workspace exchanges real peer messages bidirectionally
+PASS: Conversation lock can be removed after authorization
+PASS: Name search finds a friend's peer without leaking aliases or granting trust
+PASS: Shared contact carries public name, endpoint and pinned identity
+PASS: A shared contact still requires explicit pairing
+PASS: Shared contact rejects Internet endpoints
+PASS: Idle and do-not-disturb presence propagate over authenticated connections
+PASS: Self-destruct refuses peers that do not advertise timer support
+PASS: Unread self-destruct message has no running timer
+PASS: Reading starts the same deadline on both peers
+PASS: Turning off self-destruct affects new messages only
+PASS: First group reader starts expiry even on a member that has not read yet
+PASS: Expiry removes messages and app-owned media while preserving original source files
+PASS: Expired tombstones prevent old messages returning
+PASS: Expiry receipts retain no deleted text payload
+PASS: Unread total includes all history, image and video offers
+PASS: Conversation badges count only their own incoming messages
+PASS: Mark read covers more than 300 messages and preserves other conversations
+PASS: Unread count persists across reopening the database
+PASS: History deletion removes unread and tombstones reject replay
+PASS: Upgrade restores legacy unread without recounting already seen files
+PASS: Unread migration runs once and does not resurrect read history
+PASS: Common emoticons convert to Unicode emoji
+PASS: Auto replacement preserves URLs, paths and code
+PASS: Auto replacement waits for a delimiter or sending
+PASS: Existing emoji and Vietnamese remain unchanged
+PASS: Message toasts are disabled by default
+PASS: Updater accepts only a newer stable release
+PASS: Downloaded update size and SHA-256 match GitHub metadata
+PASS: Update package extracts expected files
+PASS: Checksum mismatch rejects update and cleans partial files
+PASS: Updater rejects release assets outside the configured GitHub repository
+PASS: Zip traversal is rejected before extracting any file
+
+94 checks passed. Test data: isolated QA workspace

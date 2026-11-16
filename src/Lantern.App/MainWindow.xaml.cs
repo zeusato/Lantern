@@ -1,0 +1,817 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using Lantern.Core;
+using Microsoft.Win32;
+
+namespace Lantern.App;
+
+public sealed record ContactRow(string Id, string Name, string Initials, string Subtitle, bool IsGroup, int Unread = 0, string Presence = "offline")
+{
+    public string UnreadLabel => Unread > 99 ? "99+" : Unread.ToString();
+    public Visibility UnreadVisibility => Unread > 0 ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility PresenceVisibility => IsGroup ? Visibility.Collapsed : Visibility.Visible;
+    public string PresenceColor => Presence switch { "online" => "#20A464", "idle" => "#DCA822", "dnd" => "#D94A53", _ => "#8D98A0" };
+    public string PresenceLabel => Presence switch { "online" => "Đang online", "idle" => "Vắng mặt · 15 phút", "dnd" => "Không làm phiền", _ => "Offline" };
+}
+
+public partial class MainWindow : Window
+{
+    private readonly Identity identity;
+    private readonly LocalStore store;
+    private readonly PeerNode node;
+    private readonly DispatcherTimer refreshTimer;
+    private readonly DispatcherTimer sessionTimer;
+    private readonly DispatcherTimer updateTimer;
+    private readonly UpdateController updates = new();
+    private int sessionTicks;
+    private readonly Dictionary<string, (TextBlock Label, DateTimeOffset Deadline)> expiryLabels = [];
+    private TrayIcon? tray;
+    private readonly Dictionary<string, (ProgressBar Bar, TextBlock Label)> progress = [];
+    private readonly Dictionary<string, string> drafts = [];
+    private readonly Dictionary<string, string> replyDrafts = [];
+    private string selectedId = "";
+    private string renderKey = "";
+    private bool refreshPending, refreshing, closing, detailsVisible = true;
+    private int messageLimit = 150;
+    private bool markingRead;
+    private bool replaceEmoticons;
+    private bool readAgain;
+    private System.Windows.Controls.Primitives.Popup? emojiPopup;
+    private readonly List<MediaElement> players = [];
+    private readonly List<Window> mediaWindows = [];
+    private readonly HashSet<string> unlockedConversations = [];
+    private bool appLocking;
+    private bool ConversationProtected => selectedId.Length > 0 && App.Vault.IsConversationLocked(selectedId) && !unlockedConversations.Contains(selectedId);
+    private readonly CancellationTokenSource uiLifetime = new();
+    public MainWindow()
+    {
+        InitializeComponent();
+        identity = new Identity(App.DataDirectory, App.Settings.Name, App.Vault);
+        store = new LocalStore(App.DataDirectory, App.Vault); node = new PeerNode(identity, store);
+        node.Changed += QueueRefresh;
+        node.MessageReceived += message => Dispatcher.BeginInvoke(() => NotifyMessage(message));
+        node.Notice += message => Dispatcher.BeginInvoke(() => ShowToast(message));
+        node.TransferProgress += update => Dispatcher.BeginInvoke(() =>
+        {
+            if (!progress.TryGetValue(update.MessageId, out var view)) return;
+            view.Bar.Value = update.Total == 0 ? 100 : update.Bytes * 100d / update.Total;
+            view.Label.Text = $"{FormatBytes(update.Bytes)} / {FormatBytes(update.Total)}";
+        });
+        refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+        refreshTimer.Tick += (_, _) => { if (refreshPending && !closing) { refreshPending = false; Refresh(); } };
+        refreshTimer.Start();
+        sessionTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        sessionTimer.Tick += async (_, _) => { foreach (var view in expiryLabels.Values) view.Label.Text = "Tự hủy sau " + Duration(Math.Max(0, (int)Math.Ceiling((view.Deadline - DateTimeOffset.UtcNow).TotalSeconds))); if (++sessionTicks % 30 == 0 && !closing) await UpdatePresence(); };
+        sessionTimer.Start();
+        updateTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(6) }; updateTimer.Tick += async (_, _) => { if (App.Settings.AutoUpdates) await updates.CheckAsync(uiLifetime.Token); }; updateTimer.Start();
+        updates.Ready += () => Dispatcher.BeginInvoke(() => { UpdateButton.ToolTip = updates.Status; UpdateButton.SetResourceReference(Control.BackgroundProperty, "AccentSoftBrush"); ShowToast(updates.Status); tray?.ShowMessage("", "Lantern · Có bản cập nhật", "Đã tải bản mới. Mở mục Cập nhật để cài và khởi động lại."); });
+        PreviewKeyDown += WindowKeyDown;
+        CommandManager.AddPreviewExecutedHandler(Composer, ComposerPaste);
+        CommandManager.AddPreviewCanExecuteHandler(Composer, ComposerCanPaste);
+        Activated += (_, _) => refreshPending = true;
+        StateChanged += (_, _) => refreshPending = true;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += SystemThemeChanged;
+    }
+    private void SystemThemeChanged(object sender, UserPreferenceChangedEventArgs e) => Dispatcher.BeginInvoke(() => { if (App.Settings.Theme == "system" || SystemParameters.HighContrast) { App.ApplyTheme(App.Settings.Theme); renderKey = ""; Refresh(); } });
+    private async void WindowLoaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!App.Settings.Onboarded)
+            {
+                var panel = new StackPanel();
+                panel.Children.Add(Paragraph("Chào mừng đến với Lantern", 27, true));
+                panel.Children.Add(Paragraph("Một nơi trò chuyện và chia sẻ cùng những người ở gần. Chỉ cần chung mạng LAN.", muted: true));
+                panel.Children.Add(Paragraph("Tên hiển thị", bold: true));
+                var name = new TextBox { Text = App.Settings.Name, MaxLength = 80 }; panel.Children.Add(name);
+                panel.Children.Add(Paragraph("Tên này xuất hiện khi người khác tìm máy. Danh tính riêng sẽ tự được tạo và bảo vệ bằng tài khoản Windows.", muted: true));
+                if (ShowDialog("Bắt đầu với Lantern", panel, "Bắt đầu", () => !string.IsNullOrWhiteSpace(name.Text)))
+                { App.Settings.Name = name.Text.Trim(); identity.Name = App.Settings.Name; App.Settings.Onboarded = true; App.SaveSettings(); }
+                else { Close(); return; }
+            }
+            await node.StartAsync(App.TestMode ? 0 : App.Settings.Port, !App.TestMode, App.TestMode);
+            await UpdatePresence();
+            MyInitials.Text = Initials(identity.Name);
+            NetworkStatus.Text = App.TestMode ? $"Kiểm thử cục bộ · 127.0.0.1:{node.Port}" : $"LAN · {string.Join(" · ", PeerNode.LocalAddresses())} · Cổng {node.Port}";
+            Title = $"Lantern · {identity.Name}";
+            tray = new TrayIcon(() => Dispatcher.BeginInvoke(RestoreFromTray), () => Dispatcher.BeginInvoke(LockApp), () => Dispatcher.BeginInvoke(Close), id => Dispatcher.BeginInvoke(() => OpenNotification(id)));
+            Refresh();
+            if (App.Settings.AutoUpdates && !App.TestMode) _ = updates.CheckAsync(uiLifetime.Token);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+    private void QueueRefresh() => Dispatcher.BeginInvoke(() => refreshPending = true);
+    private void RestoreFromTray()
+    {
+        if (closing) return;
+        Show(); if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        var dialog = OwnedWindows.Cast<Window>().LastOrDefault(w => w.IsVisible);
+        if (dialog is not null) { if (dialog.WindowState == WindowState.Minimized) dialog.WindowState = WindowState.Normal; dialog.Activate(); }
+        else Activate();
+        refreshPending = true;
+    }
+    private bool IsConversationVisible(string id) => !appLocking && IsActive && IsVisible && WindowState != WindowState.Minimized && selectedId == id && !ConversationProtected;
+    private void NotifyMessage(ChatMessage message)
+    {
+        if (closing || !App.Settings.MessageToasts || App.Settings.DoNotDisturb || IsConversationVisible(message.ConversationId)) return;
+        bool locked = appLocking || App.Vault.IsConversationLocked(message.ConversationId) && !unlockedConversations.Contains(message.ConversationId);
+        var name = node.FindPeer(message.SenderId)?.DisplayName ?? "Tin nhắn mới";
+        tray?.ShowMessage(message.ConversationId, locked ? "Lantern · Tin nhắn mới" : name,
+            locked ? "Có tin nhắn mới trong hội thoại được khóa." : message.Kind == "text" ? message.Text : message.Kind == "contact" ? "Đã chia sẻ một liên hệ" : "Đã gửi " + (message.Kind == "image" ? "ảnh: " : message.Kind == "video" ? "video: " : "tệp: ") + message.FileName);
+    }
+    private void OpenNotification(string id)
+    {
+        RestoreFromTray();
+        if (appLocking || !IsEnabled) return;
+        if (id.Length == 0) { UpdatesClick(this, new RoutedEventArgs()); return; }
+        ContactSearch.Clear(); Refresh(); ContactsList.SelectedItem = ContactsList.Items.OfType<ContactRow>().FirstOrDefault(row => row.Id == id);
+    }
+    private static string Initials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).TakeLast(2).Select(x => char.ToUpperInvariant(x[0])));
+    private static string FormatBytes(long bytes) => bytes < 1024 ? $"{bytes} B" : bytes < 1024 * 1024 ? $"{bytes / 1024d:0.#} KB" : bytes < 1024L * 1024 * 1024 ? $"{bytes / (1024d * 1024):0.#} MB" : $"{bytes / (1024d * 1024 * 1024):0.##} GB";
+    private static Brush Brush(string name) => (Brush)Application.Current.FindResource(name);
+    private static TextBlock Paragraph(string text, double size = 14, bool bold = false, bool muted = false)
+    {
+        var block = new TextBlock { Text = text, FontSize = size, FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14), LineHeight = size * 1.5 };
+        block.SetResourceReference(TextBlock.ForegroundProperty, muted ? "MutedBrush" : "TextBrush"); return block;
+    }
+    private void Refresh()
+    {
+        if (closing || !IsInitialized) return;
+        tray?.UpdateUnread(store.UnreadCount());
+        refreshing = true;
+        var unreadCounts = store.UnreadCounts();
+        var query = ContactSearch.Text.Trim();
+        var rows = node.Peers.Where(p => !p.Blocked).Select(p => new ContactRow(p.Id, p.DisplayName, p.Initials, !p.Trusted ? p.Connected ? "Chờ xác minh · " + p.Address : "Máy trong LAN · " + p.Address : p.Connected ? "Đang online · " + p.Address : "Offline · Tin nhắn sẽ chờ gửi", false)).Concat(store.Groups().Select(g => new ContactRow(g.Id, g.Name, "#", $"Nhóm · {g.Members.Count} thành viên", true))).Where(r => r.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        rows = rows.Select(row => { var peer = node.FindPeer(row.Id); var presence = peer is { Connected: true } ? peer.Presence : "offline"; var result = row with { Unread = unreadCounts.GetValueOrDefault(row.Id), Presence = presence }; return peer is null || !peer.Trusted ? result : result with { Subtitle = result.PresenceLabel + " · " + peer.Address }; }).ToList();
+        ContactsList.ItemsSource = rows; ContactsList.SelectedItem = rows.Find(r => r.Id == selectedId);
+        NoContacts.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        OnlineCount.Text = $"{node.Peers.Count(p => p.Connected && !p.Blocked)} online";
+        refreshing = false;
+        RefreshConversation();
+        MarkSelectedRead();
+    }
+    private async void MarkSelectedRead()
+    {
+        if (closing || !IsActive || !IsVisible || WindowState == WindowState.Minimized || selectedId.Length == 0 || ConversationProtected || appLocking) return;
+        if (markingRead) { readAgain = true; return; }
+        markingRead = true;
+        try { await node.MarkReadAsync(selectedId); } catch (Exception ex) when (ex is IOException or ObjectDisposedException) { }
+        finally { markingRead = false; if (!closing) { tray?.UpdateUnread(store.UnreadCount()); if (readAgain) { readAgain = false; refreshPending = true; } } }
+    }
+    private void RefreshConversation()
+    {
+        var peer = node.FindPeer(selectedId); var group = store.Groups().Find(g => g.Id == selectedId);
+        RenamePeerButton.Visibility = peer is null ? Visibility.Collapsed : Visibility.Visible;
+        ShareContactButton.Visibility = peer is { Trusted: true, Blocked: false } ? Visibility.Visible : Visibility.Collapsed;
+        var seconds = store.Policies().Find(p => p.Id == selectedId)?.DisappearSeconds ?? 0;
+        ExpirySettingsButton.Content = "Tin tự hủy · " + (seconds == 0 ? "Tắt" : Duration(seconds));
+        ExpirySettingsButton.IsEnabled = group is not null || peer is { Trusted: true, Blocked: false };
+        bool hasChat = peer is not null || group is not null;
+        bool allowed = group is not null || peer is { Trusted: true, Blocked: false };
+        ConversationPasswordButton.IsEnabled = hasChat;
+        LockConversationButton.Visibility = hasChat && App.Vault.IsConversationLocked(selectedId) && !ConversationProtected ? Visibility.Visible : Visibility.Collapsed;
+        HeaderLockButton.Visibility = LockConversationButton.Visibility;
+        Composer.IsEnabled = allowed; SendButton.IsEnabled = allowed; AttachButton.IsEnabled = allowed;
+        EmojiButton.IsEnabled = allowed && !ConversationProtected;
+        PairBanner.Visibility = peer is { Trusted: false, Blocked: false } ? Visibility.Visible : Visibility.Collapsed;
+        BlockButton.Visibility = peer is not null && peer.Trusted ? Visibility.Visible : Visibility.Collapsed;
+        ChatTitle.Text = group?.Name ?? peer?.DisplayName ?? "Không gian của bạn";
+        var presenceLabel = peer is null ? "" : new ContactRow("", "", "", "", false, Presence: peer.Connected ? peer.Presence : "offline").PresenceLabel;
+        ChatSubtitle.Text = group is not null ? $"Nhóm riêng · {group.Members.Count} thành viên" : peer is not null ? $"{presenceLabel} · {peer.Address}:{peer.Port}{(peer.Trusted ? " · Đã xác minh" : " · Chưa xác minh")}" : "Những cuộc trò chuyện ở ngay bên cạnh";
+        DetailName.Text = group?.Name ?? peer?.DisplayName ?? "Kết nối riêng tư";
+        DetailInitials.Text = group is not null ? "#" : peer?.Initials ?? "L";
+        DetailStatus.Text = group is not null ? string.Join("\n", group.Members.Select(id => id == identity.Id ? identity.Name + " (bạn)" : node.FindPeer(id)?.DisplayName ?? "Thành viên chưa ghép đôi")) : peer is null ? "Dữ liệu truyền trực tiếp giữa các máy trong mạng LAN." : $"{peer.Address}:{peer.Port}\nID: {peer.Id[..12]}…\n{(peer.Trusted ? "Đã xác minh danh tính" : "Cần đối chiếu mã xác minh")}";
+        MessageSearch.IsEnabled = !ConversationProtected;
+        RefreshReplyPreview();
+        if (ConversationProtected)
+        {
+            Composer.Clear();
+            Composer.IsEnabled = false; SendButton.IsEnabled = false; AttachButton.IsEnabled = false; PairBanner.Visibility = Visibility.Collapsed;
+            foreach (var player in players) player.Close(); players.Clear(); MessagesPanel.Children.Clear(); SharedFiles.Children.Clear(); SharedMedia.Children.Clear(); SharedLinks.Children.Clear(); expiryLabels.Clear(); progress.Clear();
+            WelcomePanel.Visibility = Visibility.Visible; WelcomeTitle.Text = "Cuộc trò chuyện\nđang được khóa."; WelcomeBody.Text = "Nhập mật khẩu riêng để xem nội dung\nvà tệp đã chia sẻ trong cuộc trò chuyện này."; WelcomeAction.Content = "Mở khóa hội thoại"; WelcomeAction.Visibility = Visibility.Visible; NoFiles.Visibility = Visibility.Collapsed; renderKey = "locked:" + selectedId; return;
+        }
+        WelcomeAction.Content = "Tìm người trong LAN";
+        var messages = hasChat ? store.Messages(selectedId, MessageSearch.Text, messageLimit) : [];
+        WelcomePanel.Visibility = messages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        WelcomeTitle.Text = hasChat ? "Bắt đầu bằng\nmột lời chào." : "Một lời chào,\nngay trong mạng của bạn.";
+        WelcomeBody.Text = hasChat ? "Gửi một tin nhắn, một tấm ảnh\nhay điều bạn muốn chia sẻ." : "Chat, gửi ảnh và chia sẻ tệp trực tiếp.\nMọi thứ ở lại trên máy của bạn.";
+        WelcomeAction.Visibility = hasChat ? Visibility.Collapsed : Visibility.Visible;
+        var key = selectedId + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + Codec.Encode(m.Reactions) + string.Join(',', m.Delivery.Values)));
+        if (key == renderKey) return;
+        renderKey = key;
+        var shouldScroll = ChatScroll.ScrollableHeight - ChatScroll.VerticalOffset < 80;
+        foreach (var player in players) player.Close(); players.Clear();
+        MessagesPanel.Children.Clear(); SharedFiles.Children.Clear(); SharedMedia.Children.Clear(); SharedLinks.Children.Clear(); expiryLabels.Clear(); progress.Clear();
+        if (messages.Count >= messageLimit)
+        {
+            var more = new Button { Content = "Xem tin nhắn trước đó", HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 18) };
+            more.Click += (_, _) => { messageLimit += 150; renderKey = ""; RefreshConversation(); }; MessagesPanel.Children.Add(more);
+        }
+        DateOnly? date = null;
+        foreach (var msg in messages)
+        {
+            var day = DateOnly.FromDateTime(msg.Time.LocalDateTime);
+            if (date != day)
+            {
+                date = day; var divider = Paragraph(day == DateOnly.FromDateTime(DateTime.Now) ? "HÔM NAY" : day.ToString("dd / MM / yyyy"), 10, true, true); divider.HorizontalAlignment = HorizontalAlignment.Center; divider.Margin = new Thickness(0, 10, 0, 22); MessagesPanel.Children.Add(divider);
+            }
+            MessagesPanel.Children.Add(MessageBubble(msg));
+        }
+        var history = store.Messages(selectedId, limit: int.MaxValue);
+        var shared = history.Where(m => m.Kind is "file" or "image" or "video").TakeLast(100).Reverse().ToList();
+        NoFiles.Visibility = shared.Any(m => m.Kind == "file") ? Visibility.Collapsed : Visibility.Visible;
+        NoMedia.Visibility = shared.Any(m => m.Kind is "image" or "video") ? Visibility.Collapsed : Visibility.Visible;
+        foreach (var file in shared)
+        {
+            var button = new Button { HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(10), ToolTip = file.FileName };
+            var content = new StackPanel(); var title = Paragraph(file.FileName, 12, true); title.MaxWidth = 175; title.TextTrimming = TextTrimming.CharacterEllipsis; title.TextWrapping = TextWrapping.NoWrap; title.Margin = new Thickness(0, 0, 0, 4); content.Children.Add(title);
+            var subtitle = Paragraph(FormatBytes(file.FileSize), 11, muted: true); subtitle.Margin = new Thickness(); content.Children.Add(subtitle); button.Content = content;
+            button.Click += (_, _) => { if (File.Exists(file.FilePath)) OpenAttachment(file); else GoToMessage(file.Id); }; (file.Kind == "file" ? SharedFiles : SharedMedia).Children.Add(button);
+        }
+        var links = history.Where(m => m.Kind == "text").SelectMany(m => System.Text.RegularExpressions.Regex.Matches(m.Text, @"https?://[^\s<>]+", System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(200)).Select(match => match.Value.TrimEnd('.', ',', '!', '?', ')', ']'))).Distinct().TakeLast(100).Reverse().ToList();
+        NoLinks.Visibility = links.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var link in links) { var button = new Button { Content = new TextBlock { Text = link, TextWrapping = TextWrapping.Wrap, MaxWidth = 215 }, HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 8), ToolTip = link }; button.Click += (_, _) => { if (Uri.TryCreate(link, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http") Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); }; SharedLinks.Children.Add(button); }
+        if (shouldScroll) Dispatcher.BeginInvoke(() => ChatScroll.ScrollToEnd(), DispatcherPriority.Loaded);
+    }
+    private FrameworkElement MessageBubble(ChatMessage msg)
+    {
+        var outer = new StackPanel { HorizontalAlignment = msg.Outgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left, Margin = new Thickness(msg.Outgoing ? 30 : 0, 0, msg.Outgoing ? 0 : 30, 18), MaxWidth = Math.Max(280, Math.Min(560, ActualWidth - (DetailsColumn.Width.Value > 0 ? 700 : 450))) };
+        if (!msg.Outgoing && msg.GroupId.Length > 0) { var author = Paragraph(node.FindPeer(msg.SenderId)?.DisplayName ?? msg.SenderName, 11, true, true); author.Margin = new Thickness(4, 0, 0, 5); outer.Children.Add(author); }
+        var bubble = new Border { CornerRadius = new CornerRadius(14, 14, msg.Outgoing ? 4 : 14, msg.Outgoing ? 14 : 4), Padding = new Thickness(15, 11, 15, 11), BorderThickness = new Thickness(msg.Outgoing ? 0 : 1) };
+        bubble.SetResourceReference(Border.BackgroundProperty, msg.Outgoing ? "OwnBrush" : "SurfaceBrush"); bubble.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
+        var content = new StackPanel(); bubble.Child = content; outer.Children.Add(bubble);
+        outer.Tag = msg.Id;
+        if (msg.ReplyToId.Length > 0)
+        {
+            var original = store.Message(msg.ReplyToId);
+            if (original?.ConversationId != msg.ConversationId) original = null;
+            var quoted = new Button { Content = new TextBlock { Text = original is null ? "Tin nhắn gốc không còn trên máy này" : Author(original) + "\n" + Snippet(original), TextWrapping = TextWrapping.Wrap, MaxWidth = 400 }, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 10), ToolTip = "Đi tới tin nhắn gốc" };
+            quoted.Click += (_, _) => GoToMessage(msg.ReplyToId); content.Children.Add(quoted);
+        }
+        if (msg.Kind == "contact" && msg.Contact is { } card)
+        {
+            content.Children.Add(Paragraph("👤 " + (node.FindPeer(card.Id)?.DisplayName ?? card.Name), 16, true));
+            content.Children.Add(Paragraph($"{card.Address}:{card.Port}\nDanh tính: {card.Id[..12]}…", 11, muted: true));
+            var connect = new Button { Content = "Kết nối với liên hệ", HorizontalAlignment = HorizontalAlignment.Left };
+            connect.Click += async (_, _) => { try { if (card.Id == identity.Id) { ShowToast("Đây là liên hệ của bạn."); return; } await node.ConnectAsync(card.Address, card.Port, card.Id); ContactSearch.Clear(); Refresh(); ContactsList.SelectedItem = ContactsList.Items.OfType<ContactRow>().FirstOrDefault(r => r.Id == card.Id); ShowToast("Đối chiếu mã xác minh để tin cậy liên hệ mới."); } catch (Exception ex) { ShowError(ex); } }; content.Children.Add(connect);
+        }
+        else if (msg.Kind == "text")
+        {
+            var text = new TextBox { Text = msg.Text, IsReadOnly = true, IsReadOnlyCaretVisible = false, TextWrapping = TextWrapping.Wrap, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), MinHeight = 0, MinWidth = 30, FontSize = 14, VerticalContentAlignment = VerticalAlignment.Top };
+            text.SetResourceReference(Control.ForegroundProperty, "TextBrush"); content.Children.Add(text);
+        }
+        else
+        {
+            var available = File.Exists(msg.FilePath);
+            if (available && msg.Kind == "image")
+            {
+                try
+                {
+                    var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.DecodePixelWidth = 640; bitmap.UriSource = new Uri(msg.FilePath); bitmap.EndInit(); bitmap.Freeze();
+                    var image = new Image { Source = bitmap, MaxWidth = 380, MaxHeight = 280, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 0, 10), Cursor = Cursors.Hand };
+                    image.MouseLeftButtonUp += (_, _) => ShowImage(msg); content.Children.Add(image);
+                }
+                catch (Exception ex) when (ex is NotSupportedException or FileFormatException or IOException) { content.Children.Add(Paragraph("Định dạng ảnh này cần mở bằng ứng dụng khác.", 12, muted: true)); }
+            }
+            if (available && msg.Kind == "video") content.Children.Add(VideoPlayer(msg));
+            var name = Paragraph(msg.FileName, 13, true); name.Margin = new Thickness(0, 0, 0, 4); content.Children.Add(name);
+            var info = Paragraph(FormatBytes(msg.FileSize), 11, muted: true); info.Margin = new Thickness(0, 0, 0, 8); content.Children.Add(info);
+            var bar = new ProgressBar { Minimum = 0, Maximum = 100, Height = 4, MinWidth = 200, Value = available ? 100 : 0, Margin = new Thickness(0, 0, 0, 8) }; content.Children.Add(bar); progress[msg.Id] = (bar, info);
+            var buttons = new WrapPanel(); content.Children.Add(buttons);
+            if (available)
+            {
+                AddButton(buttons, "Mở", () => OpenAttachment(msg));
+                AddButton(buttons, "Lưu thành…", () => SaveAttachment(msg));
+            }
+            else if (!msg.Outgoing)
+            {
+                AddButton(buttons, msg.Status == "receiving" || File.Exists(msg.FilePath + ".part") ? "Tiếp tục tải" : "Nhận tệp", async () => { try { await node.AcceptFileAsync(msg.Id); } catch (Exception ex) { ShowError(ex); } });
+                AddButton(buttons, "Từ chối", async () => { try { await node.DeclineFileAsync(msg.Id); } catch (Exception ex) { ShowError(ex); } });
+            }
+            if (!string.IsNullOrEmpty(msg.Error)) content.Children.Add(Paragraph(msg.Error, 11, muted: true));
+        }
+        var footer = Paragraph(msg.Time.LocalDateTime.ToString("HH:mm") + "  ·  " + StatusText(msg), 10, muted: true); footer.HorizontalAlignment = msg.Outgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left; footer.Margin = new Thickness(4, 6, 4, 0); outer.Children.Add(footer);
+        var actions = new WrapPanel { Margin = new Thickness(0, 5, 0, 0) };
+        AddButton(actions, "↩ Trả lời", () => BeginReply(msg));
+        var react = new Button { Content = "☺", ToolTip = "Thả biểu cảm", Padding = new Thickness(9, 4, 9, 4), MinHeight = 30, Margin = new Thickness(0, 3, 6, 0) };
+        var menu = new ContextMenu();
+        foreach (var emoji in PeerNode.ReactionEmoji) { var item = new MenuItem { Header = emoji, FontSize = 20, FontFamily = new FontFamily("Segoe UI Emoji") }; item.Click += async (_, _) => await ToggleReaction(msg.Id, emoji); menu.Items.Add(item); }
+        react.Click += (_, _) => { menu.PlacementTarget = react; menu.IsOpen = true; }; actions.Children.Add(react);
+        foreach (var reaction in msg.Reactions.Where(r => r.Value.Length > 0).GroupBy(r => r.Value))
+        {
+            var emoji = reaction.Key; var mine = msg.Reactions.GetValueOrDefault(identity.Id) == emoji;
+            var count = new Button { Content = emoji + " " + reaction.Count(), FontFamily = new FontFamily("Segoe UI Emoji"), Padding = new Thickness(9, 4, 9, 4), MinHeight = 30, Margin = new Thickness(0, 3, 6, 0), ToolTip = string.Join(", ", reaction.Select(r => r.Key == identity.Id ? "Bạn" : node.FindPeer(r.Key)?.DisplayName ?? "Thành viên")) };
+            if (mine) count.SetResourceReference(Control.BackgroundProperty, "AccentSoftBrush");
+            count.Click += async (_, _) => await ToggleReaction(msg.Id, emoji); actions.Children.Add(count);
+        }
+        outer.Children.Add(actions);
+        if (msg.DisappearAfterSeconds > 0)
+        {
+            var expiry = Paragraph(msg.ExpiresAt is { } deadline ? "Tự hủy sau " + Duration(Math.Max(0, (int)Math.Ceiling((deadline - DateTimeOffset.UtcNow).TotalSeconds))) : "Tự hủy sau " + Duration(msg.DisappearAfterSeconds) + " kể từ lúc đọc", 10, muted: true);
+            expiry.Margin = new Thickness(4, 5, 0, 0); outer.Children.Add(expiry);
+            if (msg.ExpiresAt.HasValue) expiryLabels[msg.Id] = (expiry, msg.ExpiresAt.Value);
+        }
+        return outer;
+    }
+    private async Task ToggleReaction(string id, string emoji)
+    {
+        if (appLocking || ConversationProtected) return;
+        try { await node.ReactAsync(id, store.Message(id)?.Reactions.GetValueOrDefault(identity.Id) == emoji ? "" : emoji); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+    private string Author(ChatMessage message) => message.SenderId == identity.Id ? "Bạn" : node.FindPeer(message.SenderId)?.DisplayName ?? message.SenderName;
+    private static string Snippet(ChatMessage message)
+    {
+        var text = message.Kind == "text" ? message.Text : message.Kind == "contact" ? "👤 " + message.Contact?.Name : "📎 " + message.FileName;
+        text = text.Replace('\r', ' ').Replace('\n', ' '); return text.Length > 180 ? text[..180] + "…" : text;
+    }
+    private void BeginReply(ChatMessage message)
+    {
+        if (appLocking || ConversationProtected || message.ConversationId != selectedId) return;
+        replyDrafts[selectedId] = message.Id; RefreshReplyPreview(); Composer.Focus();
+    }
+    private void RefreshReplyPreview()
+    {
+        var id = replyDrafts.GetValueOrDefault(selectedId, "");
+        var message = id.Length > 0 ? store.Message(id) : null;
+        if (message is null) replyDrafts.Remove(selectedId);
+        ReplyBanner.Visibility = message is not null && !ConversationProtected && !appLocking ? Visibility.Visible : Visibility.Collapsed;
+        ReplyPreview.Text = message is null ? "" : "Trả lời " + Author(message) + " · " + Snippet(message);
+    }
+    private void CancelReplyClick(object sender, RoutedEventArgs e) { replyDrafts.Remove(selectedId); RefreshReplyPreview(); Composer.Focus(); }
+    private void GoToMessage(string id)
+    {
+        if (appLocking || ConversationProtected) return;
+        if (store.Message(id)?.ConversationId != selectedId) { ShowToast("Tin nhắn gốc không còn trong hội thoại này."); return; }
+        MessageSearch.Clear(); messageLimit = Math.Max(messageLimit, store.Messages(selectedId, limit: int.MaxValue).Count); renderKey = ""; RefreshConversation();
+        Dispatcher.BeginInvoke(() => MessagesPanel.Children.OfType<FrameworkElement>().FirstOrDefault(element => element.Tag as string == id)?.BringIntoView(), DispatcherPriority.Loaded);
+    }
+    private static string StatusText(ChatMessage msg)
+    {
+        if (msg.Outgoing && msg.Delivery.Count > 1) return $"{msg.Delivery.Values.Count(s => s is "delivered" or "read")}/{msg.Delivery.Count} đã nhận";
+        return msg.Status switch { "queued" => "Chờ gửi", "delivered" => msg.Outgoing ? "Đã nhận" : "Đã đến", "read" => "Đã đọc", "offered" => msg.Outgoing ? "Chờ nhận tệp" : "Tệp chờ tải", "receiving" => "Đang tải · có thể tiếp tục", "received" => "Đã lưu trên máy", "declined" => "Đã từ chối", "error" => "Cần tải lại", _ => "Đang gửi" };
+    }
+    private static void AddButton(Panel panel, string label, Action action)
+    {
+        var button = new Button { Content = label, Margin = new Thickness(0, 3, 7, 0), Padding = new Thickness(10, 6, 10, 6), MinHeight = 32, FontSize = 12 };
+        button.Click += (_, _) => action(); panel.Children.Add(button);
+    }
+    private FrameworkElement VideoPlayer(ChatMessage msg)
+    {
+        var stack = new StackPanel { Width = 300, Margin = new Thickness(0, 0, 0, 10) };
+        var video = new MediaElement { Source = new Uri(msg.FilePath), Width = 300, Height = 180, LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Close, Stretch = Stretch.Uniform };
+        players.Add(video); stack.Children.Add(new Border { Background = Brushes.Black, Child = video, CornerRadius = new CornerRadius(6) });
+        var controls = new WrapPanel(); bool playing = false;
+        var play = new Button { Content = "▶ Phát", FontSize = 12, Padding = new Thickness(10, 4, 10, 4), MinHeight = 30, Margin = new Thickness(0, 6, 8, 0) };
+        play.Click += (_, _) => { if (playing) video.Pause(); else video.Play(); playing = !playing; play.Content = playing ? "Ⅱ Tạm dừng" : "▶ Phát"; };
+        video.MediaEnded += (_, _) => { playing = false; video.Position = TimeSpan.Zero; video.Stop(); play.Content = "▶ Phát lại"; };
+        video.MediaFailed += (_, _) => { playing = false; play.Content = "Không phát được"; ShowToast("Windows chưa hỗ trợ codec của video này. Bấm Mở để dùng ứng dụng khác."); };
+        controls.Children.Add(play);
+        var seek = new Slider { Minimum = 0, Maximum = 100, Width = 160, Margin = new Thickness(0, 11, 0, 0), ToolTip = "Tua video" };
+        System.Windows.Automation.AutomationProperties.SetName(seek, "Tua video");
+        seek.PreviewMouseLeftButtonUp += (_, _) => { if (video.NaturalDuration.HasTimeSpan) video.Position = TimeSpan.FromMilliseconds(video.NaturalDuration.TimeSpan.TotalMilliseconds * seek.Value / 100); };
+        seek.PreviewKeyUp += (_, _) => { if (video.NaturalDuration.HasTimeSpan) video.Position = TimeSpan.FromMilliseconds(video.NaturalDuration.TimeSpan.TotalMilliseconds * seek.Value / 100); };
+        controls.Children.Add(seek); stack.Children.Add(controls); return stack;
+    }
+    private void ShowImage(ChatMessage msg)
+    {
+        var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.UriSource = new Uri(msg.FilePath); bitmap.EndInit(); bitmap.Freeze();
+        var image = new Image { Source = bitmap, Stretch = Stretch.Uniform, Margin = new Thickness(16) };
+        var window = new Window { Title = msg.FileName, Owner = this, Width = 900, Height = 650, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = image };
+        mediaWindows.Add(window); window.Closed += (_, _) => mediaWindows.Remove(window);
+        window.Show();
+    }
+    private void OpenAttachment(ChatMessage msg)
+    {
+        try
+        {
+            var ext = Path.GetExtension(msg.FilePath).ToLowerInvariant();
+            if (new[] { ".exe", ".com", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".msi", ".scr", ".lnk", ".hta", ".reg", ".url" }.Contains(ext))
+            { ShowToast("Với tệp thực thi, hãy lưu ra thư mục và kiểm tra trước khi mở."); SaveAttachment(msg); return; }
+            Process.Start(new ProcessStartInfo(msg.FilePath) { UseShellExecute = true });
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+    private void SaveAttachment(ChatMessage msg)
+    {
+        var dialog = new SaveFileDialog { FileName = msg.FileName, Filter = "Tất cả tệp|*.*" };
+        if (dialog.ShowDialog(this) != true) return;
+        try { if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(msg.FilePath), StringComparison.OrdinalIgnoreCase)) File.Copy(msg.FilePath, dialog.FileName, true); ShowToast("Đã lưu tệp."); } catch (Exception ex) { ShowError(ex); }
+    }
+    private void ContactSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (refreshing || ContactsList.SelectedItem is not ContactRow row) return;
+        if (selectedId.Length > 0) drafts[selectedId] = Composer.Text;
+        if (selectedId != row.Id) { CloseMediaViews(); if (emojiPopup is not null) emojiPopup.IsOpen = false; }
+        selectedId = row.Id; Composer.Text = drafts.GetValueOrDefault(selectedId, ""); MessageSearch.Clear(); messageLimit = 150; renderKey = ""; RefreshConversation(); ChatScroll.ScrollToEnd();
+        if (ConversationProtected) TryUnlockConversation();
+        MarkSelectedRead();
+    }
+    private void ContactSearchChanged(object sender, TextChangedEventArgs e) { if (node is not null) Refresh(); }
+    private void MessageSearchChanged(object sender, TextChangedEventArgs e) { if (node is not null) { renderKey = ""; RefreshConversation(); } }
+    private async void SendClick(object sender, RoutedEventArgs e) => await SendMessage();
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(Composer.Text) || selectedId.Length == 0) return;
+        var text = App.Settings.AutoEmoticons ? Emoticons.Replace(Composer.Text) : Composer.Text;
+        try { await node.SendTextAsync(selectedId, text, replyDrafts.GetValueOrDefault(selectedId, "")); Composer.Clear(); drafts[selectedId] = ""; replyDrafts.Remove(selectedId); RefreshReplyPreview(); ChatScroll.ScrollToEnd(); Composer.Focus(); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+    private async void ComposerKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && Keyboard.Modifiers != ModifierKeys.Shift) { e.Handled = true; await SendMessage(); }
+    }
+    private void ComposerCanPaste(object sender, CanExecuteRoutedEventArgs e)
+    {
+        if (e.Command != ApplicationCommands.Paste || !Composer.IsEnabled || appLocking || ConversationProtected) return;
+        try { if (Clipboard.ContainsImage()) { e.CanExecute = true; e.Handled = true; } } catch (System.Runtime.InteropServices.ExternalException) { }
+    }
+    private async void ComposerPaste(object sender, ExecutedRoutedEventArgs e)
+    {
+        if (e.Command != ApplicationCommands.Paste || !Composer.IsEnabled || appLocking || ConversationProtected) return;
+        try
+        {
+            if (!Clipboard.ContainsImage()) return;
+            e.Handled = true; var bitmap = Clipboard.GetImage(); if (bitmap is null) return;
+            await SendClipboardImage(bitmap);
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+    private async Task SendClipboardImage(BitmapSource bitmap)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "Lantern-clipboard-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(directory);
+        var file = Path.Combine(directory, "Anh-dan-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png");
+        try
+        {
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using (var stream = new FileStream(file, FileMode.CreateNew)) encoder.Save(stream);
+            await ShareFiles([file]);
+        }
+        finally { File.Delete(file); Directory.Delete(directory); }
+    }
+    private void ComposerTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (replaceEmoticons || e.UndoAction is UndoAction.Undo or UndoAction.Redo || !App.Settings.AutoEmoticons || Composer is null) return;
+        var original = Composer.Text;
+        var updated = Emoticons.Replace(original, false);
+        if (original == updated) return;
+        var caret = Composer.SelectionStart;
+        var selected = Composer.SelectionLength;
+        var before = Emoticons.Replace(original[..caret], false).Length;
+        var through = Emoticons.Replace(original[..(caret + selected)], false).Length;
+        replaceEmoticons = true;
+        try { Composer.BeginChange(); Composer.Text = updated; Composer.Select(Math.Min(before, updated.Length), Math.Min(Math.Max(0, through - before), Math.Max(0, updated.Length - before))); }
+        finally { Composer.EndChange(); replaceEmoticons = false; }
+    }
+    private void EmojiClick(object sender, RoutedEventArgs e)
+    {
+        if (!Composer.IsEnabled) return;
+        var panel = new StackPanel { Width = 330 };
+        panel.Children.Add(Paragraph("Biểu cảm", 21, true));
+        if (emojiPopup is not null) emojiPopup.IsOpen = false;
+        var popup = new System.Windows.Controls.Primitives.Popup { PlacementTarget = EmojiButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Top, StaysOpen = false, AllowsTransparency = true }; emojiPopup = popup;
+        var border = new Border { Child = panel, Padding = new Thickness(18), CornerRadius = new CornerRadius(16), BorderThickness = new Thickness(1) };
+        border.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush"); border.SetResourceReference(Border.BorderBrushProperty, "LineBrush"); popup.Child = border;
+        var faces = new WrapPanel(); panel.Children.Add(faces);
+        foreach (var face in new[] { "😀", "😃", "😄", "😁", "😂", "🤣", "🙂", "😉", "😊", "😍", "🥰", "😘", "😎", "🤔", "😮", "😛", "😢", "😭", "😡", "🥳", "👍", "👎", "👏", "🙏", "👋", "💪", "❤️", "💔", "🔥", "🎉", "✅", "✨" })
+        {
+            var button = new Button { Content = face, FontFamily = new FontFamily("Segoe UI Emoji"), FontSize = 24, Width = 41, Height = 42, Padding = new Thickness(0), ToolTip = face };
+            button.Click += (_, _) => { var at = Composer.SelectionStart; Composer.SelectedText = face; Composer.CaretIndex = at + face.Length; popup.IsOpen = false; Composer.Focus(); }; faces.Children.Add(button);
+        }
+        var auto = new CheckBox { Content = "Tự đổi ký hiệu thành emoji", IsChecked = App.Settings.AutoEmoticons, Margin = new Thickness(0, 14, 0, 8) };
+        auto.SetResourceReference(Control.ForegroundProperty, "TextBrush");
+        auto.Click += (_, _) => { App.Settings.AutoEmoticons = auto.IsChecked == true; App.SaveSettings(); }; panel.Children.Add(auto);
+        panel.Children.Add(Paragraph(":) → 🙂   :D → 😃   ;) → 😉   <3 → ❤️", 12, muted: true));
+        popup.IsOpen = true;
+    }
+    private void WindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F) { if (ActualWidth < 1150) CompactDetails(); else { detailsVisible = true; UpdateLayoutWidths(); MessageSearch.Focus(); } e.Handled = true; }
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.O) { AttachClick(this, new RoutedEventArgs()); e.Handled = true; }
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.L) { LockApp(); e.Handled = true; }
+        if (e.Key == Key.Escape) { MessageSearch.Clear(); Composer.Focus(); }
+    }
+    private async void AttachClick(object sender, RoutedEventArgs e)
+    {
+        if (!AttachButton.IsEnabled) return;
+        var dialog = new OpenFileDialog { Multiselect = true, Title = "Chọn ảnh, video hoặc tệp để chia sẻ" };
+        if (dialog.ShowDialog(this) == true) await ShareFiles(dialog.FileNames);
+    }
+    private async Task ShareFiles(IEnumerable<string> files)
+    {
+        var target = selectedId; AttachButton.IsEnabled = false;
+        try { foreach (var path in files.Take(20)) { ShowToast("Đang chuẩn bị " + Path.GetFileName(path)); await node.OfferFileAsync(target, path, uiLifetime.Token); } ShowToast("Đã gửi lời mời nhận tệp."); }
+        catch (Exception ex) { ShowError(ex); }
+        finally { RefreshConversation(); }
+    }
+    private void FileDragOver(object sender, DragEventArgs e) { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) && AttachButton.IsEnabled ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; }
+    private async void FileDrop(object sender, DragEventArgs e) { if (AttachButton.IsEnabled && e.Data.GetData(DataFormats.FileDrop) is string[] files) await ShareFiles(files.Where(File.Exists)); }
+    private async void PairClick(object sender, RoutedEventArgs e)
+    {
+        var peer = node.FindPeer(selectedId); if (peer is null) return;
+        try
+        {
+            if (!peer.Connected) await node.ConnectAsync(peer.Address, peer.Port, peer.Id);
+            if (!node.IsConnected(peer.Id)) { ShowToast("Chưa kết nối được. Kiểm tra IP, cổng và firewall mạng riêng."); return; }
+            var panel = new StackPanel(); panel.Children.Add(Paragraph("Xác minh " + peer.Name, 23, true));
+            panel.Children.Add(Paragraph("Mở Xác minh trên cả hai máy và đối chiếu trực tiếp hoặc qua một kênh đã tin cậy. Chỉ xác nhận khi toàn bộ mã dưới đây giống nhau.", muted: true));
+            var code = new TextBox { Text = Identity.VerificationCode(identity.Id, peer.Id), IsReadOnly = true, FontFamily = new FontFamily("Consolas"), FontSize = 19, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 20) }; panel.Children.Add(code);
+            panel.Children.Add(Paragraph(peer.Address + ":" + peer.Port, muted: true));
+            if (ShowDialog("Ghép đôi an toàn", panel, "Mã giống nhau · Tin cậy máy này")) { await node.TrustAsync(peer.Id); ShowToast("Đã lưu danh tính. Máy bên kia cũng cần xác nhận mã."); Refresh(); }
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+    private async void DiscoverClick(object sender, RoutedEventArgs e)
+    {
+        if (ConversationProtected) { TryUnlockConversation(); return; }
+        try { ContactSearch.Clear(); await node.AnnounceAsync(); Refresh(); ShowToast("Đang tìm máy. Có thể kết nối bằng IP nếu mạng chặn tự tìm."); } catch (Exception ex) { ShowError(ex); }
+    }
+    private void ChatsClick(object sender, RoutedEventArgs e) { ContactSearch.Clear(); ContactsList.Focus(); }
+    private async void AddPeerClick(object sender, RoutedEventArgs e)
+    {
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Kết nối một máy trong LAN", 23, true)); panel.Children.Add(Paragraph("Xem IP và cổng ở thanh trạng thái Lantern trên máy bên kia.", muted: true));
+        var address = new TextBox { Text = "192.168.1.", MaxLength = 15 }; panel.Children.Add(Paragraph("Địa chỉ IP", bold: true)); panel.Children.Add(address);
+        var port = new TextBox { Text = "45853", Margin = new Thickness(0, 0, 0, 12), MaxLength = 5 }; panel.Children.Add(Paragraph("Cổng", bold: true)); panel.Children.Add(port);
+        if (!ShowDialog("Thêm máy", panel, "Kết nối")) return;
+        try { ShowToast("Đang kết nối…"); await node.ConnectAsync(address.Text.Trim(), int.Parse(port.Text)); Refresh(); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+    private async void NewGroupClick(object sender, RoutedEventArgs e)
+    {
+        var available = node.Peers.Where(p => p.Trusted && !p.Blocked).ToList();
+        if (available.Count < 2) { ShowToast("Cần ghép đôi với ít nhất 2 người để tạo nhóm."); return; }
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Một nhóm, cùng chia sẻ", 23, true));
+        var name = new TextBox { MaxLength = 64 }; panel.Children.Add(Paragraph("Tên nhóm", bold: true)); panel.Children.Add(name);
+        panel.Children.Add(Paragraph("Chọn thành viên. Các thành viên cần ghép đôi trực tiếp với nhau để gửi tin trong nhóm.", muted: true));
+        var choices = available.Select(p => new CheckBox { Content = p.DisplayName, Tag = p.Id, Margin = new Thickness(0, 5, 0, 5) }).ToList(); foreach (var choice in choices) panel.Children.Add(choice);
+        if (!ShowDialog("Tạo nhóm", panel, "Tạo nhóm")) return;
+        try { var group = await node.CreateGroupAsync(name.Text, choices.Where(c => c.IsChecked == true).Select(c => (string)c.Tag)); selectedId = group.Id; renderKey = ""; Refresh(); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+    private void ThemeClick(object sender, RoutedEventArgs e)
+    {
+        App.Settings.Theme = App.Settings.Theme == "dark" ? "light" : "dark"; App.ApplyTheme(App.Settings.Theme); App.SaveSettings(); renderKey = ""; Refresh();
+    }
+    private async void SettingsClick(object sender, RoutedEventArgs e)
+    {
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Hồ sơ của bạn", 25, true));
+        panel.Children.Add(Paragraph("Tên hiển thị", bold: true)); var name = new TextBox { Text = identity.Name, MaxLength = 80 }; panel.Children.Add(name);
+        panel.Children.Add(Paragraph("Tên mới được cập nhật tới các máy đã ghép đôi. Nếu người khác đã đặt tên riêng cho bạn, họ vẫn thấy tên riêng đó.", 12, muted: true));
+        var toasts = new CheckBox { Content = "Hiện thông báo Windows khi có tin nhắn mới", IsChecked = App.Settings.MessageToasts, Margin = new Thickness(0, 0, 0, 16) }; toasts.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(toasts);
+        panel.Children.Add(Paragraph("Giao diện", bold: true)); var theme = new ComboBox { ItemsSource = new[] { "Theo Windows", "Sáng", "Tối" }, SelectedIndex = App.Settings.Theme == "dark" ? 2 : App.Settings.Theme == "light" ? 1 : 0, Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 18) }; panel.Children.Add(theme);
+        panel.Children.Add(Paragraph("Danh tính cố định", bold: true)); panel.Children.Add(new TextBox { Text = identity.Fingerprint, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas"), FontSize = 12, Margin = new Thickness(0, 0, 0, 18) });
+        var actions = new WrapPanel(); AddButton(actions, "Sao lưu danh tính", ExportIdentity); AddButton(actions, "Khôi phục danh tính", ImportIdentity); panel.Children.Add(actions);
+        panel.Children.Add(Paragraph("Nội dung lịch sử được mã hóa bằng khóa của mật khẩu ứng dụng. Tệp ảnh/video đã lưu chưa mã hóa riêng trên ổ đĩa. Mật khẩu hội thoại là lớp khóa xem cục bộ, không đặt mật khẩu ở máy người khác.", 12, muted: true));
+        var changePassword = new Button { Content = "Đổi mật khẩu ứng dụng", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 12) }; changePassword.Click += (_, _) => ChangeAppPassword(); panel.Children.Add(changePassword);
+        var folder = new Button { Content = "Mở thư mục dữ liệu", HorizontalAlignment = HorizontalAlignment.Left }; folder.Click += (_, _) => Process.Start(new ProcessStartInfo(App.DataDirectory) { UseShellExecute = true }); panel.Children.Add(folder);
+        panel.Children.Add(Paragraph("Lantern " + UpdateController.CurrentVersion.ToString(3) + " · LAN IPv4 · TCP/TLS\nTối đa 32 thành viên/nhóm · Tệp tối đa 10 GB", 11, muted: true));
+        var updateSettings = new Button { Content = "Kiểm tra và cài đặt cập nhật", Margin = new Thickness(0, 0, 0, 16) }; updateSettings.Click += UpdatesClick; panel.Children.Add(updateSettings);
+        foreach (var blocked in node.Peers.Where(p => p.Blocked))
+        {
+            var unblock = new Button { Content = "Bỏ chặn: " + blocked.DisplayName, Margin = new Thickness(0, 3, 0, 3) };
+            unblock.Click += (_, _) => { node.Unblock(blocked.Id); unblock.IsEnabled = false; ShowToast("Đã bỏ chặn; cần xác minh lại máy này."); }; panel.Children.Add(unblock);
+        }
+        if (ShowDialog("Hồ sơ và cài đặt", panel, "Lưu thay đổi", () => !string.IsNullOrWhiteSpace(name.Text)))
+        {
+            try
+            {
+                App.Settings.Name = PeerNode.ValidateDisplayName(name.Text); App.Settings.MessageToasts = toasts.IsChecked == true; App.Settings.Theme = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" }; App.SaveSettings();
+                await node.UpdateDisplayNameAsync(App.Settings.Name);
+                App.ApplyTheme(App.Settings.Theme); MyInitials.Text = Initials(identity.Name); Title = "Lantern · " + identity.Name; renderKey = ""; Refresh(); ShowToast("Đã lưu hồ sơ và cập nhật tên hiển thị.");
+            }
+            catch (Exception ex) { ShowError(ex); }
+        }
+    }
+    private void RenamePeerClick(object sender, RoutedEventArgs e)
+    {
+        var peer = node.FindPeer(selectedId); if (peer is null) return;
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Tên riêng của đối tác", 24, true));
+        panel.Children.Add(Paragraph("Chỉ bạn thấy tên này. Tên gốc của đối tác: " + peer.Name, 13, muted: true));
+        panel.Children.Add(Paragraph("Tên hiển thị trên máy bạn", bold: true));
+        var alias = new TextBox { Text = peer.LocalAlias, MaxLength = 80 }; panel.Children.Add(alias);
+        panel.Children.Add(Paragraph("Để trống để dùng lại tên do đối tác đặt. Tên riêng sẽ được giữ cả khi đối tác đổi tên hoặc đổi IP.", 12, muted: true));
+        if (!ShowDialog("Đặt tên riêng", panel, "Lưu tên")) return;
+        try { node.SetPeerAlias(peer.Id, alias.Text); renderKey = ""; Refresh(); ShowToast("Đã lưu tên riêng trên máy này."); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+    private async void ShareContactClick(object sender, RoutedEventArgs e)
+    {
+        var contact = node.FindPeer(selectedId); if (contact is null) return;
+        var choices = node.Peers.Where(p => p.Trusted && !p.Blocked && p.Id != contact.Id).Select(p => new ContactRow(p.Id, p.DisplayName, p.Initials, p.Address, false)).ToList();
+        if (choices.Count == 0) { ShowToast("Cần ghép đôi với người nhận trước khi chia sẻ liên hệ."); return; }
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Chia sẻ liên hệ", 24, true)); panel.Children.Add(Paragraph("Gửi tên công khai, IP và danh tính của " + contact.Name + ". Người nhận vẫn phải xác minh ghép đôi. IP có thể đổi khi đối tác chuyển mạng.", 13, muted: true));
+        var target = new ComboBox { ItemsSource = choices, DisplayMemberPath = "Name", SelectedIndex = 0, Padding = new Thickness(12) }; panel.Children.Add(target);
+        if (!ShowDialog("Chia sẻ liên hệ", panel, "Gửi liên hệ")) return;
+        try { await node.ShareContactAsync(((ContactRow)target.SelectedItem).Id, contact.Id); ShowToast("Đã gửi liên hệ."); } catch (Exception ex) { ShowError(ex); }
+    }
+    private static string Duration(int seconds) => seconds < 60 ? seconds + " giây" : seconds < 3600 ? $"{seconds / 60}:{seconds % 60:00}" : seconds < 86400 ? seconds / 3600 + " giờ" : seconds / 86400 + " ngày";
+    private async void ExpirySettingsClick(object sender, RoutedEventArgs e)
+    {
+        if (selectedId.Length == 0 || !TryUnlockConversation()) return;
+        var id = selectedId;
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Tin nhắn tự hủy", 24, true));
+        panel.Children.Add(Paragraph("Áp dụng cho tin mới ở cả hai chiều. Bộ đếm bắt đầu khi người nhận đọc; trong nhóm là lượt đọc đầu tiên. Hết giờ, tin nhắn và tệp do Lantern lưu được xóa trên các máy. Bản tệp đã lưu ra ngoài không bị xóa.", 13, muted: true));
+        var options = new[] { 0, 10, 30, 60, 300, 3600, 86400, 604800 };
+        var current = store.Policies().Find(p => p.Id == id)?.DisappearSeconds ?? 0;
+        var choice = new ComboBox { ItemsSource = options.Select(seconds => seconds == 0 ? "Tắt" : Duration(seconds)), SelectedIndex = Math.Max(0, Array.IndexOf(options, current)), Padding = new Thickness(12) }; panel.Children.Add(choice);
+        if (!ShowDialog("Cài đặt tự hủy", panel, "Lưu thay đổi")) return;
+        try { await node.SetDisappearTimerAsync(id, options[choice.SelectedIndex]); ShowToast("Đã cập nhật chế độ tự hủy cho tin mới."); } catch (Exception ex) { ShowError(ex); }
+    }
+    private async Task UpdatePresence()
+    {
+        if (closing) return;
+        var presence = PresenceMonitor.Current(App.Settings.DoNotDisturb);
+        await node.SetPresenceAsync(presence);
+        var row = new ContactRow("", "", "", "", false, Presence: presence);
+        SelfPresenceDot.Fill = new SolidColorBrush((Color)ColorConverter.ConvertFromString(row.PresenceColor)); SelfPresenceButton.ToolTip = row.PresenceLabel + " · Bấm để đổi trạng thái";
+    }
+    private void PresenceClick(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu();
+        foreach (var (label, dnd) in new[] { ("Đang hoạt động · tự chuyển vắng mặt", false), ("Không làm phiền", true) })
+        {
+            var item = new MenuItem { Header = label, IsCheckable = true, IsChecked = App.Settings.DoNotDisturb == dnd };
+            item.Click += async (_, _) => { App.Settings.DoNotDisturb = dnd; App.SaveSettings(); await UpdatePresence(); }; menu.Items.Add(item);
+        }
+        menu.PlacementTarget = SelfPresenceButton; menu.IsOpen = true;
+    }
+    private void FindPeopleClick(object sender, RoutedEventArgs e)
+    {
+        var panel = new StackPanel { Margin = new Thickness(24) };
+        var window = new Window { Owner = this, Title = "Tìm người theo tên", Width = 560, Height = 570, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = panel };
+        panel.Children.Add(Paragraph("Tìm người trong mạng", 24, true));
+        panel.Children.Add(Paragraph("Tìm theo tên công khai trong danh bạ của các máy đang kết nối. Tên riêng chỉ có trên máy bạn. Nếu chưa có máy nào biết người cần tìm, hãy dùng IP hoặc nhờ chia sẻ liên hệ.", 12, muted: true));
+        var name = new TextBox { Text = ContactSearch.Text, MaxLength = 80, Margin = new Thickness(0, 0, 0, 12) }; panel.Children.Add(name);
+        var search = new Button { Content = "Tìm qua các máy đã ghép đôi", Margin = new Thickness(0, 0, 0, 12) }; panel.Children.Add(search);
+        var results = new StackPanel(); panel.Children.Add(new ScrollViewer { Content = results, Height = 280, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(uiLifetime.Token); window.Closed += (_, _) => cancel.Cancel();
+        search.Click += async (_, _) =>
+        {
+            search.IsEnabled = false; results.Children.Clear(); results.Children.Add(Paragraph("Đang hỏi các máy trong mạng…", 12, muted: true));
+            try
+            {
+                var contacts = await node.FindContactsAsync(name.Text, cancel.Token); results.Children.Clear();
+                if (contacts.Count == 0) results.Children.Add(Paragraph("Chưa tìm thấy. Thử tên khác, IP hoặc liên hệ được chia sẻ.", 13, muted: true));
+                foreach (var card in contacts)
+                {
+                    var button = new Button { Content = new TextBlock { Text = $"{card.Name}\n{card.Address}:{card.Port} · {card.Id[..12]}…", TextWrapping = TextWrapping.Wrap }, HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 9) };
+                    button.Click += async (_, _) => { button.IsEnabled = false; try { await node.ConnectAsync(card.Address, card.Port, card.Id); window.Close(); ContactSearch.Clear(); Refresh(); ContactsList.SelectedItem = ContactsList.Items.OfType<ContactRow>().FirstOrDefault(row => row.Id == card.Id); ShowToast("Đối chiếu mã để xác minh người dùng vừa tìm thấy."); } catch (Exception ex) { button.IsEnabled = true; ShowError(ex); } }; results.Children.Add(button);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { results.Children.Clear(); results.Children.Add(Paragraph(ex.Message, 13, muted: true)); }
+            finally { search.IsEnabled = true; }
+        };
+        name.KeyDown += (_, key) => { if (key.Key == Key.Enter && search.IsEnabled) { key.Handled = true; search.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); } };
+        window.ShowDialog();
+    }
+    private void UpdatesClick(object sender, RoutedEventArgs e)
+    {
+        if (appLocking) return;
+        var panel = new StackPanel { Margin = new Thickness(25) };
+        var window = new Window { Owner = this, Title = "Cập nhật Lantern", Width = 500, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = panel };
+        panel.Children.Add(Paragraph("Lantern " + UpdateController.CurrentVersion.ToString(3), 24, true));
+        var status = Paragraph(updates.Status, 13, muted: true); panel.Children.Add(status);
+        var auto = new CheckBox { Content = "Tự kiểm tra và tải bản mới (mỗi 6 giờ)", IsChecked = App.Settings.AutoUpdates, Margin = new Thickness(0, 0, 0, 18) }; auto.SetResourceReference(Control.ForegroundProperty, "TextBrush");
+        auto.Click += (_, _) => { App.Settings.AutoUpdates = auto.IsChecked == true; App.SaveSettings(); }; panel.Children.Add(auto);
+        panel.Children.Add(Paragraph("Gói tải từ GitHub zeusato/Lantern được kiểm tra SHA-256. Cài đặt sẽ đóng và mở lại app; workspace và lịch sử được giữ nguyên.", 12, muted: true));
+        var check = new Button { Content = "Kiểm tra và tải cập nhật", Margin = new Thickness(0, 0, 0, 10) }; panel.Children.Add(check);
+        var install = new Button { Content = "Cài đặt và khởi động lại", IsEnabled = updates.DownloadedArchive is not null }; panel.Children.Add(install);
+        void Changed() { status.Text = updates.Status; install.IsEnabled = updates.DownloadedArchive is not null; }
+        updates.Changed += Changed; window.Closed += (_, _) => updates.Changed -= Changed;
+        check.Click += async (_, _) => { check.IsEnabled = false; await updates.CheckAsync(uiLifetime.Token); check.IsEnabled = true; };
+        install.Click += async (_, _) => { install.IsEnabled = false; try { await updates.StartInstallAsync(uiLifetime.Token); window.Close(); Close(); } catch (Exception ex) { install.IsEnabled = true; MessageBox.Show(window, ex.Message, "Cập nhật Lantern"); } };
+        window.ShowDialog();
+    }
+    private void ExportIdentity()
+    {
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Bảo vệ bản sao lưu", 22, true)); panel.Children.Add(Paragraph("Đặt mật khẩu ít nhất 12 ký tự. Ai có tệp và mật khẩu này có thể dùng danh tính của bạn.", muted: true)); var password = new PasswordBox { Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 16) }; panel.Children.Add(password);
+        if (!ShowDialog("Sao lưu danh tính", panel, "Chọn nơi lưu", () => password.Password.Length >= 12)) return;
+        var dialog = new SaveFileDialog { Filter = "Danh tính Lantern|*.lanternkey", FileName = "Lantern-identity.lanternkey" };
+        if (dialog.ShowDialog(this) == true) { try { identity.Export(dialog.FileName, password.Password); ShowToast("Đã lưu bản sao danh tính có mật khẩu."); } catch (Exception ex) { ShowError(ex); } }
+    }
+    private void ImportIdentity()
+    {
+        var file = new OpenFileDialog { Filter = "Danh tính Lantern|*.lanternkey" }; if (file.ShowDialog(this) != true) return;
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Khôi phục danh tính", 22, true)); panel.Children.Add(Paragraph("Thao tác thay danh tính đang dùng. App sẽ đóng để nạp lại khóa khi mở lần sau. Hãy sao lưu danh tính hiện tại trước.", muted: true)); var password = new PasswordBox { Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 16) }; panel.Children.Add(password);
+        if (!ShowDialog("Khôi phục", panel, "Khôi phục và đóng app")) return;
+        try { Identity.Import(file.FileName, password.Password, App.DataDirectory, App.Vault); Close(); } catch (Exception ex) { ShowError(ex); }
+    }
+    private bool ShowDialog(string title, FrameworkElement content, string accept, Func<bool>? validate = null)
+    {
+        var window = new Window { Title = title, Owner = this, Width = 510, MaxHeight = Math.Max(400, SystemParameters.WorkArea.Height - 80), SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false };
+        var root = new DockPanel { Margin = new Thickness(28) };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 22, 0, 0) };
+        DockPanel.SetDock(buttons, Dock.Bottom); root.Children.Add(buttons);
+        var cancel = new Button { Content = "Để sau", IsCancel = true, Margin = new Thickness(0, 0, 10, 0) }; buttons.Children.Add(cancel);
+        var okay = new Button { Content = accept, IsDefault = true, Style = (Style)FindResource("AccentButton") }; okay.Click += (_, _) => { if (validate?.Invoke() == false) { MessageBox.Show(window, "Vui lòng kiểm tra thông tin vừa nhập.", "Lantern"); return; } window.DialogResult = true; }; buttons.Children.Add(okay);
+        root.Children.Add(new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = Math.Max(250, SystemParameters.WorkArea.Height - 220) }); window.Content = root;
+        return window.ShowDialog() == true;
+    }
+    private void BlockClick(object sender, RoutedEventArgs e)
+    {
+        var peer = node.FindPeer(selectedId); if (peer is null) return;
+        if (MessageBox.Show(this, $"Chặn kết nối từ {peer.DisplayName}? Lịch sử vẫn giữ trên máy.", "Chặn máy", MessageBoxButton.YesNo) == MessageBoxResult.Yes) { node.Block(selectedId); selectedId = ""; renderKey = ""; Refresh(); }
+    }
+    private void DetailsClick(object sender, RoutedEventArgs e) { if (ActualWidth < 1150) CompactDetails(); else { detailsVisible = !detailsVisible; UpdateLayoutWidths(); } }
+    private void CompactDetails()
+    {
+        var content = DetailsPanel.Child; if (content is null) return;
+        DetailsPanel.Child = null;
+        var window = new Window { Owner = this, Title = "Thông tin hội thoại", Width = 420, Height = Math.Min(760, SystemParameters.WorkArea.Height - 80), WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = content };
+        try { window.ShowDialog(); } finally { window.Content = null; DetailsPanel.Child = content; }
+    }
+    private void WindowSizeChanged(object sender, SizeChangedEventArgs e) { if (IsInitialized) UpdateLayoutWidths(); }
+    private void UpdateLayoutWidths()
+    {
+        DetailsColumn.Width = new GridLength(detailsVisible && ActualWidth >= 1150 ? 300 : 0); DetailsPanel.Visibility = DetailsColumn.Width.Value > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ContactsColumn.Width = new GridLength(ActualWidth < 950 ? 240 : 290);
+        foreach (var bubble in MessagesPanel.Children.OfType<StackPanel>()) bubble.MaxWidth = Math.Max(280, Math.Min(560, ActualWidth - (DetailsColumn.Width.Value > 0 ? 700 : 450)));
+    }
+    private void CloseMediaViews() { foreach (var window in mediaWindows.ToArray()) window.Close(); }
+    private void LockConversationClick(object sender, RoutedEventArgs e)
+    {
+        if (emojiPopup is not null) emojiPopup.IsOpen = false;
+        unlockedConversations.Remove(selectedId); Composer.Clear(); drafts.Remove(selectedId); replyDrafts.Remove(selectedId); CloseMediaViews(); renderKey = ""; RefreshConversation();
+    }
+    private bool TryUnlockConversation()
+    {
+        if (!ConversationProtected) return true;
+        var id = selectedId;
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Mở khóa hội thoại", 23, true)); panel.Children.Add(Paragraph("Mật khẩu này chỉ mở cuộc trò chuyện trên máy đang dùng.", 12, muted: true));
+        var password = new PasswordBox { Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 16) }; panel.Children.Add(password);
+        var forgot = new Button { Content = "Quên mật khẩu? Xóa lịch sử hội thoại", Margin = new Thickness(0, 0, 0, 12) }; forgot.Click += async (_, _) => { if (await ResetConversation(id)) { forgot.Content = "Đã xóa lịch sử. Bấm Mở khóa để bắt đầu lại."; forgot.IsEnabled = false; } }; panel.Children.Add(forgot);
+        if (!ShowDialog("Hội thoại được bảo vệ", panel, "Mở khóa", () => !App.Vault.IsConversationLocked(id) || App.Vault.VerifyConversation(id, password.Password))) return false;
+        password.Clear(); unlockedConversations.Add(id); Composer.Text = drafts.GetValueOrDefault(id, ""); renderKey = ""; RefreshConversation(); return true;
+    }
+    private void ConversationPasswordClick(object sender, RoutedEventArgs e)
+    {
+        if (selectedId.Length == 0 || !TryUnlockConversation()) return;
+        var id = selectedId; var panel = new StackPanel(); panel.Children.Add(Paragraph("Mật khẩu hội thoại", 23, true)); panel.Children.Add(Paragraph("Mở khóa một lần để dùng trong cả phiên. Bấm biểu tượng khóa ở đầu hội thoại để khóa lại; khóa hoặc thoát ứng dụng cũng khóa mọi hội thoại. Máy người bên kia không bị thay đổi.", 12, muted: true));
+        var first = new PasswordBox { Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 12) }; var second = new PasswordBox { Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 16) };
+        panel.Children.Add(Paragraph("Mật khẩu mới · ít nhất 8 ký tự", 12, true)); panel.Children.Add(first); panel.Children.Add(Paragraph("Nhập lại mật khẩu", 12, true)); panel.Children.Add(second);
+        bool removed = false;
+        if (App.Vault.IsConversationLocked(id))
+        {
+            var remove = new Button { Content = "Bỏ mật khẩu của hội thoại này" }; remove.Click += (_, _) => { App.Vault.RemoveConversationPassword(id); removed = true; remove.IsEnabled = false; ShowToast("Đã bỏ mật khẩu hội thoại."); }; panel.Children.Add(remove);
+        }
+        if (ShowDialog("Bảo vệ hội thoại", panel, "Lưu mật khẩu", () => removed || first.Password.Length >= 8 && first.Password == second.Password) && !removed)
+        { App.Vault.SetConversationPassword(id, first.Password); unlockedConversations.Add(id); ShowToast("Đã đặt mật khẩu riêng cho hội thoại."); }
+        first.Clear(); second.Clear(); renderKey = ""; RefreshConversation();
+    }
+    private async Task<bool> ResetConversation(string id)
+    {
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Xóa lịch sử để bắt đầu lại?", 23, true)); panel.Children.Add(Paragraph("Tin nhắn và tệp của hội thoại này trên máy sẽ bị xóa. Mật khẩu riêng được gỡ bỏ. Danh bạ và bản chat ở máy khác được giữ nguyên.", 13));
+        var expected = "XOA " + id[..8].ToUpperInvariant(); panel.Children.Add(Paragraph("Nhập đúng: " + expected, 15, true)); var phrase = new TextBox(); panel.Children.Add(phrase);
+        if (!ShowDialog("Xác nhận xóa hội thoại", panel, "Xác thực chủ máy", () => phrase.Text.Trim() == expected)) return false;
+        if (!await WindowsOwnerVerifier.VerifyAsync(this, App.Vault.Header, "Lantern: xác nhận xóa lịch sử và tệp của hội thoại " + id[..8])) return false;
+        if (closing) return false;
+        try { CloseMediaViews(); foreach (var player in players) player.Close(); players.Clear(); await node.DeleteConversationHistoryAsync(id); App.Vault.RemoveConversationPassword(id); drafts.Remove(id); if (id == selectedId) Composer.Clear(); unlockedConversations.Remove(id); renderKey = ""; RefreshConversation(); ShowToast("Đã xóa lịch sử hội thoại trên máy này."); return true; }
+        catch (Exception ex) { ShowError(ex); return false; }
+    }
+    private void ChangeAppPassword()
+    {
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Đổi mật khẩu ứng dụng", 23, true));
+        var current = new PasswordBox { Padding = new Thickness(12) }; var next = new PasswordBox { Padding = new Thickness(12) }; var repeat = new PasswordBox { Padding = new Thickness(12) };
+        panel.Children.Add(Paragraph("Mật khẩu hiện tại", 12, true)); panel.Children.Add(current); panel.Children.Add(Paragraph("Mật khẩu mới", 12, true)); panel.Children.Add(next); panel.Children.Add(Paragraph("Nhập lại mật khẩu mới", 12, true)); panel.Children.Add(repeat);
+        if (!ShowDialog("Đổi mật khẩu", panel, "Đổi mật khẩu", () => next.Password.Length >= 8 && next.Password == repeat.Password)) return;
+        try { App.Vault.ChangePassword(current.Password, next.Password); ShowToast("Đã đổi mật khẩu ứng dụng."); } catch (Exception ex) { ShowError(ex); }
+        current.Clear(); next.Clear(); repeat.Clear();
+    }
+    private void LockAppClick(object sender, RoutedEventArgs e) => LockApp();
+    private void LockApp()
+    {
+        if (appLocking || closing) return;
+        if (emojiPopup is not null) emojiPopup.IsOpen = false;
+        appLocking = true; CloseMediaViews(); foreach (var player in players) player.Close(); players.Clear();
+        var owned = OwnedWindows.Cast<Window>().ToArray(); foreach (var window in owned) window.Hide();
+        Shell.Visibility = Visibility.Hidden; Title = "Lantern · Đã khóa"; unlockedConversations.Clear();
+        var login = new LoginWindow(App.DataDirectory, false) { Owner = this, WindowStartupLocation = WindowStartupLocation.CenterOwner };
+        if (login.ShowDialog() != true) { Close(); return; }
+        login.UnlockedVault?.Dispose(); Shell.Visibility = Visibility.Visible; Title = "Lantern · " + identity.Name; appLocking = false;
+        foreach (var window in owned) window.Show(); renderKey = ""; Refresh();
+    }
+    private void ShowToast(string text) { if (!closing) ToastText.Text = text; }
+    private void ShowError(Exception ex)
+    {
+        if (ex is OperationCanceledException && closing) return;
+        ShowToast(ex.Message); if (!closing) MessageBox.Show(this, ex.Message, "Lantern", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+    private async void WindowClosing(object? sender, CancelEventArgs e)
+    {
+        if (closing) return;
+        e.Cancel = true; closing = true; refreshTimer.Stop(); uiLifetime.Cancel(); Microsoft.Win32.SystemEvents.UserPreferenceChanged -= SystemThemeChanged;
+        sessionTimer.Stop(); updateTimer.Stop(); updates.Dispose();
+        tray?.Dispose();
+        if (emojiPopup is not null) emojiPopup.IsOpen = false;
+        foreach (var player in players) player.Close();
+        await node.DisposeAsync(); store.Dispose(); identity.Dispose(); uiLifetime.Dispose(); Close();
+    }
+}
