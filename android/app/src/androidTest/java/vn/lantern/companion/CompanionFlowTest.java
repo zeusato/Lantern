@@ -12,6 +12,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import static org.junit.Assert.*;
 import static androidx.test.espresso.Espresso.*;
@@ -52,12 +53,19 @@ public class CompanionFlowTest {
             onView(withText("QA contact")).perform(click());onView(withText("Mở khóa hội thoại")).perform(click());
             onView(withContentDescription("Mật khẩu hội thoại")).perform(typeText("qa-password"));onView(withText("Mở khóa")).perform(pendingClick(false));
             until(()->ConnectionService.messages.length()>=30);
-            onView(withContentDescription("Soạn tin nhắn")).perform(typeText(text));long start=android.os.SystemClock.elapsedRealtime();onView(withContentDescription("Gửi tin nhắn")).perform(click());
-            AtomicBoolean cleared=new AtomicBoolean();until(()->{scenario.onActivity(activity->{try{java.lang.reflect.Field field=MainActivity.class.getDeclaredField("composer");field.setAccessible(true);cleared.set(((EditText)field.get(activity)).getText().length()==0);}catch(Exception e){throw new AssertionError(e);}});return cleared.get();});
-            assertEquals("Optimistic message must be present; status="+ConnectionService.status+" contacts="+ConnectionService.conversations+" messages="+ConnectionService.messages,1,countText(text));
-            assertTrue("Composer must clear immediately after a real touch with keyboard open",android.os.SystemClock.elapsedRealtime()-start<1500);
-            until(()->acknowledged(text));assertTrue("PC acknowledgement must arrive within 2 seconds during 8 MB preview",android.os.SystemClock.elapsedRealtime()-start<2000);
-            until(()->countText("Incoming immediately after send")==1);assertTrue("Incoming push must bypass image download and polling",android.os.SystemClock.elapsedRealtime()-start<2000);
+            onView(withContentDescription("Soạn tin nhắn")).perform(typeText(text));
+            // Measure Android's actual touch/clear/receive events, excluding Espresso's idle waits.
+            AtomicLong pressedAt=new AtomicLong(),renderedAt=new AtomicLong(),ackAt=new AtomicLong(),incomingAt=new AtomicLong();AtomicBoolean localPresent=new AtomicBoolean();
+            scenario.onActivity(activity->{try{
+                java.lang.reflect.Field field=MainActivity.class.getDeclaredField("composer");field.setAccessible(true);EditText editor=(EditText)field.get(activity);
+                editor.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int start,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){}public void afterTextChanged(android.text.Editable s){if(s.length()==0&&pressedAt.get()>0){localPresent.set(countText(text)==1);editor.post(()->renderedAt.compareAndSet(0,android.os.SystemClock.elapsedRealtime()));}}});
+                field=MainActivity.class.getDeclaredField("sendButton");field.setAccessible(true);((Button)field.get(activity)).setOnTouchListener((v,event)->{if(event.getAction()==android.view.MotionEvent.ACTION_UP)pressedAt.compareAndSet(0,android.os.SystemClock.elapsedRealtime());return false;});
+            }catch(Exception e){throw new AssertionError(e);}});
+            Thread observer=new Thread(()->{long deadline=android.os.SystemClock.elapsedRealtime()+15000;while(android.os.SystemClock.elapsedRealtime()<deadline&&(ackAt.get()==0||incomingAt.get()==0)){if(pressedAt.get()>0){if(acknowledged(text))ackAt.compareAndSet(0,android.os.SystemClock.elapsedRealtime());if(countText("Incoming immediately after send")==1)incomingAt.compareAndSet(0,android.os.SystemClock.elapsedRealtime());}try{Thread.sleep(5);}catch(InterruptedException e){return;}}});observer.setDaemon(true);observer.start();
+            onView(withContentDescription("Gửi tin nhắn")).perform(click());until(()->renderedAt.get()>0&&ackAt.get()>0&&incomingAt.get()>0);observer.join(1000);
+            long localMs=renderedAt.get()-pressedAt.get(),ackMs=ackAt.get()-pressedAt.get(),incomingMs=incomingAt.get()-pressedAt.get();android.util.Log.i("LanternQA","send local_ms="+localMs+" ack_ms="+ackMs+" incoming_ms="+incomingMs);
+            assertTrue("Optimistic message must exist when composer clears",localPresent.get());assertTrue("Local render took "+localMs+" ms",localMs<1000);
+            assertTrue("PC acknowledgement took "+ackMs+" ms during 8 MB preview",ackMs<2000);assertTrue("Incoming push took "+incomingMs+" ms during 8 MB preview",incomingMs<2000);
             onView(withContentDescription("Gửi tin nhắn")).perform(click(),click(),click());
             until(()->countText(text)==1);assertEquals(1,countText(text));
             scenario.onActivity(activity->{ConnectionService.current.select("");ConnectionService.current.select(conversation);assertEquals("Cached history should be immediately available",1,countText(text));});
