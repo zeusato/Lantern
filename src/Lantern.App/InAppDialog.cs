@@ -14,7 +14,7 @@ internal static class InAppDialog
     {
         if (active.TryGetValue(owner, out var dialogs)) foreach (var cancel in dialogs.ToArray()) cancel();
     }
-    public static bool Show(Window owner, string title, FrameworkElement content, string accept, Func<bool>? validate = null, UIElement? initialFocus = null)
+    public static bool Show(Window owner, string title, FrameworkElement content, string accept, Func<bool>? validate = null, UIElement? initialFocus = null, double width = 510)
     {
         var root = (Grid)owner.Content;
         var previousFocus = Keyboard.FocusedElement;
@@ -22,10 +22,12 @@ internal static class InAppDialog
         foreach (var item in background) item.Child.IsEnabled = false;
         var overlay = new Border { Name = "InAppDialog", Background = new SolidColorBrush(Color.FromArgb(130, 0, 0, 0)), Padding = new Thickness(24), Tag = title };
         Grid.SetRowSpan(overlay, int.MaxValue); Panel.SetZIndex(overlay, 1000);
-        var card = new Border { Width = 510, MaxWidth = Math.Max(280, owner.ActualWidth - 48), CornerRadius = new CornerRadius(18), Padding = new Thickness(28), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var card = new Border { Width = width, CornerRadius = new CornerRadius(18), Padding = new Thickness(28), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         card.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+        var layout = new Grid(); layout.RowDefinitions.Add(new RowDefinition()); layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        var scroller = new ScrollViewer { Content = content }; scroller.SetResourceReference(FrameworkElement.StyleProperty, "DialogScrollViewer"); layout.Children.Add(scroller);
         var panel = new StackPanel();
-        panel.Children.Add(content);
+        Grid.SetRow(panel, 1); layout.Children.Add(panel);
         var error = new TextBlock { Foreground = Brushes.IndianRed, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 12, 0, 0) }; panel.Children.Add(error);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 18, 0, 0) }; panel.Children.Add(buttons);
         var frame = new DispatcherFrame(); bool accepted = false;
@@ -37,7 +39,10 @@ internal static class InAppDialog
             accepted = true; frame.Continue = false;
         }
         var okay = new Button { Content = accept, Style = (Style)owner.FindResource("AccentButton") }; okay.Click += (_, _) => Accept(); buttons.Children.Add(okay);
-        card.Child = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = Math.Max(240, owner.ActualHeight - 104) }; overlay.Child = card;
+        card.Child = layout; overlay.Child = card;
+        void Resize(object? sender, SizeChangedEventArgs e) => Fit();
+        void Fit() { card.MaxWidth = Math.Max(0, root.ActualWidth - 48); layout.MaxHeight = Math.Max(0, root.ActualHeight - 104); }
+        root.SizeChanged += Resize; Fit();
         KeyboardNavigation.SetTabNavigation(overlay, KeyboardNavigationMode.Cycle);
         overlay.PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { Cancel(); e.Handled = true; } else if (e.Key == Key.Enter && Keyboard.FocusedElement is PasswordBox) { Accept(); e.Handled = true; } };
         void VisibilityChanged(object sender, DependencyPropertyChangedEventArgs e) { if (!owner.IsVisible) Cancel(); }
@@ -55,7 +60,7 @@ internal static class InAppDialog
         try { Dispatcher.PushFrame(frame); return accepted; }
         finally
         {
-            root.Children.Remove(overlay); panel.Children.Remove(content);
+            root.Children.Remove(overlay); scroller.Content = null; root.SizeChanged -= Resize;
             owner.Closed -= Closed; owner.IsVisibleChanged -= VisibilityChanged;
             dialogs.Remove(Cancel); if (dialogs.Count == 0) active.Remove(owner);
             foreach (var item in background) item.Child.IsEnabled = item.Enabled;

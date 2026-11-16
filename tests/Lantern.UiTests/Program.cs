@@ -197,6 +197,9 @@ internal sealed class UiHarness : Application
                     var enable = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Hiện thông báo Windows khi có tin nhắn mới"); enable.IsChecked = true; enable.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); mode.SelectedIndex = 1;
                     var closeToTray = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Đóng cửa sổ xuống khay hệ thống"); Check(closeToTray.IsChecked == false, "Close-to-tray setting defaults to off"); closeToTray.IsChecked = true;
                     Snapshot(dialog, Path.Combine(root, "toast-settings.png"));
+                    ApplyTheme("dark"); Snapshot(dialog, Path.Combine(root, "settings-dark.png"));
+                    var settingsScroll = Visuals<ScrollViewer>(dialog).First(); settingsScroll.ScrollToBottom(); Snapshot(dialog, Path.Combine(root, "settings-bottom.png"));
+                    var originalHeight = window.Height; window.Height = window.MinHeight; window.UpdateLayout(); Snapshot(dialog, Path.Combine(root, "settings-compact.png")); window.Height = originalHeight; ApplyTheme("light");
                     Visuals<Button>(dialog).Single(button => button.Content as string == "Lưu thay đổi").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 }
                 catch (Exception ex) { settingsFailure = ex; InAppDialog.CancelAll(window); }

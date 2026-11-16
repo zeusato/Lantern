@@ -1,15 +1,8 @@
-# Lantern 1.2.0
+# Lantern 1.2.1
 
-Bản PC Windows x64 và Android companion liên kết bằng QR. Giải nén **Lantern-Windows-x64.zip**, chạy **Lantern.exe**; cài **Lantern-Android.apk** trên Android 8 trở lên.
+- Nới khung Hồ sơ và cài đặt từ 510 lên 720 px, tự co theo kích thước cửa sổ.
+- Thanh cuộn mảnh, bo tròn, có khoảng cách riêng với nội dung; rõ hơn khi rê chuột hoặc kéo và ẩn khi không cần cuộn.
+- Nút Lưu thay đổi / Để sau luôn cố định phía dưới; nội dung cuộn riêng, kể cả khi thu nhỏ chiều cao cửa sổ.
+- Bản PC Windows x64 và APK Android đã ký được phát hành cùng nhau. Các thiết bị Android đã ghép đôi tiếp tục dùng cùng tài khoản PC.
 
-- PC có mục **Điện thoại** trong Cài đặt: QR dùng một lần, đối chiếu mã, duyệt thiết bị và thu hồi quyền.
-- Điện thoại dùng cùng danh tính PC để gửi/nhận tin, quote, react, xem danh bạ/nhóm và số chưa đọc; 50 tin gần nhất.
-- Kết nối trực tiếp khi cùng LAN, hoặc qua relay riêng trên Internet. Không có VPN toàn máy, không cần mở cổng router. PC phải chạy Lantern, đã đăng nhập và không sleep.
-- TLS hai chiều từ điện thoại tới PC; khóa Android nằm trong Keystore. Hội thoại có mật khẩu được kiểm tra ở PC cho tất cả thao tác; khóa thủ công PC áp dụng cả với điện thoại.
-- Android gửi/nhận ảnh, video, tệp tối đa 100 MB, kiểm tra SHA-256. Ảnh đến tối đa 10 MB tự tải xem trước; video/tệp mở chủ động bằng ứng dụng Android.
-- Tin đã hiển thị mới được ACK; ảnh cần tải xong. Thu hồi thiết bị ngắt kết nối đang chạy và từ chối dùng lại QR.
-- Các chức năng PC 1.1.3 được giữ nguyên. Cập nhật không xóa workspace hay mật khẩu.
-
-Credential relay cá nhân không nằm trong bản công khai. PC khác cần cấu hình relay riêng. Android bản đầu chưa có lịch sử offline, resume tệp, push FCM, khóa app Android riêng hoặc đầy đủ màn cài đặt như PC. Hạn chế mạng nền của Android vẫn áp dụng; xem **docs/MOBILE-PLAN.md**.
-
-Đã kiểm thử 135 trường hợp core, 72 trường hợp UI WPF, 6 bài kiểm thử trên emulator Android 15, build/lint Android và TLS qua relay Sites công khai. Android đã xác thực hai chiều với .NET bằng TLS 1.2/1.3, từ chối PC sai khóa và kiểm tra vùng tin thực sự hiển thị trước khi báo đã đọc. Cần kiểm chứng thêm trên điện thoại thật dùng 4G/5G với mạng công ty; không khẳng định đã thử mọi firewall/Doze. EXE PC chưa ký Authenticode; APK dùng khóa phát hành riêng.
+Giải nén Lantern-Windows-x64.zip và chạy Lantern.exe, hoặc cập nhật trong ứng dụng. APK dùng cùng khóa ký của bản 1.2.0.

@@ -658,7 +658,7 @@ public partial class MainWindow : Window
             var unblock = new Button { Content = "Bỏ chặn: " + blocked.DisplayName, Margin = new Thickness(0, 3, 0, 3) };
             unblock.Click += (_, _) => { node.Unblock(blocked.Id); unblock.IsEnabled = false; ShowToast("Đã bỏ chặn; cần xác minh lại máy này."); }; panel.Children.Add(unblock);
         }
-        if (ShowDialog("Hồ sơ và cài đặt", panel, "Lưu thay đổi", () => !string.IsNullOrWhiteSpace(name.Text)))
+        if (ShowDialog("Hồ sơ và cài đặt", panel, "Lưu thay đổi", () => !string.IsNullOrWhiteSpace(name.Text), width: 720))
         {
             try
             {
@@ -787,9 +787,9 @@ public partial class MainWindow : Window
         if (!ShowDialog("Khôi phục", panel, "Khôi phục và đóng app")) return;
         try { Identity.Import(file.FileName, password.Password, App.DataDirectory, App.Vault); ExitApplication(); } catch (Exception ex) { ShowError(ex); }
     }
-    private bool ShowDialog(string title, FrameworkElement content, string accept, Func<bool>? validate = null, UIElement? initialFocus = null)
+    private bool ShowDialog(string title, FrameworkElement content, string accept, Func<bool>? validate = null, UIElement? initialFocus = null, double width = 510)
     {
-        return InAppDialog.Show(this, title, content, accept, validate, initialFocus);
+        return InAppDialog.Show(this, title, content, accept, validate, initialFocus, width);
     }
     private void BlockClick(object sender, RoutedEventArgs e)
     {
