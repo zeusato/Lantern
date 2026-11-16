@@ -38,5 +38,7 @@ jobs:
           path: |
             ios/build/Tests.xcresult
             ios/build/ios-simulator.png
+            ios/build/screenshots/
             /tmp/lantern-ios-fixture.log
+            /tmp/lantern-ios-relay.log
           retention-days: 7

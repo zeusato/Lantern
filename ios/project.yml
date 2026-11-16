@@ -20,12 +20,22 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: vn.lantern.companion
         INFOPLIST_FILE: Lantern/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        'CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]': Lantern/Simulator.entitlements
     scheme:
-      testTargets: [LanternTests]
+      testTargets: [LanternTests, LanternUITests]
   LanternTests:
     type: bundle.unit-test
     platform: iOS
     sources: [LanternTests]
+    dependencies:
+      - target: Lantern
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  LanternUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [LanternUITests]
     dependencies:
       - target: Lantern
     settings:

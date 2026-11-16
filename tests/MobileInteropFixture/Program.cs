@@ -44,12 +44,14 @@ while (true)
             var data = new byte[length]; await ssl.ReadExactlyAsync(data, timeout.Token); using var request = JsonDocument.Parse(data);
             var type = request.RootElement.GetProperty("type").GetString();
             if (type == "send") Console.Error.WriteLine("QA send: " + request.RootElement.GetProperty("text").GetString());
-            var reply = new Dictionary<string, object?> { ["type"] = type == "hello" ? "welcome" : "ok", ["id"] = pc, ["text"] = phone, ["name"] = "QA PC" };
+            // Match MobilePacket's serialized defaults, including empty contact arrays on non-list replies.
+            var reply = new Dictionary<string, object?> { ["type"] = type == "hello" ? "welcome" : "ok", ["id"] = pc, ["text"] = phone, ["name"] = "QA PC", ["conversations"] = Array.Empty<object>() };
             if (type == "hello") { reply["capabilities"] = new[] { "sync-v1", "push-v1" }; pushEnabled = request.RootElement.TryGetProperty("capabilities", out var caps) && caps.EnumerateArray().Any(c => c.GetString() == "push-v1"); }
             else if (request.RootElement.TryGetProperty("id", out var requestId)) reply["id"] = requestId.GetString();
             reply["serial"] = ++serial; reply["conversation"] = request.RootElement.TryGetProperty("conversation", out var selected) ? selected.GetString() : "";
             if (type is "list" or "sync") { reply["conversations"] = new[] { new Dictionary<string, object?> { ["id"] = conversation, ["name"] = "QA contact", ["presence"] = "online", ["unread"] = 0, ["locked"] = !unlocked, ["protected"] = true } }; reply["locked"] = !unlocked; }
             if (type == "unlock") { await Task.Delay(1200); unlocked = request.RootElement.GetProperty("password").GetString() == "qa-password"; if (!unlocked) { reply["type"] = "error"; reply["text"] = "Mật khẩu chưa đúng"; } }
+            if (type == "lock") unlocked = false;
             if (type == "history" || (type is "sync" or "unlock") && unlocked) { var hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(messages))); reply["hash"] = hash; reply["messages"] = messages; if (request.RootElement.TryGetProperty("hash", out var previous) && previous.GetString() == hash) { reply["type"] = "unchanged"; reply["messages"] = Array.Empty<object>(); } }
             if (type == "send") { await Task.Delay(500); var id = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(phone + request.RootElement.GetProperty("id").GetString())))[..32].ToLowerInvariant(); if (!messages.Any(m => (string?)m["id"] == id)) messages.Add(new() { ["id"] = id, ["kind"] = "text", ["text"] = request.RootElement.GetProperty("text").GetString(), ["outgoing"] = true, ["senderName"] = "QA PC", ["time"] = DateTimeOffset.UtcNow, ["status"] = "delivered" }); reply["messageId"] = id; reply["messages"] = messages.Where(m => (string?)m["id"] == id).ToArray(); }
             if (type == "download") { await Task.Delay(80); int offset = request.RootElement.GetProperty("offset").GetInt32(); reply["data"] = Convert.ToBase64String(imageBytes, offset, Math.Min(32768, imageBytes.Length - offset)); }

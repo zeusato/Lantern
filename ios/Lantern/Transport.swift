@@ -2,6 +2,12 @@ import Foundation
 import Network
 import Security
 
+private final class CompletionGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+    func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if finished { return false }; finished = true; return true }
+}
+
 // Reject redirects: relay credentials must never follow a Location header to another host.
 final class RelayDelegate: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
@@ -58,14 +64,13 @@ final class RelayDelegate: NSObject, URLSessionTaskDelegate {
             }
         }
         return try await withCheckedThrowingContinuation { continuation in
-            var finished = false
+            let gate = CompletionGate()
             server.stateUpdateHandler = { state in
-                guard !finished else { return }
                 switch state {
                 case .ready:
-                    finished = true; continuation.resume(returning: server.port!.rawValue)
-                case .failed(let error): finished = true; continuation.resume(throwing: error)
-                case .cancelled: finished = true; continuation.resume(throwing: CancellationError())
+                    if gate.claim() { continuation.resume(returning: server.port!.rawValue) }
+                case .failed(let error): if gate.claim() { continuation.resume(throwing: error) }
+                case .cancelled: if gate.claim() { continuation.resume(throwing: CancellationError()) }
                 default: break
                 }
             }
@@ -170,13 +175,12 @@ enum SocketIO {
         let timeout = Task { try? await Task.sleep(nanoseconds: seconds * 1_000_000_000); if !Task.isCancelled { connection.cancel() } }
         defer { timeout.cancel() }
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            var finished = false
+            let gate = CompletionGate()
             connection.stateUpdateHandler = { state in
-                guard !finished else { return }
                 switch state {
-                case .ready: finished = true; continuation.resume()
-                case .failed(let error): finished = true; continuation.resume(throwing: error)
-                case .cancelled: finished = true; continuation.resume(throwing: LanternError.message("Không tới được PC hoặc kết nối quá chậm."))
+                case .ready: if gate.claim() { continuation.resume() }
+                case .failed(let error): if gate.claim() { continuation.resume(throwing: error) }
+                case .cancelled: if gate.claim() { continuation.resume(throwing: LanternError.message("Không tới được PC hoặc kết nối quá chậm.")) }
                 default: break
                 }
             }

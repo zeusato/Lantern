@@ -5,7 +5,8 @@ xcodegen generate --spec ios/project.yml
 dotnet build tests/MobileInteropFixture -c Release --nologo
 dotnet tests/MobileInteropFixture/bin/Release/net10.0/MobileInteropFixture.dll > /tmp/lantern-ios-fixture.json 2> /tmp/lantern-ios-fixture.log &
 FIXTURE_PID=$!
-trap 'kill "$FIXTURE_PID" 2>/dev/null || true' EXIT
+RELAY_PID=''
+trap 'kill "$FIXTURE_PID" ${RELAY_PID:+"$RELAY_PID"} 2>/dev/null || true' EXIT
 for attempt in {1..30}; do
   if test -s /tmp/lantern-ios-fixture.json; then break; fi
   sleep 1
@@ -22,8 +23,16 @@ ET.SubElement(variables, 'EnvironmentVariable', key='LANTERN_FIXTURE_PIN', value
 tree.write(path)
 PY
 DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(v["udid"] for group in d["devices"].values() for v in group if v["name"].startswith("iPhone")))')
+xcrun simctl boot "$DEVICE_ID" || true
+xcrun simctl bootstatus "$DEVICE_ID" -b
+openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/lantern-ios-relay.key -out /tmp/lantern-ios-relay.crt -days 1 \
+  -subj '/CN=Lantern Simulator Relay' -addext 'subjectAltName=IP:127.0.0.1,DNS:localhost' -addext 'basicConstraints=critical,CA:TRUE'
+xcrun simctl keychain "$DEVICE_ID" add-root-cert /tmp/lantern-ios-relay.crt
+node tests/MobileInteropFixture/relay-harness.mjs /tmp/lantern-ios-relay.crt /tmp/lantern-ios-relay.key > /tmp/lantern-ios-relay.log 2>&1 &
+RELAY_PID=$!
 xcodebuild -project ios/Lantern.xcodeproj -scheme Lantern -configuration Debug \
   -destination "platform=iOS Simulator,id=$DEVICE_ID" -derivedDataPath ios/build/simulator \
-  -resultBundlePath ios/build/Tests.xcresult CODE_SIGNING_ALLOWED=NO \
+  -resultBundlePath ios/build/Tests.xcresult CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
   -parallel-testing-enabled NO test
+xcrun xcresulttool export attachments --path ios/build/Tests.xcresult --output-path ios/build/screenshots
 xcrun simctl io "$DEVICE_ID" screenshot ios/build/ios-simulator.png

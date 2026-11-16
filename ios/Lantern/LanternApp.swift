@@ -139,7 +139,7 @@ struct ChatView: View {
         .onChange(of: photo) { item in
             guard let item else { return }
             Task {
-                do { if let media = try await item.loadTransferable(type: ImportedMedia.self), store.visible, !store.locked { store.upload(media.url) } }
+                do { if let media = try await item.loadTransferable(type: ImportedMedia.self), store.visible, !store.locked, store.selected == conversationID { store.upload(media.url) } }
                 catch { store.error = error.localizedDescription }
                 photo = nil
             }

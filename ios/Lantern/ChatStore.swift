@@ -32,12 +32,21 @@ import CryptoKit
     private var inFlight: Set<String> = []
     private var syncInFlight = false
     private var previewMessage: Message?
+    private var locallyLocked: Set<String> = []
+    private var transferGeneration = 0
 
     var current: Conversation? { conversations.first { $0.id == selected } }
     var locked: Bool { current?.locked ?? true }
     init() {
         clearTemporaryFiles()
         do {
+            #if DEBUG
+            if let pin = ProcessInfo.processInfo.environment["LANTERN_UI_FIXTURE_PIN"], Wire.matches(pin, "^[A-F0-9]{64}$") {
+                config = ["pc": pin, "port": 45854, "addresses": [], "fixture": true, "name": "PC kiểm thử"]
+                paired = true; pcName = "PC kiểm thử"; deviceID = try DeviceKeys.id(); cache = try HistoryCache(pc: pin)
+                return
+            }
+            #endif
             if let saved = try DeviceKeys.get("connection") {
                 let value = try Wire.decode(saved); config = value; paired = true; pcName = value.string("name")
                 deviceID = try DeviceKeys.id(); cache = try HistoryCache(pc: value.string("pc"))
@@ -96,7 +105,7 @@ import CryptoKit
     }
     private func disconnected() {
         connected = false; serial = 0; hashes.removeAll(); shown.removeAll(); downloaded.removeAll()
-        transfer?.cancel(); transfer = nil; transferProgress = nil; preview = nil; previewMessage = nil; clearTemporaryFiles()
+        transferGeneration += 1; transfer?.cancel(); transfer = nil; transferProgress = nil; preview = nil; previewMessage = nil; clearTemporaryFiles()
         conversations = conversations.map { conversation in
             var p = conversation.raw; if conversation.protected { p["locked"] = true; snapshots.removeValue(forKey: conversation.id) }; return Conversation(raw: p)
         }
@@ -114,7 +123,7 @@ import CryptoKit
         stop()
         do { try DeviceKeys.put("connection", nil); try HistoryCache.clear() }
         catch { self.error = "Chưa xóa hết dữ liệu: \(error.localizedDescription)"; return }
-        config = nil; cache = nil; paired = false; pairingCode = ""; pcName = ""; selected = ""; conversations = []; messages = []; snapshots = [:]; outbox = []; status = "Chưa ghép đôi PC"
+        config = nil; cache = nil; paired = false; pairingCode = ""; pcName = ""; selected = ""; conversations = []; messages = []; snapshots = [:]; outbox = []; locallyLocked = []; status = "Chưa ghép đôi PC"
     }
     func select(_ id: String) {
         selected = id; shown.removeAll(); replyTo = nil
@@ -129,7 +138,9 @@ import CryptoKit
         let next = packet.int("serial")
         guard next == 0 || next > serial else { return }; serial = max(serial, next)
         if packet["conversations"] != nil {
-            conversations = packet.packets("conversations").map { Conversation(raw: $0) }
+            conversations = packet.packets("conversations").map { p in
+                var p = p; if locallyLocked.contains(p.string("id")) { p["locked"] = true }; return Conversation(raw: p)
+            }
             for c in conversations where c.locked {
                 snapshots.removeValue(forKey: c.id); outbox.removeAll { $0.string("conversationId") == c.id }
                 if c.id == selected { replyTo = nil; preview = nil; previewMessage = nil; transfer?.cancel(); clearTemporaryFiles() }
@@ -141,7 +152,7 @@ import CryptoKit
             } catch { self.error = "Không lưu được cache: \(error.localizedDescription)" }
         }
         let id = packet.string("conversation")
-        if !id.isEmpty, !packet.bool("locked"), packet["messages"] != nil, packet.string("type") != "unchanged" {
+        if !id.isEmpty, !packet.bool("locked"), !locallyLocked.contains(id), packet["messages"] != nil, packet.string("type") != "unchanged" {
             let batch = packet.packets("messages")
             snapshots[id] = batch; hashes[id] = packet.string("hash")
             let ids = Set(batch.map { $0.string("id") }); outbox.removeAll { ids.contains($0.string("id")) }
@@ -153,7 +164,12 @@ import CryptoKit
         refresh()
     }
     private func refresh() {
-        if previewMessage?.expired == true { preview = nil; previewMessage = nil; clearTemporaryFiles() }
+        if let previewed = previewMessage {
+            if let updated = (snapshots[selected] ?? []).first(where: { $0.string("id") == previewed.id }) { previewMessage = Message(raw: updated) }
+            if previewMessage?.expired == true || previewed.ephemeral && !(snapshots[selected] ?? []).contains(where: { $0.string("id") == previewed.id }) {
+                preview = nil; previewMessage = nil; clearTemporaryFiles()
+            }
+        }
         guard visible, !selected.isEmpty, !locked else { messages = []; return }
         let remote = (snapshots[selected] ?? []).filter { !Message(raw: $0).expired }
         let ids = Set(remote.map { $0.string("id") })
@@ -178,13 +194,18 @@ import CryptoKit
             let response = try await pc.request(["type": "unlock", "conversation": id, "password": password])
             guard connection === pc, selected == id else { return }
             if response.int("serial") >= serial {
-                conversations = conversations.map { c in var p = c.raw; if c.id == id { p["locked"] = false }; return Conversation(raw: p) }; apply(response)
+                locallyLocked.remove(id)
+                conversations = conversations.map { c in var p = c.raw; if c.id == id { p["locked"] = false }; return Conversation(raw: p) }
+                // MobilePacket includes an empty conversations array for non-list responses.
+                // Unlock supplies history only; it must not erase the contact list.
+                var history = response; history.removeValue(forKey: "conversations"); apply(history)
             }
             await sync()
         } catch { self.error = error.localizedDescription }
     }
     func lock() async {
         let id = selected
+        locallyLocked.insert(id)
         conversations = conversations.map { c in var p = c.raw; if c.id == id { p["locked"] = true }; return Conversation(raw: p) }
         snapshots.removeValue(forKey: id); outbox.removeAll { $0.string("conversationId") == id }; replyTo = nil; preview = nil; previewMessage = nil; clearTemporaryFiles(); refresh()
         if transfer != nil { cancelTransfer() }
@@ -224,9 +245,10 @@ import CryptoKit
     func upload(_ url: URL) {
         guard transfer == nil, connected, !locked, let pc = connection else { return }
         let conversation = selected
+        transferGeneration += 1; let transferToken = transferGeneration
         transferProgress = 0
         transfer = Task {
-            let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() }; transfer = nil; transferProgress = nil }
+            let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() }; if transferToken == transferGeneration { transfer = nil; transferProgress = nil } }
             do {
                 let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
                 guard size <= Wire.maxFile else { throw LanternError.message("Tệp tối đa 100 MB.") }
@@ -247,9 +269,9 @@ import CryptoKit
     }
     func download(_ message: Message) {
         guard transfer == nil, !locked, connected, let pc = connection else { return }
-        let conversation = selected; transferProgress = 0
+        let conversation = selected; transferGeneration += 1; let transferToken = transferGeneration; transferProgress = 0
         transfer = Task {
-            defer { transfer = nil; transferProgress = nil }
+            defer { if transferToken == transferGeneration { transfer = nil; transferProgress = nil } }
             var output: URL?
             do {
                 let size = message.raw.int("fileSize")

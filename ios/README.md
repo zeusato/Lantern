@@ -38,6 +38,6 @@ Workflow dùng runner GitHub-hosted `macos-15` tiêu chuẩn trên repo public. 
 
 ## Kiểm chứng
 
-`LanternTests` kiểm tra frame/giới hạn, QR giả/hết hạn, P-256 identity ổn định, cache mã hóa/chống sửa/loại tin tự hủy; fixture .NET thật kiểm tra mTLS, sai pin, mở khóa, gửi, ID chống trùng và push không cần polling. Script truyền fingerprint fixture qua scheme chỉ dùng cho kiểm thử, không nhúng vào Release. CI chỉ xuất artifact IPA khi bước test thành công.
+`LanternTests` kiểm tra frame/giới hạn, QR giả/hết hạn, P-256 identity ổn định, cache mã hóa/chống sửa/loại tin tự hủy; fixture .NET thật kiểm tra mTLS, sai pin, mở khóa, gửi, ID chống trùng và push không cần polling. HTTPS relay giả lập chỉ dùng credential QA, chuyển byte TLS thật tới fixture .NET và kiểm tra lệnh đồng thời qua cầu nối. Chứng chỉ HTTPS QA chỉ được tin cậy trong Simulator của runner; không sửa trust store máy người dùng hoặc kiểm tra trust trong app. `LanternUITests` thao tác mở khóa, gửi, nhận push, giữ bàn phím và khóa lại; lưu ảnh chụp giao diện. Script truyền fingerprint fixture qua scheme chỉ dùng cho kiểm thử, không nhúng vào Release. CI chỉ xuất artifact IPA khi bước test thành công.
 
 Đây là bộ test tự động; camera thật, quyền Local Network, cài/ký Scarlet, relay trên Wi-Fi/4G và chuyển nền trên iPhone cần nghiệm thu thiết bị thật. Chưa được gọi là đã kiểm chứng nếu chưa có kết quả runner hoặc thiết bị tương ứng.

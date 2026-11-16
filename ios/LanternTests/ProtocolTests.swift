@@ -69,7 +69,24 @@ final class ProtocolTests: XCTestCase {
     }
     @MainActor func testWrongPCPinFailsHandshake() async throws {
         guard ProcessInfo.processInfo.environment["LANTERN_FIXTURE_PIN"] != nil else { throw XCTSkip("Requires fixture") }
+        _ = try DeviceKeys.id() // A Keychain/setup error must not count as successful pin rejection.
         let pc = PCConnection(); defer { pc.close() }
         do { _ = try await pc.open(["pc": String(repeating: "0", count: 64), "port": 45854, "addresses": [], "fixture": true]); XCTFail("Wrong pin accepted") } catch { }
+    }
+    @MainActor func testRelayCarriesMutualTLSAndConcurrentCommands() async throws {
+        guard let pin = ProcessInfo.processInfo.environment["LANTERN_FIXTURE_PIN"] else { throw XCTSkip("Requires fixture relay") }
+        let pc = PCConnection(); defer { pc.close() }
+        let relay: Packet = ["url": "https://127.0.0.1:45855/", "id": String(repeating: "a", count: 32), "key": String(repeating: "b", count: 43), "token": "fixture-only"]
+        let welcome = try await pc.open(["pc": pin, "port": 45854, "addresses": [], "relay": relay])
+        XCTAssertEqual(pc.transport, "Internet"); XCTAssertEqual(welcome.string("text"), try DeviceKeys.id())
+        let conversation = String(repeating: "a", count: 64)
+        _ = try await pc.request(["type": "unlock", "conversation": conversation, "password": "qa-password"])
+        async let history = pc.request(["type": "history", "conversation": conversation])
+        async let download = pc.request(["type": "download", "conversation": conversation, "messageId": String(repeating: "2", count: 32), "offset": 0])
+        let results = try await (history, download)
+        XCTAssertGreaterThanOrEqual(results.0.packets("messages").count, 30)
+        XCTAssertEqual(Data(base64Encoded: results.1.string("data"))?.count, 32768)
+        let sent = try await pc.request(["type": "send", "conversation": conversation, "text": "TLS through HTTPS packet relay"])
+        XCTAssertFalse(sent.string("messageId").isEmpty)
     }
 }
