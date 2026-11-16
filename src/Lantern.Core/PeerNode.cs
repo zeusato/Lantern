@@ -35,6 +35,9 @@ public sealed class PeerNode : IAsyncDisposable
     private readonly ConcurrentDictionary<string, Session> sessions = new();
     private readonly ConcurrentDictionary<string, byte> connecting = new();
     private readonly ConcurrentDictionary<string, byte> receiving = new();
+    private readonly SemaphoreSlim transferStarts = new(1, 1);
+    private readonly SemaphoreSlim automaticImages = new(1, 1);
+    public bool AutoReceiveImages { get; set; }
     private readonly ConcurrentDictionary<string, byte> sending = new();
     private readonly ConcurrentDictionary<string, byte> replaying = new();
     private readonly ConcurrentDictionary<long, Task> tasks = new();
@@ -394,18 +397,43 @@ public sealed class PeerNode : IAsyncDisposable
     }
     public async Task AcceptFileAsync(string messageId)
     {
-        var msg = Store.Message(messageId) ?? throw new InvalidOperationException("Không tìm thấy tệp.");
-        if (msg.Outgoing || msg.Kind == "text" || msg.Status == "received") return;
-        if (!IsConnected(msg.SenderId)) throw new InvalidOperationException("Người gửi cần đang online để tải tệp.");
-        if (receiving.Count >= 3 && !receiving.ContainsKey(messageId)) throw new InvalidOperationException("Đang tải 3 tệp. Hãy chờ một tệp hoàn tất.");
-        var part = msg.FilePath + ".part";
-        var offset = File.Exists(part) ? new FileInfo(part).Length : 0;
-        if (offset > msg.FileSize) { File.Delete(part); offset = 0; }
-        var drive = new DriveInfo(Path.GetPathRoot(Store.MediaPath)!);
-        if (drive.AvailableFreeSpace < msg.FileSize - offset + 50 * 1024 * 1024) throw new IOException("Không đủ dung lượng trống để nhận tệp.");
-        using (var f = new FileStream(part, FileMode.OpenOrCreate, FileAccess.Write)) { }
-        receiving[messageId] = 0; Store.UpdateMessage(messageId, current => { current.Status = "receiving"; current.Transferred = offset; }); Changed?.Invoke();
-        await SendTo(msg.SenderId, new WireMessage { Type = "accept", Id = messageId, Offset = offset });
+        await transferStarts.WaitAsync(lifetime.Token);
+        try
+        {
+            var msg = Store.Message(messageId) ?? throw new InvalidOperationException("Không tìm thấy tệp.");
+            if (msg.Outgoing || msg.Kind == "text" || msg.Status == "received") return;
+            if (receiving.ContainsKey(messageId)) return;
+            if (!IsConnected(msg.SenderId)) throw new InvalidOperationException("Người gửi cần đang online để tải tệp.");
+            if (receiving.Count >= 3 && !receiving.ContainsKey(messageId)) throw new InvalidOperationException("Đang tải 3 tệp. Hãy chờ một tệp hoàn tất.");
+            var part = msg.FilePath + ".part";
+            var offset = File.Exists(part) ? new FileInfo(part).Length : 0;
+            if (offset > msg.FileSize) { File.Delete(part); offset = 0; }
+            var drive = new DriveInfo(Path.GetPathRoot(Store.MediaPath)!);
+            if (drive.AvailableFreeSpace < msg.FileSize - offset + 50 * 1024 * 1024) throw new IOException("Không đủ dung lượng trống để nhận tệp.");
+            using (var f = new FileStream(part, FileMode.OpenOrCreate, FileAccess.Write)) { }
+            receiving[messageId] = 0; Store.UpdateMessage(messageId, current => { current.Status = "receiving"; current.Transferred = offset; current.Error = ""; }); Changed?.Invoke();
+            await SendTo(msg.SenderId, new WireMessage { Type = "accept", Id = messageId, Offset = offset });
+        }
+        finally { transferStarts.Release(); }
+    }
+    private async Task ReceiveImagesAsync()
+    {
+        if (!AutoReceiveImages || lifetime.IsCancellationRequested || !await automaticImages.WaitAsync(0)) return;
+        try
+        {
+            var pending = Store.Messages(limit: int.MaxValue).Where(m => !m.Outgoing && m.Kind == "image" && m.Status is "offered" or "receiving");
+            foreach (var image in pending)
+            {
+                if (lifetime.IsCancellationRequested || receiving.Count >= 3) break;
+                if (receiving.ContainsKey(image.Id) || !peers.TryGetValue(image.SenderId, out var peer) || !peer.Trusted || peer.Blocked || !IsConnected(peer.Id)) continue;
+                try { await AcceptFileAsync(image.Id); }
+                catch (InvalidOperationException) { /* A manual transfer or disconnect may win the slot; retry later. */ }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                { Store.UpdateMessage(image.Id, current => { current.Status = "error"; current.Error = ex.Message; }); Changed?.Invoke(); }
+            }
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        finally { automaticImages.Release(); }
     }
     public async Task DeclineFileAsync(string messageId)
     {
@@ -516,6 +544,7 @@ public sealed class PeerNode : IAsyncDisposable
                 incoming.FilePath = Path.Combine(Store.MediaPath, incoming.Id + "_" + incoming.FileName); incoming.Status = "offered";
             }
             if (Store.SaveIncomingMessage(incoming)) { Changed?.Invoke(); MessageReceived?.Invoke(incoming); }
+            if (incoming.Kind == "image") Track(ReceiveImagesAsync());
             if (wire.Type is "message" or "contact") await SendTo(peerId, new WireMessage { Type = "ack", Id = incoming.Id });
             return;
         }
@@ -546,15 +575,19 @@ public sealed class PeerNode : IAsyncDisposable
         if (wire.Type == "end")
         {
             var msg = Store.Message(wire.Id);
-            if (msg is null || msg.Outgoing || msg.SenderId != peerId || !receiving.TryRemove(msg.Id, out _)) return;
-            var part = msg.FilePath + ".part";
-            string hash; long size;
-            await using (var file = File.OpenRead(part)) { size = file.Length; hash = Convert.ToHexString(await SHA256.HashDataAsync(file, lifetime.Token)); }
-            if (size != msg.FileSize || hash != msg.Hash) { File.Delete(part); Store.UpdateMessage(msg.Id, current => { current.Status = "error"; current.Error = "Tệp không khớp mã kiểm tra. Hãy tải lại."; }); Changed?.Invoke(); return; }
-            Store.UpdateMessage(msg.Id, current => { File.Move(part, msg.FilePath, true); current.Transferred = size; current.Status = "received"; });
-            // Preserve Windows' downloaded-file safety treatment; attachments are never executed automatically.
-            try { await File.WriteAllTextAsync(msg.FilePath + ":Zone.Identifier", "[ZoneTransfer]\r\nZoneId=3\r\n", lifetime.Token); } catch (IOException) { }
-            await SendTo(peerId, new WireMessage { Type = "fileDone", Id = msg.Id }); Changed?.Invoke();
+            if (msg is null || msg.Outgoing || msg.SenderId != peerId || !receiving.ContainsKey(msg.Id)) return;
+            try
+            {
+                var part = msg.FilePath + ".part";
+                string hash; long size;
+                await using (var file = File.OpenRead(part)) { size = file.Length; hash = Convert.ToHexString(await SHA256.HashDataAsync(file, lifetime.Token)); }
+                if (size != msg.FileSize || hash != msg.Hash) { File.Delete(part); Store.UpdateMessage(msg.Id, current => { current.Status = "error"; current.Error = "Tệp không khớp mã kiểm tra. Hãy tải lại."; }); Changed?.Invoke(); return; }
+                Store.UpdateMessage(msg.Id, current => { File.Move(part, msg.FilePath, true); current.Transferred = size; current.Status = "received"; });
+                // Preserve Windows' downloaded-file safety treatment; attachments are never executed automatically.
+                try { await File.WriteAllTextAsync(msg.FilePath + ":Zone.Identifier", "[ZoneTransfer]\r\nZoneId=3\r\n", lifetime.Token); } catch (IOException) { }
+                await SendTo(peerId, new WireMessage { Type = "fileDone", Id = msg.Id }); Changed?.Invoke();
+            }
+            finally { receiving.TryRemove(msg.Id, out _); Track(ReceiveImagesAsync()); }
         }
     }
     private async Task SendFile(Session session, string messageId, long offset)
@@ -653,6 +686,7 @@ public sealed class PeerNode : IAsyncDisposable
                 foreach (var session in sessions.Values) await SendTo(session.PeerId, new WireMessage { Type = "ping" });
                 if (++cycle % 3 == 0) foreach (var session in sessions.Values.Where(s => peers.TryGetValue(s.PeerId, out var p) && p.Trusted && !p.Blocked)) Track(Replay(session.PeerId, false));
                 foreach (var peer in peers.Values.Where(p => p.Trusted && !p.Blocked && !p.Connected && p.Port > 0)) Track(QuietConnect(peer));
+                Track(ReceiveImagesAsync());
                 await Task.Delay(TimeSpan.FromSeconds(6), lifetime.Token);
             }
         }

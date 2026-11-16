@@ -9,7 +9,7 @@
 3. Nếu Windows hỏi quyền mạng, chỉ cho phép app trên mạng **Private** đáng tin cậy. Không cần tắt firewall. Máy công ty cần chính sách cho phép peer-to-peer từ quản trị mạng.
 4. Các máy cùng LAN xuất hiện trong danh sách. Nếu tự tìm không hoạt động, bấm **Kết nối bằng IP** và nhập IP + cổng hiện ở thanh trạng thái máy kia.
 5. Chọn máy, bấm **Xác minh** trên cả hai bên, đối chiếu **toàn bộ sáu nhóm mã** trực tiếp hoặc qua kênh đã tin cậy. Chỉ xác nhận khi hai mã giống nhau. Mỗi bên xác nhận một lần.
-6. Gửi tin, kéo thả tệp, hoặc bấm kẹp giấy. Người nhận bấm **Nhận tệp**; ảnh và video được hiển thị trong log sau khi tải xong.
+6. Gửi tin, kéo thả tệp, hoặc bấm kẹp giấy. Ảnh từ đối tác đã ghép đôi tự tải và hiển thị trong log. Tệp và video vẫn cần bấm **Nhận tệp**.
 
 Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio hoặc dịch vụ riêng. Không tự cài chứng thư tin cậy vào Windows và không tự sửa firewall.
 
@@ -21,18 +21,18 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 - Chat riêng, nhóm cố định 3–32 thành viên, trạng thái đã nhận/đã đọc.
 - Hàng đợi SQLite bền vững: gửi lại khi kết nối, chống tin trùng, định kỳ thử lại tin chưa ACK.
 - Gửi tệp tối đa 10 GB, chia khối 64 KB, tiếp tục từ `.part`, xác minh SHA-256 trước khi hoàn tất.
-- Tối đa 3 tệp nhận đồng thời; nhận tệp luôn cần thao tác của người dùng.
+- Tối đa 3 tệp nhận đồng thời; ảnh được tự động xếp hàng, tiếp tục tải khi kết nối lại và kiểm tra SHA-256. Tệp/video cần người dùng chủ động nhận.
 - Ảnh hiển thị trong log, mở lớn; video phát/tạm dừng/tua trong log bằng codec Windows.
 - Tìm người/nhóm và nội dung tin; tải thêm lịch sử; lưu nháp trong phiên theo cuộc trò chuyện.
 - Giao diện tiếng Việt, sáng/tối/theo Windows, thích ứng cửa sổ tối thiểu 780×580.
 - Sao lưu/khôi phục danh tính `.lanternkey` có mật khẩu, chặn và bỏ chặn máy.
-- Mật khẩu ứng dụng bắt buộc; khóa ngay bằng Ctrl+L; đổi mật khẩu có xác nhận mật khẩu hiện tại.
+- Mật khẩu ứng dụng bắt buộc; đăng nhập, khóa app và mở khóa hội thoại ngay trong cửa sổ chính, không tạo cửa sổ mật khẩu riêng. Ô mật khẩu tự focus; lời chào dùng tên tài khoản. Ctrl+L khóa ngay; đổi mật khẩu có xác nhận mật khẩu hiện tại.
 - Mật khẩu riêng cho từng cuộc trò chuyện; mở một lần cho cả phiên, khóa chủ động bằng nút khóa ở đầu hội thoại. Khóa hoặc thoát ứng dụng khóa lại tất cả hội thoại.
 - Sửa tên bản thân; đặt tên riêng cho đối tác chỉ trên máy mình, giữ nguyên khi đối tác đổi tên/IP.
-- Số tin chưa đọc trên từng hội thoại và icon tray, hiển thị `99+` khi vượt 99. Nhấp đúp tray để mở app.
+- Số tin chưa đọc trên từng hội thoại, icon tray và badge trên taskbar, hiển thị `99+` khi vượt 99. Nhấp đúp tray để mở app.
 - Tùy chọn **Đóng cửa sổ xuống khay hệ thống** trong Hồ sơ và cài đặt, mặc định tắt. Khi bật, nút X chỉ ẩn cửa sổ; app vẫn nhận tin và cập nhật badge. Nhấp đúp tray để mở lại, chọn **Thoát Lantern** trong menu tray để thoát hẳn. App đang khóa vẫn yêu cầu mật khẩu khi mở lại.
 - Emoji màu Microsoft Fluent 3D đóng gói sẵn trong picker, log chat và reaction; tự đổi `:)`, `:D`, `;)`, `<3` khi kết thúc ký hiệu hoặc gửi. Có thể tắt tự đổi trong bảng emoji; URL, đường dẫn và khối mã được giữ nguyên. Sao chép tin nhắn vẫn giữ Unicode emoji.
-- Rê chuột lên tin để hiện nút trả lời và react. Mỗi người một biểu cảm; bấm lại để gỡ. Trả lời có trích dẫn và nhảy tới tin gốc.
+- Bong bóng co theo nội dung, tin mình bên phải và tin người khác bên trái. Rê chuột để hiện nút trả lời và react; emoji/số lượt react nằm sát mép dưới bong bóng. Mỗi người một biểu cảm; bấm vào lượt react của mình để gỡ. Trả lời có trích dẫn và nhảy tới tin gốc.
 - Ctrl+V dán ảnh clipboard thành ảnh PNG, gửi theo luồng nhận tệp thông thường.
 - Toast Windows khi có tin mới: **mặc định tắt**, bật trong Hồ sơ và cài đặt. Chọn **Hiện người gửi và nội dung** hoặc **Chỉ báo có tin nhắn mới**. App/hội thoại bị khóa luôn dùng thông báo chung, không hiện tên hoặc nội dung; Windows có thể ẩn thông báo theo cấu hình hệ thống.
 - Chấm trạng thái dưới tên: xanh online, xám offline, vàng khi máy không có thao tác 15 phút, đỏ Không làm phiền. Bấm chấm trạng thái ở thanh trái để đổi. Không làm phiền chặn toast tin nhắn, vẫn đếm tin chưa đọc.
@@ -47,12 +47,12 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 
 Mật khẩu ứng dụng bọc khóa ngẫu nhiên 256 bit bằng PBKDF2-HMAC-SHA256 (600.000 vòng) và AES-256-GCM. Payload lịch sử/danh bạ/nhóm được mã hóa bằng khóa workspace. Mật khẩu hội thoại là lớp khóa xem cục bộ bổ sung; nó không tạo khóa mã hóa độc lập cho từng hội thoại và không áp dụng lên máy người bên kia.
 
-Để đặt mật khẩu hội thoại, mở thông tin cuộc trò chuyện → **Cài đặt → Mật khẩu hội thoại**. Với cửa sổ nhỏ, bấm nút thông tin ở đầu hội thoại. **Khóa hội thoại ngay** hoặc nút khóa trên tiêu đề khóa tức thì. Chuyển hội thoại không làm mất trạng thái mở khóa trong phiên.
+Để đặt mật khẩu hội thoại, mở thông tin cuộc trò chuyện → **Cài đặt → Mật khẩu hội thoại**. Với cửa sổ nhỏ, bấm nút thông tin ở đầu hội thoại. **Khóa hội thoại ngay** hoặc nút khóa trên tiêu đề khóa tức thì. Chuyển hội thoại không làm mất trạng thái mở khóa trong phiên. Khi khóa, toàn bộ bảng thông tin, Media/Tệp/Link, tìm kiếm và cài đặt đều bị che và chặn tương tác, kể cả bảng thông tin ở cửa sổ nhỏ.
 
 Nếu quên mật khẩu ứng dụng:
 
 1. Ở màn hình khóa, chọn **Quên mật khẩu?**.
-2. Nhập chính xác `XOA XXXXXXXX`, trong đó mã được lấy từ workspace hiện tại. Nút tiếp tục chỉ bật khi đúng mã và đúng tài khoản Windows sở hữu.
+2. Nhập chính xác `XOA XXXXXXXX`, trong đó mã được lấy từ workspace hiện tại. Chỉ được đi tiếp khi đúng mã và đúng tài khoản Windows sở hữu.
 3. Xác thực **Windows Hello/PIN/vân tay/khuôn mặt của tài khoản Windows đã tạo workspace** qua hộp thoại hệ thống.
 4. Chỉ khi Windows trả kết quả Verified, app mới xóa dữ liệu Lantern của workspace đó và đưa về bước tạo mật khẩu mới.
 
@@ -129,5 +129,7 @@ Mở hồ sơ thử nghiệm tách biệt:
 - `src/Lantern.App`: WPF native, tài nguyên Fluent, cửa sổ chat, xem media và hộp thoại.
 - `tests/Lantern.Tests`: chương trình kiểm thử tích hợp có exit code; không cần framework test bổ sung.
 - `docs/PROTOCOL.md`: quy ước giao thức và ràng buộc tin cậy.
+
+Phương án app Android liên kết tài khoản PC qua QR: [docs/MOBILE-PLAN.md](docs/MOBILE-PLAN.md). Đây là kế hoạch, chưa có trong bản Windows hiện tại.
 
 Thiết kế tham khảo [WinUI App skill](https://github.com/openai/skills/tree/main/skills/.curated/winui-app), [Windows design](https://learn.microsoft.com/windows/apps/design/) và [WPF Fluent](https://learn.microsoft.com/dotnet/desktop/wpf/whats-new/net100). Runtime thực tế là WPF/.NET 10; không phụ thuộc WinUI 3.

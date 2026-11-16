@@ -62,7 +62,8 @@
     </Border>
    </Grid>
    <Border x:Name="DetailsPanel" Grid.Column="3" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1,0,0,0">
-    <DockPanel Margin="16,22">
+    <Grid>
+    <DockPanel x:Name="DetailsContent" Margin="16,22">
      <StackPanel DockPanel.Dock="Top" Margin="6,0,6,16">
       <Border Width="52" Height="52" CornerRadius="16" Background="{DynamicResource AccentSoftBrush}" HorizontalAlignment="Left"><TextBlock x:Name="DetailInitials" Text="L" FontSize="23" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" HorizontalAlignment="Center"/></Border>
       <TextBlock x:Name="DetailName" Text="Thông tin hội thoại" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,12,0,6"/>
@@ -87,8 +88,13 @@
       </StackPanel></ScrollViewer></TabItem>
      </TabControl>
     </DockPanel>
+    <Border x:Name="DetailsLocked" Visibility="Collapsed" Padding="24" VerticalAlignment="Top">
+     <StackPanel><TextBlock Text="&#xE72E;" Style="{StaticResource Icon}" Foreground="{DynamicResource MutedBrush}" FontSize="28" Margin="0,8,0,16"/><TextBlock Text="Thông tin đang khóa" FontWeight="SemiBold" FontSize="16" Margin="0,0,0,8"/><TextBlock Text="Mở khóa hội thoại để xem nội dung chia sẻ, tìm kiếm và cài đặt." Style="{StaticResource Muted}" TextWrapping="Wrap"/></StackPanel>
+    </Border>
+    </Grid>
    </Border>
   </Grid>
-  <Border Grid.Row="1" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0"><Grid Margin="16,0"><TextBlock x:Name="NetworkStatus" Text="Đang khởi động…" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center"/><TextBlock x:Name="ToastText" Style="{StaticResource Muted}" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" MaxWidth="520" TextTrimming="CharacterEllipsis"/></Grid></Border>
+  <Border x:Name="StatusBar" Grid.Row="1" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,1,0,0"><Grid Margin="16,0"><TextBlock x:Name="NetworkStatus" Text="Đang khởi động…" Style="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center"/><TextBlock x:Name="ToastText" Style="{StaticResource Muted}" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center" MaxWidth="520" TextTrimming="CharacterEllipsis"/></Grid></Border>
+  <Border x:Name="LoginHost" Grid.RowSpan="2" Visibility="Collapsed" Background="{DynamicResource CanvasBrush}"/>
  </Grid>
 </Window>

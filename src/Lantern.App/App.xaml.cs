@@ -27,11 +27,7 @@ public partial class App : Application
             if (File.Exists(path)) Settings = Codec.Decode<AppSettings>(File.ReadAllText(path));
             if (string.IsNullOrWhiteSpace(Settings.Name)) Settings.Name = Environment.UserName;
             ApplyTheme(Settings.Theme);
-            ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            var login = new LoginWindow(DataDirectory);
-            if (login.ShowDialog() != true || login.UnlockedVault is null) { Shutdown(); return; }
-            Vault = login.UnlockedVault;
-            var window = new MainWindow(); MainWindow = window; ShutdownMode = ShutdownMode.OnMainWindowClose; window.Show();
+            var window = new MainWindow(requireLogin: true); MainWindow = window; ShutdownMode = ShutdownMode.OnMainWindowClose; window.Show();
         }
         catch (Exception ex)
         {
@@ -45,6 +41,7 @@ public partial class App : Application
         File.WriteAllText(file + ".tmp", Codec.Encode(Settings)); File.Move(file + ".tmp", file, true);
     }
     public static void ResetSettings() => Settings = new AppSettings { Name = Environment.UserName };
+    internal static void SetUnlockedVault(WorkspaceVault vault) => Vault = vault;
     public static void ApplyTheme(string mode)
     {
         var app = Current;

@@ -23,7 +23,7 @@ Operations:
 | `ack`, `read` | Persisted receipt / read receipt |
 | `group` | Immutable group definition, only from authenticated owner |
 | `offer` | File metadata and SHA-256, no file contents |
-| `accept` | Recipient consent and resume byte offset |
+| `accept` | Recipient acceptance (automatic for images under local policy) and resume byte offset |
 | `chunk` | 64 KB or smaller chunk, Base64-encoded with exact byte offset |
 | `end` | Finish and verify local size/SHA-256 |
 | `fileDone` | Recipient has validated and stored the complete file |
@@ -38,7 +38,7 @@ Operations:
 
 Current hello includes `Version: 2` and presence. Peers with missing/older capability versions cannot receive newly sent self-destruct messages; pending self-destruct sends remain queued until a compatible peer connects. Normal v1 chat remains compatible. Quoted text uses `ReplyToId` and resolves the source only inside the same local conversation. Unknown/expired sources show an unavailable reference instead of copying deleted content.
 
-Unread markers are stored separately from transfer status. Reading visible unlocked conversations clears markers and persists read receipts. Message replay and reactions do not increment unread totals. A conversation password is unlocked for the process session until explicitly locked or the whole application is locked/closed.
+Unread markers are stored separately from transfer status. Reading visible unlocked conversations clears markers and persists read receipts. Image offers still waiting/downloading retain unread markers and do not start their expiry timer until downloaded and read. Message replay and reactions do not increment unread totals. A conversation password is unlocked for the process session until explicitly locked or the whole application is locked/closed.
 
 Self-destruct TTL travels with each message. The first recipient to read starts a UTC deadline; group members converge on the earliest authenticated deadline. Offline peers receive deadlines again on reconnect. Expiration removes message payload, unread markers and owned media, and retains only minimal encrypted deadline tombstones for synchronization. Reactions replay only the local actor's latest revision, including removals. Group membership and direct-peer identity are checked before applying either operation.
 
@@ -50,7 +50,7 @@ SQLite WAL with synchronous FULL persists outgoing messages before transmission 
 
 Reconnect sends owner group definitions before pending messages. Pending messages are retried periodically while connected; this also recovers group invitation ordering races. Every peer keeps its own copies. There is no globally ordered transcript, distributed consensus or offline relay.
 
-Attachments are first copied into the sender's media cache, then hashed, so a subsequent modification of the original file cannot alter the advertised content. The recipient sanitizes names, generates a storage path from the UUID, limits sizes, requires consent and verifies offsets. A `.part` file is renamed only after SHA-256 and length match. Received executable attachments are never launched automatically.
+Attachments are first copied into the sender's media cache, then hashed, so a subsequent modification of the original file cannot alter the advertised content. The recipient sanitizes names, generates a storage path from the UUID, limits sizes, requires receiver acceptance and verifies offsets. The Windows app automatically accepts image offers only from trusted, unblocked peers, queues at most three transfers and resumes pending images on reconnect. Documents and videos still require a manual acceptance. A `.part` file is renamed only after SHA-256 and length match. Received executable attachments are never launched automatically.
 
 ## Operational limits
 

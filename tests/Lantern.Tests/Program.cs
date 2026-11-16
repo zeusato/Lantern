@@ -273,4 +273,5 @@ Check(Emoticons.Replace("🙂 ❤️ tiếng Việt") == "🙂 ❤️ tiếng Vi
 Check(!new AppSettings().MessageToasts, "Message toasts are disabled by default");
 await UpdaterTests.Run(root, Check);
 await PreviewTests.Run(Check);
+await AutoImageTests.Run(root, Check);
 Console.WriteLine($"\n{passed} checks passed. Test data: {root}");

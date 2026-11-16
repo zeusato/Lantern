@@ -102,5 +102,11 @@ PASS: Full toast includes sender and message
 PASS: Private or locked toast reveals neither sender nor message
 PASS: Toast privacy choice persists in settings
 PASS: Close-to-tray is opt-in and persists in settings
+PASS: A burst of five images downloads automatically from a paired peer
+PASS: Auto-received image bytes pass the normal SHA-256 transfer checks
+PASS: Automatic images respect the three-transfer concurrency limit
+PASS: Documents and videos still require explicit acceptance
+PASS: An undownloaded image remains unread and its expiry timer does not start
+PASS: Automatic image resume completes before reading starts its expiry timer
 
-103 checks passed. Test data: isolated QA workspace
+109 checks passed. Test data: isolated QA workspace

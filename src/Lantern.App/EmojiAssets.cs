@@ -38,21 +38,26 @@ internal static class EmojiAssets
     internal static RichTextBox MessageText(string text)
     {
         var paragraph = new System.Windows.Documents.Paragraph { Margin = new Thickness(0), LineHeight = 23 };
+        var measure = new TextBlock { FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"), FontSize = 14, TextWrapping = TextWrapping.NoWrap, Padding = new Thickness(0) };
         var buffer = new StringBuilder();
-        void Flush() { if (buffer.Length > 0) { paragraph.Inlines.Add(new Run(buffer.ToString())); buffer.Clear(); } }
+        void Flush() { if (buffer.Length > 0) { var value = buffer.ToString(); paragraph.Inlines.Add(new Run(value)); measure.Inlines.Add(new Run(value)); buffer.Clear(); } }
         var elements = StringInfo.GetTextElementEnumerator(text);
         while (elements.MoveNext())
         {
             var element = elements.GetTextElement();
-            if (Find(element) is not null) { Flush(); paragraph.Inlines.Add(new InlineUIContainer(Icon(element, 22)) { BaselineAlignment = BaselineAlignment.Center }); }
+            if (Find(element) is not null)
+            {
+                Flush(); paragraph.Inlines.Add(new InlineUIContainer(Icon(element, 22)) { BaselineAlignment = BaselineAlignment.Center });
+                measure.Inlines.Add(new InlineUIContainer(Icon(element, 22)) { BaselineAlignment = BaselineAlignment.Center });
+            }
             else buffer.Append(element);
         }
         Flush();
         var document = new FlowDocument(paragraph) { PagePadding = new Thickness(0), TextAlignment = TextAlignment.Left, FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"), FontSize = 14 };
         document.SetResourceReference(FlowDocument.ForegroundProperty, "TextBrush");
-        var box = new RichTextBox(document)
+        var box = new ContentSizedText(document, measure)
         {
-            IsReadOnly = true, IsReadOnlyCaretVisible = false, IsDocumentEnabled = false, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), MinHeight = 0, MinWidth = 34, FontSize = 14,
+            IsReadOnly = true, IsReadOnlyCaretVisible = false, IsDocumentEnabled = false, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), MinHeight = 0, MinWidth = 0, FontSize = 14,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
         };
         box.SetResourceReference(Control.ForegroundProperty, "TextBrush");
@@ -61,6 +66,21 @@ internal static class EmojiAssets
             if (!box.Selection.IsEmpty) Clipboard.SetText(SelectionText(box.Selection.Start, box.Selection.End)); e.Handled = true;
         }, (_, e) => { e.CanExecute = !box.Selection.IsEmpty; e.Handled = true; }));
         return box;
+    }
+    private sealed class ContentSizedText(FlowDocument document, TextBlock measure) : RichTextBox(document)
+    {
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            measure.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            // RichTextBox otherwise requests all available width, even for a single word.
+            // RichTextBox assigns document insets internally; include them and the caret
+            // so a short word or trailing emoji does not wrap at the measured edge.
+            var padding = Document.PagePadding;
+            var horizontalPadding = (double.IsNaN(padding.Left) ? 0 : padding.Left) + (double.IsNaN(padding.Right) ? 0 : padding.Right);
+            var width = Math.Min(availableSize.Width, Math.Ceiling(measure.DesiredSize.Width) + horizontalPadding + 4);
+            var measured = base.MeasureOverride(new Size(width, availableSize.Height));
+            return new Size(width, measured.Height);
+        }
     }
     internal static string SelectionText(TextPointer start, TextPointer end)
     {

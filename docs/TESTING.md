@@ -2,13 +2,14 @@
 
 Automated integration runner uses real TCP sockets and mutual TLS on IPv4 loopback, independent identities, SQLite stores and temporary data. It exits nonzero on failure.
 
-The current core suite passes 103 checks covering:
+The current core suite passes 109 checks covering:
 
 - Persistent identity, pairing codes, trust gating and certificate pinning.
 - UTF-8 chat, durable delivery/read receipts and replay deduplication.
 - Endpoint normalization, offline queue and reconnect to a changed endpoint.
 - Three-peer group delivery.
-- Explicit file consent, resume from a partial file, empty files, SHA-256 failure and retry, decline.
+- Explicit document/video consent, resume from a partial file, empty files, SHA-256 failure and retry, decline.
+- Automatic image queue, five-image burst, three concurrent transfers, resumed images and unread/expiry state until download completes.
 - Filename traversal prevention, network/frame limits.
 - Identity backup/import and invalid password rejection.
 - History/media reset, tombstones and new messages after reset.
@@ -28,9 +29,9 @@ The current core suite passes 103 checks covering:
 - Open Graph metadata parsing, image loading/cache and private-address/redirect rejection.
 - Full/private notification content, locked-conversation privacy and persisted toast preference.
 
-`tests/Lantern.UiTests` is a separate fixture host that runs the real WPF MainWindow with synthetic encrypted data and a real loopback peer. It does not modify production authentication or open the user's history. Its standard 43 checks cover tray/conversation badges, session unlock, aliases, emoticons, quotes/reactions, colored emoji and Unicode copying, zero-alpha clipboard repair and valid PNG transparency, PNG transfer/decoded pixels, square thumbnails, Open Graph cards, hover actions without layout shift, presence, manual lock, theme typography and both toast setting choices. Two optional read-only fixture checks verify the reported legacy clipboard PNG without changing its bytes and a real MP4 thumbnail: all 45 passed locally. It captures light/dark chat, emoji picker, toast settings and link-card renders. Run it only on an interactive Windows desktop.
+`tests/Lantern.UiTests` is a separate fixture host that runs the real WPF MainWindow with synthetic encrypted data and a real loopback peer. It does not modify production authentication or open the user's history. Its standard 70 checks cover tray/taskbar/conversation badges, content-sized left/right message bubbles, lower-edge reaction controls, actual reaction delivery/removal, quotes, colored emoji, clipboard repair, PNG transfer/rendering, automatic image receipt, square thumbnails, Open Graph cards, presence, full information-pane locks, toast/tray settings, embedded login and conversation prompts, real correct/incorrect password verification, password autofocus, account-name greetings, new-workspace creation and unchanged native window handles across startup authentication. Two optional legacy-image/video fixture checks remain available but were not rerun for this release. Screenshots cover light/dark chat, message layout, reactions, locked information, in-app password prompts and login. The QA host explicitly restores focus to its own native window after fixture dialogs; it never activates or opens a user workspace. Run it only on an interactive Windows desktop.
 
-UI verification before password-gate integration exercised a real peer connection, image receipt/display and MP4 receipt/playback on the Windows desktop. The release is also opened at its startup password screen. OS credential prompts are deliberately not automated: the owner completes Windows Hello on their own device.
+UI verification before password-gate integration exercised a real peer connection, image receipt/display and MP4 receipt/playback on the Windows desktop. Cold startup and new-workspace creation are exercised in the same WPF window using synthetic credentials. OS credential prompts are deliberately not automated: the owner completes Windows Hello on their own device.
 
 Not verified: two physical LAN hosts, enterprise firewall/VLAN policies, sustained 32-member groups, 10 GB transfers, every Windows codec, all high-contrast/DPI combinations, or successful destructive Windows Hello approval with the user's credentials.
 

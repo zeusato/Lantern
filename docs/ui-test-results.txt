@@ -1,11 +1,15 @@
 PASS UI: Tray updates while main window is minimized
+PASS UI: Taskbar icon shows the unread badge while minimized
 PASS UI: Conversation row shows unread count
 PASS UI: Synthetic conversation credential verifies
+PASS UI: Reading all messages clears the taskbar badge
 PASS UI: Conversation remains unlocked when switching away and back
 PASS UI: Local alias appears in chat header
 PASS UI: Composer replaces completed emoticons
 PASS UI: Reply composer sends quote and expands trailing emoticon
 PASS UI: Reaction button updates remote message
+PASS UI: Bubble-edge reaction picker sends the selected colored emoji
+PASS UI: Clicking the reaction count removes the user's own reaction
 PASS UI: Zero-alpha clipboard bitmap preserves RGB and becomes visible
 PASS UI: Invalid zero-alpha Pbgra32 is repaired before unpremultiplication
 PASS UI: Legacy clipboard image previews recover without rewriting original file
@@ -22,10 +26,23 @@ PASS UI: Hover reveals quote and reaction controls
 PASS UI: Leaving the message hides its actions
 PASS UI: Presence indicator receives idle state
 PASS UI: Do-not-disturb indicator is red
+PASS UI: Short and emoji-only bubbles fit their content instead of filling the row
+PASS UI: Natural-width text and emoji stay on their intended lines without accidental wrapping
+PASS UI: Incoming bubbles align left and outgoing bubbles align right
+PASS UI: Long text wraps at the maximum width and explicit newlines remain visible
+PASS UI: Reaction count and picker sit on the lower bubble edge without a separate row
+PASS UI: Bubbles reflow without clipping when the window narrows
 PASS UI: Hover toolbar overlays the message without adding a row
 PASS UI: Emoji picker opens
 PASS UI: Message document foreground follows dark theme
 PASS UI: Header lock immediately protects the conversation
+PASS UI: Locked conversations hide and disable the entire information pane
+PASS UI: Locking clears shared content and search text immediately
+PASS UI: Detached compact information pane remains protected
+PASS UI: Conversation password opens inside the existing app window
+PASS UI: Conversation unlock automatically focuses the password input
+PASS UI: Wrong conversation password keeps the in-app prompt and information locked
+PASS UI: Correct conversation password restores access to every information tab
 PASS UI: Locked conversation keeps incoming message unread
 PASS UI: Message notifications remain opt-in
 PASS UI: Settings offer both toast modes while notifications default to off
@@ -33,14 +50,22 @@ PASS UI: Close-to-tray setting defaults to off
 PASS UI: Saving settings applies the private toast mode
 PASS UI: Close-to-tray choice is saved to disk
 PASS UI: Link cards show Open Graph image and decoded title
-PASS UI: Reported clipboard image recovers without changing the user's original file
-PASS UI: Windows creates a real MP4 video thumbnail
+PASS UI: Received images automatically download and render in the chat without accepting
 PASS UI: Close button hides to tray while keeping the peer connected
 PASS UI: Hidden app receives messages and updates unread tray badge
 PASS UI: Opening from tray restores the same unlocked session
+PASS UI: Locking the app shows an embedded login with only one taskbar window
 PASS UI: Closing the unlock prompt hides the app and keeps it locked
 PASS UI: Restoring a locked tray session requires the password again
+PASS UI: App unlock automatically focuses the password input
+PASS UI: Login greeting shows the account display name
+PASS UI: Wrong app password cannot reveal chat
 PASS UI: Real password verification unlocks the restored session
 PASS UI: Tray Exit really closes the hidden window, disconnects and removes the icon
+PASS UI: Cold startup stays in one window and does not start networking before authentication
+PASS UI: Cold startup automatically focuses the password field
+PASS UI: Successful startup login reuses the same native app window
 PASS UI: Close button exits normally when close-to-tray is disabled
-45 UI checks passed. Screenshots: isolated QA workspace
+PASS UI: Creating a workspace authenticates and starts chat in the same app window
+PASS UI: Closing the initial login exits without opening the history or network listener
+70 UI checks passed. Screenshots: isolated QA workspace

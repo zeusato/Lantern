@@ -75,6 +75,7 @@ public sealed class LocalStore : IDisposable
                 read.CommandText = "SELECT m.data FROM messages m JOIN unread_messages u ON u.id=m.id WHERE m.conversation=$c"; read.Parameters.AddWithValue("$c", conversationId);
                 using var reader = read.ExecuteReader(); while (reader.Read()) unread.Add(Codec.Decode<ChatMessage>(Open(reader.GetString(0))));
             }
+            unread.RemoveAll(message => message.Kind == "image" && message.Status is "offered" or "receiving");
             if (unread.Count == 0) return unread;
             using var tx = db.BeginTransaction();
             foreach (var message in unread)
@@ -84,7 +85,8 @@ public sealed class LocalStore : IDisposable
                 WriteMessage(message, tx);
             }
             using var clear = db.CreateCommand(); clear.Transaction = tx;
-            clear.CommandText = "DELETE FROM unread_messages WHERE id IN (SELECT id FROM messages WHERE conversation=$c)"; clear.Parameters.AddWithValue("$c", conversationId); clear.ExecuteNonQuery(); tx.Commit();
+            clear.CommandText = "DELETE FROM unread_messages WHERE id=$id"; var id = clear.Parameters.Add("$id", Microsoft.Data.Sqlite.SqliteType.Text);
+            foreach (var message in unread) { id.Value = message.Id; clear.ExecuteNonQuery(); } tx.Commit();
             return unread;
         }
     }
