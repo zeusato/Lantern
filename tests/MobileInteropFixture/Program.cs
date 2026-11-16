@@ -43,6 +43,7 @@ while (true)
             if (length is < 2 or > 100000) throw new IOException();
             var data = new byte[length]; await ssl.ReadExactlyAsync(data, timeout.Token); using var request = JsonDocument.Parse(data);
             var type = request.RootElement.GetProperty("type").GetString();
+            if (type == "send") Console.Error.WriteLine("QA send: " + request.RootElement.GetProperty("text").GetString());
             var reply = new Dictionary<string, object?> { ["type"] = type == "hello" ? "welcome" : "ok", ["id"] = pc, ["text"] = phone, ["name"] = "QA PC" };
             if (type == "hello") { reply["capabilities"] = new[] { "sync-v1", "push-v1" }; pushEnabled = request.RootElement.TryGetProperty("capabilities", out var caps) && caps.EnumerateArray().Any(c => c.GetString() == "push-v1"); }
             else if (request.RootElement.TryGetProperty("id", out var requestId)) reply["id"] = requestId.GetString();

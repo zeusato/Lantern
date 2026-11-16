@@ -54,7 +54,7 @@ public class CompanionFlowTest {
             until(()->ConnectionService.messages.length()>=30);
             onView(withContentDescription("Soạn tin nhắn")).perform(typeText(text));long start=android.os.SystemClock.elapsedRealtime();onView(withContentDescription("Gửi tin nhắn")).perform(click());
             AtomicBoolean cleared=new AtomicBoolean();until(()->{scenario.onActivity(activity->{try{java.lang.reflect.Field field=MainActivity.class.getDeclaredField("composer");field.setAccessible(true);cleared.set(((EditText)field.get(activity)).getText().length()==0);}catch(Exception e){throw new AssertionError(e);}});return cleared.get();});
-            assertEquals("Optimistic message must be present before waiting for server history",1,countText(text));
+            assertEquals("Optimistic message must be present; status="+ConnectionService.status+" contacts="+ConnectionService.conversations+" messages="+ConnectionService.messages,1,countText(text));
             assertTrue("Composer must clear immediately after a real touch with keyboard open",android.os.SystemClock.elapsedRealtime()-start<1500);
             until(()->acknowledged(text));assertTrue("PC acknowledgement must arrive within 2 seconds during 8 MB preview",android.os.SystemClock.elapsedRealtime()-start<2000);
             until(()->countText("Incoming immediately after send")==1);assertTrue("Incoming push must bypass image download and polling",android.os.SystemClock.elapsedRealtime()-start<2000);
