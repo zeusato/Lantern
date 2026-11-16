@@ -31,6 +31,7 @@ import CryptoKit
     private var deviceID = ""
     private var inFlight: Set<String> = []
     private var syncInFlight = false
+    private var syncRequested = false
     private var previewMessage: Message?
     private var locallyLocked: Set<String> = []
     private var transferGeneration = 0
@@ -106,7 +107,7 @@ import CryptoKit
     }
     private func disconnected() {
         accessGeneration += 1
-        connected = false; serial = 0; hashes.removeAll(); shown.removeAll(); downloaded.removeAll()
+        connected = false; serial = 0; syncRequested = false; hashes.removeAll(); shown.removeAll(); downloaded.removeAll()
         transferGeneration += 1; transfer?.cancel(); transfer = nil; transferProgress = nil; preview = nil; previewMessage = nil; clearTemporaryFiles()
         conversations = conversations.map { conversation in
             var p = conversation.raw; if conversation.protected { p["locked"] = true; snapshots.removeValue(forKey: conversation.id) }; return Conversation(raw: p)
@@ -144,7 +145,7 @@ import CryptoKit
                 var p = p; if locallyLocked.contains(p.string("id")) { p["locked"] = true }; return Conversation(raw: p)
             }
             for c in conversations where c.locked {
-                snapshots.removeValue(forKey: c.id); outbox.removeAll { $0.string("conversationId") == c.id }
+                snapshots.removeValue(forKey: c.id); hashes.removeValue(forKey: c.id); outbox.removeAll { $0.string("conversationId") == c.id }
                 if c.id == selected { replyTo = nil; preview = nil; previewMessage = nil; transfer?.cancel(); clearTemporaryFiles() }
             }
             do {
@@ -181,8 +182,13 @@ import CryptoKit
         if active { shown.insert(message.id) } else { shown.remove(message.id) }
     }
     func sync() async {
-        guard connected, visible, !syncInFlight, let pc = connection else { return }
-        syncInFlight = true; defer { syncInFlight = false }
+        guard connected, visible, let pc = connection else { return }
+        if syncInFlight { syncRequested = true; return }
+        syncInFlight = true; syncRequested = false
+        defer {
+            syncInFlight = false
+            if syncRequested, connected, visible { Task { await sync() } }
+        }
         let id = selected
         let read = messages.filter { shown.contains($0.id) && !$0.pending && ($0.kind != "image" || downloaded.contains($0.id)) }.map(\.id)
         do {
@@ -213,7 +219,7 @@ import CryptoKit
         accessGeneration += 1
         locallyLocked.insert(id)
         conversations = conversations.map { c in var p = c.raw; if c.id == id { p["locked"] = true }; return Conversation(raw: p) }
-        snapshots.removeValue(forKey: id); outbox.removeAll { $0.string("conversationId") == id }; replyTo = nil; preview = nil; previewMessage = nil; clearTemporaryFiles(); refresh()
+        snapshots.removeValue(forKey: id); hashes.removeValue(forKey: id); outbox.removeAll { $0.string("conversationId") == id }; replyTo = nil; preview = nil; previewMessage = nil; clearTemporaryFiles(); refresh()
         if transfer != nil { cancelTransfer() }
         do { if let result = try await connection?.request(["type": "lock", "conversation": id]) { serial = max(serial, result.int("serial")) }; try saveOutbox() }
         catch { self.error = error.localizedDescription }
