@@ -34,7 +34,7 @@ public final class MainActivity extends Activity {
     private Button button(String label,Runnable click){Button b=new Button(this);b.setText(label);b.setTextColor(TEXT);b.setTextSize(14);b.setAllCaps(false);b.setBackground(shape(SURFACE,14));b.setPadding(dp(14),dp(8),dp(14),dp(8));b.setOnClickListener(v->click.run());return b;}
     private LinearLayout column(){LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);return panel;}
     public void onCreate(Bundle state){super.onCreate(state);if(Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,WindowManager.LayoutParams.FLAG_SECURE);build();}
-    protected void onResume(){super.onResume();resumed=true;ConnectionService.visible=true;ConnectionService.changed=this::refresh;try{if(DeviceKeys.load(this)!=null&&ConnectionService.current==null)startConnection();}catch(Exception e){toast("Không đọc được ghép đôi. Hãy quét QR lại.");}refresh();tick.postDelayed(expiryTick,1000);}
+    protected void onResume(){super.onResume();resumed=true;ConnectionService.visible=true;ConnectionService.changed=this::refresh;try{if(DeviceKeys.load(this)!=null&&ConnectionService.current==null)startConnection();else if(ConnectionService.current!=null&&!ConnectionService.selected.isEmpty())ConnectionService.current.select(ConnectionService.selected);}catch(Exception e){toast("Không đọc được ghép đôi. Hãy quét QR lại.");}refresh();tick.postDelayed(expiryTick,1000);}
     protected void onPause(){resumed=false;ConnectionService.visible=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());ConnectionService.changed=null;tick.removeCallbacks(expiryTick);super.onPause();}
     private void build(){
         renderKey="";sending=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());root=column();root.setBackgroundColor(BG);root.setPadding(dp(18),dp(18),dp(18),dp(12));setContentView(root);
@@ -84,7 +84,7 @@ public final class MainActivity extends Activity {
     }
     private void renderMessages(){
         boolean nextLocked=true;for(int i=0;i<ConnectionService.conversations.length();i++){JSONObject c=ConnectionService.conversations.optJSONObject(i);if(c!=null&&ConnectionService.selected.equals(c.optString("id")))nextLocked=c.optBoolean("locked");}
-        locked=nextLocked;composerBar.setVisibility(locked?View.GONE:View.VISIBLE);if(locked)ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());
+        locked=nextLocked;composerBar.setVisibility(locked?View.GONE:View.VISIBLE);if(locked){quote.setVisibility(View.GONE);ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());}
         boolean expiring=false;for(int i=0;i<ConnectionService.messages.length();i++){JSONObject m=ConnectionService.messages.optJSONObject(i);if(m!=null&&!m.isNull("expiresAt"))expiring=true;}
         String signature=ConnectionService.messages.toString()+locked+ConnectionService.images.keySet().toString()+ConnectionService.status+(expiring?System.currentTimeMillis()/1000:0);if(signature.equals(renderKey))return;renderKey=signature;
         int previousY=scroll.getScrollY();boolean bottom=previousY+scroll.getHeight()>=messagesBox.getHeight()-dp(120);messagesBox.removeAllViews();

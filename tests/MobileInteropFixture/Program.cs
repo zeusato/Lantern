@@ -12,7 +12,7 @@ using var certificate = new CertificateRequest("CN=Lantern QA", key, HashAlgorit
 var pc = Convert.ToHexString(SHA256.HashData(key.ExportSubjectPublicKeyInfo()));
 var listener = new TcpListener(IPAddress.Loopback, 45854); listener.Start();
 Console.WriteLine(JsonSerializer.Serialize(new { pc, port = 45854 }));
-var imageBytes = RandomNumberGenerator.GetBytes(2 * 1024 * 1024);
+var imageBytes = RandomNumberGenerator.GetBytes(8 * 1024 * 1024);
 var imageHash = Convert.ToHexString(SHA256.HashData(imageBytes));
 var conversation = new string('a', 64);
 var messages = new List<Dictionary<string, object?>>

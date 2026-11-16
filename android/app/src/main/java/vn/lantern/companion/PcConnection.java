@@ -46,5 +46,6 @@ final class PcConnection implements AutoCloseable {
         int length=input.readInt();if(length<2||length>2*1024*1024)throw new IOException("Gói PC không hợp lệ");byte[] response=new byte[length];input.readFully(response);return new JSONObject(new String(response,StandardCharsets.UTF_8));
     }
     private void closeSocket(){try{if(socket!=null)socket.close();}catch(Exception ignored){}socket=null;}
+    String transport(){return relay==null?"Wi-Fi/LAN":"Internet";}
     public void close(){closeSocket();if(relay!=null)relay.close();}
 }

@@ -1,8 +1,11 @@
-# Lantern 1.2.1
+# Lantern 1.2.2
 
-- Nới khung Hồ sơ và cài đặt từ 510 lên 720 px, tự co theo kích thước cửa sổ.
-- Thanh cuộn mảnh, bo tròn, có khoảng cách riêng với nội dung; rõ hơn khi rê chuột hoặc kéo và ẩn khi không cần cuộn.
-- Nút Lưu thay đổi / Để sau luôn cố định phía dưới; nội dung cuộn riêng, kể cả khi thu nhỏ chiều cao cửa sổ.
-- Bản PC Windows x64 và APK Android đã ký được phát hành cùng nhau. Các thiết bị Android đã ghép đôi tiếp tục dùng cùng tài khoản PC.
+- Android ưu tiên gửi tin và mở khóa giữa các khối truyền ảnh/tệp, không chờ tải xong toàn bộ ảnh. Hàng đợi được đánh thức ngay khi có thao tác.
+- Nút gửi hiển thị trạng thái chờ, không nhận bấm lặp. Lần gửi chưa nhận được xác nhận giữ cùng mã khi thử lại để tránh tin trùng.
+- Hộp mật khẩu hiện tiến trình xác thực và lỗi ngay trong hộp; mật khẩu đúng không còn bị trì hoãn cố định 1,5 giây.
+- Lịch sử đã tải và ảnh xem trước được lưu mã hóa trên điện thoại; mở lại hiện dữ liệu đã lưu trước rồi đồng bộ nền. PC chỉ trả lại toàn bộ lịch sử khi có thay đổi.
+- Cache tối đa 100 MB, tách theo danh tính PC. Hội thoại có mật khẩu khóa lại khi mất kết nối; tin tự hủy không lưu vào cache bền vững. Quên PC xóa cache trên điện thoại.
+- Hiển thị từng bước kết nối, đường Wi-Fi/LAN hoặc Internet và thông báo riêng khi mất kết nối hoặc hàng đợi đang bận.
+- Giữ bản sửa cài đặt PC 1.2.1: khung rộng 720 px, thanh cuộn có rãnh riêng và nút Lưu luôn cố định ở dưới.
 
-Giải nén Lantern-Windows-x64.zip và chạy Lantern.exe, hoặc cập nhật trong ứng dụng. APK dùng cùng khóa ký của bản 1.2.0.
+Cập nhật cả PC và APK để dùng đồng bộ lịch sử tiết kiệm dữ liệu. APK dùng cùng khóa ký; cài đè bản cũ để giữ ghép đôi. Gửi lại được chống trùng khi PC còn lưu tin tương ứng; app không tự phát lại nội dung chưa xác nhận khi khởi động lại.
