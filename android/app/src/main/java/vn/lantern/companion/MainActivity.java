@@ -35,9 +35,9 @@ public final class MainActivity extends Activity {
     private LinearLayout column(){LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);return panel;}
     public void onCreate(Bundle state){super.onCreate(state);getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,WindowManager.LayoutParams.FLAG_SECURE);build();}
     protected void onResume(){super.onResume();resumed=true;ConnectionService.visible=true;ConnectionService.changed=this::refresh;try{if(DeviceKeys.load(this)!=null&&ConnectionService.current==null)startConnection();}catch(Exception e){toast("Không đọc được ghép đôi. Hãy quét QR lại.");}refresh();tick.postDelayed(expiryTick,1000);}
-    protected void onPause(){resumed=false;ConnectionService.visible=false;ConnectionService.changed=null;tick.removeCallbacks(expiryTick);super.onPause();}
+    protected void onPause(){resumed=false;ConnectionService.visible=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());ConnectionService.changed=null;tick.removeCallbacks(expiryTick);super.onPause();}
     private void build(){
-        renderKey="";root=column();root.setBackgroundColor(BG);root.setPadding(dp(18),dp(18),dp(18),dp(12));setContentView(root);
+        renderKey="";ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());root=column();root.setBackgroundColor(BG);root.setPadding(dp(18),dp(18),dp(18),dp(12));setContentView(root);
         root.setOnApplyWindowInsetsListener((v,insets)->{if(Build.VERSION.SDK_INT>=30){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.ime());root.setPadding(dp(18),bars.top+dp(12),dp(18),bars.bottom+dp(12));}return insets;});
         LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);root.addView(header);
         if(!ConnectionService.selected.isEmpty())header.addView(button("‹",()->openList()),new LinearLayout.LayoutParams(dp(44),dp(44)));
@@ -46,6 +46,7 @@ public final class MainActivity extends Activity {
         body=column();LinearLayout.LayoutParams b=new LinearLayout.LayoutParams(-1,0,1);b.topMargin=dp(20);root.addView(body,b);
         if(!ConnectionService.selected.isEmpty()){
             scroll=new ScrollView(this);scroll.setFillViewport(true);messagesBox=column();messagesBox.setPadding(0,dp(8),0,dp(8));scroll.addView(messagesBox);body.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+            scroll.setOnScrollChangeListener((v,x,y,oldX,oldY)->updateVisibleMessages());
             quote=text("",12,ACCENT);quote.setVisibility(View.GONE);quote.setPadding(dp(12),dp(8),dp(12),dp(8));quote.setOnClickListener(v->{replyTo="";quote.setVisibility(View.GONE);});body.addView(quote);
             composerBar=new LinearLayout(this);composerBar.setGravity(Gravity.BOTTOM);body.addView(composerBar);
             composerBar.addView(button("＋",this::pickFile),new LinearLayout.LayoutParams(dp(44),dp(48)));
@@ -80,7 +81,7 @@ public final class MainActivity extends Activity {
     }
     private void renderMessages(){
         boolean nextLocked=false;for(int i=0;i<ConnectionService.conversations.length();i++){JSONObject c=ConnectionService.conversations.optJSONObject(i);if(c!=null&&ConnectionService.selected.equals(c.optString("id")))nextLocked=c.optBoolean("locked");}
-        locked=nextLocked;composerBar.setVisibility(locked?View.GONE:View.VISIBLE);
+        locked=nextLocked;composerBar.setVisibility(locked?View.GONE:View.VISIBLE);if(locked)ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());
         boolean expiring=false;for(int i=0;i<ConnectionService.messages.length();i++){JSONObject m=ConnectionService.messages.optJSONObject(i);if(m!=null&&!m.isNull("expiresAt"))expiring=true;}
         String signature=ConnectionService.messages.toString()+locked+ConnectionService.images.keySet().toString()+ConnectionService.status+(expiring?System.currentTimeMillis()/1000:0);if(signature.equals(renderKey))return;renderKey=signature;
         int previousY=scroll.getScrollY();boolean bottom=previousY+scroll.getHeight()>=messagesBox.getHeight()-dp(120);messagesBox.removeAllViews();
@@ -88,7 +89,7 @@ public final class MainActivity extends Activity {
         for(int i=0;i<ConnectionService.messages.length();i++)try{
             JSONObject message=ConnectionService.messages.getJSONObject(i);
             if(!message.isNull("expiresAt")&&OffsetDateTime.parse(message.getString("expiresAt")).toInstant().toEpochMilli()<=System.currentTimeMillis()){File expired=ConnectionService.images.remove(message.optString("id"));if(expired!=null)expired.delete();continue;}
-            boolean own=message.optBoolean("outgoing");LinearLayout row=new LinearLayout(this);row.setGravity(own?Gravity.RIGHT:Gravity.LEFT);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(10);messagesBox.addView(row,rp);
+            boolean own=message.optBoolean("outgoing");LinearLayout row=new LinearLayout(this);row.setTag(message.getString("id"));row.setGravity(own?Gravity.RIGHT:Gravity.LEFT);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(10);messagesBox.addView(row,rp);
             LinearLayout bubble=column();bubble.setPadding(dp(12),dp(10),dp(12),dp(8));bubble.setBackground(shape(own?Color.rgb(29,77,72):SURFACE,16));row.addView(bubble,new LinearLayout.LayoutParams(-2,-2));int max=getResources().getDisplayMetrics().widthPixels-dp(100);
             if(!own){TextView sender=text(message.optString("senderName"),12,ACCENT);sender.setMaxWidth(max);bubble.addView(sender);}
             String reply=message.optString("replyToId");if(!reply.isEmpty()){String snippet="Tin được trích dẫn";for(int j=0;j<ConnectionService.messages.length();j++){JSONObject q=ConnectionService.messages.optJSONObject(j);if(q!=null&&reply.equals(q.optString("id")))snippet=q.optString("text",q.optString("fileName"));}TextView q=text("↳ "+snippet,12,MUTED);q.setMaxWidth(max);q.setMaxLines(2);bubble.addView(q);}
@@ -104,7 +105,12 @@ public final class MainActivity extends Activity {
             JSONObject reactions=message.optJSONObject("reactions");if(reactions!=null){StringBuilder emojis=new StringBuilder();java.util.Iterator<String> keys=reactions.keys();while(keys.hasNext()){String e=reactions.optString(keys.next());if(!e.isEmpty())emojis.append(e);}if(emojis.length()>0)bubble.addView(text(emojis.toString(),15,TEXT));}
             bubble.setOnLongClickListener(v->{messageMenu(message);return true;});time.setOnClickListener(v->messageMenu(message));
         }catch(Exception ignored){}
-        scroll.post(()->{if(bottom)scroll.fullScroll(View.FOCUS_DOWN);else scroll.scrollTo(0,previousY);});
+        scroll.post(()->{if(bottom)scroll.fullScroll(View.FOCUS_DOWN);else scroll.scrollTo(0,previousY);updateVisibleMessages();});
+    }
+    private void updateVisibleMessages(){
+        java.util.Set<String> ids=new java.util.HashSet<>();
+        if(resumed&&!locked&&messagesBox!=null&&!ConnectionService.selected.isEmpty())for(int i=0;i<messagesBox.getChildCount();i++){View row=messagesBox.getChildAt(i);Rect visible=new Rect();if(row.getTag() instanceof String&&row.getGlobalVisibleRect(visible)&&visible.height()>=Math.min(row.getHeight(),dp(24)))ids.add((String)row.getTag());}
+        ConnectionService.displayed=new ConnectionService.ReadState(ConnectionService.selected,java.util.Collections.unmodifiableSet(ids));
     }
     private void send(){String content=composer.getText().toString().trim();if(content.isEmpty())return;try{JSONObject request=ConnectionService.packet("send",ConnectionService.selected).put("text",content).put("replyTo",replyTo);submit(request,e->{if(e==null){composer.setText("");replyTo="";quote.setVisibility(View.GONE);}else toast(e);});}catch(Exception e){toast("Không gửi được tin");}}
     private void unlock(){EditText password=new EditText(this);password.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);password.setSingleLine();password.setPadding(dp(20),dp(16),dp(20),dp(16));AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Mở khóa hội thoại").setView(password).setNegativeButton("Hủy",null).setPositiveButton("Mở khóa",(d,w)->{try{submit(ConnectionService.packet("unlock",ConnectionService.selected).put("password",password.getText().toString()),this::result);password.setText("");}catch(Exception ignored){}}).create();dialog.setOnShowListener(d->{password.requestFocus();dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);});dialog.show();}

@@ -18,6 +18,8 @@ public final class ConnectionService extends Service {
     static volatile boolean visible;
     static volatile String selected="",status="Chưa kết nối",account="";
     static volatile JSONArray conversations=new JSONArray(),messages=new JSONArray();
+    record ReadState(String conversation,Set<String> ids){}
+    static volatile ReadState displayed=new ReadState("",Collections.emptySet());
     static final ConcurrentHashMap<String,File> images=new ConcurrentHashMap<>();
     private final BlockingQueue<Work> work=new ArrayBlockingQueue<>(24);
     private volatile boolean stopping; private volatile PcConnection pc; private Thread worker;
@@ -50,7 +52,7 @@ public final class ConnectionService extends Service {
                     for(int i=0;i<conversations.length();i++){JSONObject c=conversations.getJSONObject(i);if(c.getString("id").equals(conversation))locked=c.optBoolean("locked");}
                     if(visible&&!conversation.isEmpty()&&!locked){
                         JSONObject history=checked(pc.request(packet("history",conversation)));if(selected.equals(conversation)){messages=history.getJSONArray("messages");notifyUi();autoImage(conversation);
-                            JSONArray read=new JSONArray();for(int i=0;i<messages.length();i++){JSONObject m=messages.getJSONObject(i);if(!"image".equals(m.optString("kind"))||images.containsKey(m.getString("id")))read.put(m.getString("id"));}
+                            ReadState shown=displayed;JSONArray read=new JSONArray();for(int i=0;i<messages.length();i++){JSONObject m=messages.getJSONObject(i);if(shown.conversation().equals(conversation)&&shown.ids().contains(m.getString("id"))&&(!"image".equals(m.optString("kind"))||images.containsKey(m.getString("id"))))read.put(m.getString("id"));}
                             if(visible&&selected.equals(conversation))checked(pc.request(packet("read",conversation).put("visibleIds",read)));
                         }
                     }else {messages=new JSONArray();clearMedia();}

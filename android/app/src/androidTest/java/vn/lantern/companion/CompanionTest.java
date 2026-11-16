@@ -56,6 +56,10 @@ public class CompanionTest {
                     Method build=MainActivity.class.getDeclaredMethod("build");build.setAccessible(true);build.invoke(activity);activity.getWindow().getDecorView().measure(View.MeasureSpec.makeMeasureSpec(1080,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1920,View.MeasureSpec.EXACTLY));activity.getWindow().getDecorView().layout(0,0,1080,1920);snapshot(activity,"android-chat.png");
                     ConnectionService.conversations.getJSONObject(0).put("locked",true);build.invoke(activity);snapshot(activity,"android-locked.png");
                     java.lang.reflect.Field field=MainActivity.class.getDeclaredField("composerBar");field.setAccessible(true);assertEquals(View.GONE,((View)field.get(activity)).getVisibility());
+                    assertTrue(ConnectionService.displayed.ids().isEmpty());
+                    ConnectionService.conversations.getJSONObject(0).put("locked",false);ConnectionService.messages=new JSONArray();for(int n=0;n<50;n++)ConnectionService.messages.put(message("Tin kiểm tra vùng nhìn "+n,false));build.invoke(activity);
+                    View decor=activity.getWindow().getDecorView();decor.measure(View.MeasureSpec.makeMeasureSpec(1080,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1920,View.MeasureSpec.EXACTLY));decor.layout(0,0,1080,1920);
+                    Method visible=MainActivity.class.getDeclaredMethod("updateVisibleMessages");visible.setAccessible(true);visible.invoke(activity);assertFalse(ConnectionService.displayed.ids().isEmpty());assertTrue("Offscreen messages must remain unread",ConnectionService.displayed.ids().size()<50);
                 }catch(Exception e){throw new AssertionError(e);}
             });
         }finally{ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}
@@ -64,6 +68,6 @@ public class CompanionTest {
     private static void snapshot(MainActivity activity,String name)throws Exception{
         View view=activity.getWindow().getDecorView();int width=activity.getResources().getDisplayMetrics().widthPixels,height=activity.getResources().getDisplayMetrics().heightPixels;view.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));view.layout(0,0,width,height);Bitmap bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);view.draw(new Canvas(bitmap));
         try(FileOutputStream out=new FileOutputStream(new File(activity.getExternalFilesDir(null),name))){bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
-        try(android.os.ParcelFileDescriptor result=InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("sh -c 'mkdir -p /data/local/tmp/lantern-qa; cp "+new File(activity.getExternalFilesDir(null),name).getAbsolutePath()+" /data/local/tmp/lantern-qa/"+name+"'")){try(FileInputStream in=new FileInputStream(result.getFileDescriptor())){while(in.read()!=-1){}}}
+        for(String command:new String[]{"mkdir -p /data/local/tmp/lantern-qa","cp "+new File(activity.getExternalFilesDir(null),name).getAbsolutePath()+" /data/local/tmp/lantern-qa/"+name})try(InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand(command))){while(in.read()!=-1){}}
     }
 }

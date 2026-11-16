@@ -25,7 +25,8 @@ final class DeviceKeys {
         if(!ks.containsAlias(ID)) {
             KeyPairGenerator generator=KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC,"AndroidKeyStore");
             generator.initialize(new KeyGenParameterSpec.Builder(ID,KeyProperties.PURPOSE_SIGN|KeyProperties.PURPOSE_VERIFY)
-                .setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1")).setDigests(KeyProperties.DIGEST_SHA256,KeyProperties.DIGEST_SHA384,KeyProperties.DIGEST_SHA512)
+                // Conscrypt hashes TLS handshakes itself, then asks Keystore for a raw ECDSA signature.
+                .setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1")).setDigests(KeyProperties.DIGEST_NONE,KeyProperties.DIGEST_SHA256,KeyProperties.DIGEST_SHA384,KeyProperties.DIGEST_SHA512)
                 .setCertificateSubject(new X500Principal("CN=Lantern Android")).setCertificateSerialNumber(BigInteger.ONE)
                 .setCertificateNotBefore(new Date(0)).setCertificateNotAfter(new Date(4102444800000L)).build()); generator.generateKeyPair();
         }
