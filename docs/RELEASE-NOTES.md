@@ -3,6 +3,7 @@
 - Sửa ô soạn tin Android mất focus sau khi gửi hoặc nhận cập nhật. Tự cuộn lịch sử giữ focus ở ô nhập; xóa nội dung vừa gửi ngay trong bộ đệm đang soạn, tiếp tục gõ tin kế tiếp bằng bàn phím đang mở.
 - Kiểm thử gửi liên tiếp không chạm lại ô nhập, sau khi PC xác nhận và đẩy tin đến; kiểm tra focus, kết nối bàn phím và chữ đã được bố trí hiển thị.
 - Nút gửi và nút đính kèm luôn căn dưới ô soạn nhiều dòng, không bị lệch theo đường căn chữ.
+- Khi ngắt kết nối Android, khóa dữ liệu hội thoại trước khi công bố phiên đã dừng và bỏ qua phản hồi đồng bộ đến muộn.
 - Có phương án iOS tại `docs/IOS-PLAN.md`: ghép QR cùng PC, kênh riêng qua LAN/relay, lưu lịch sử cục bộ và các cách phân phối IPA/TestFlight.
 
 Cài đè APK để giữ ghép đôi. PC 1.2.2 tương thích với bản sửa Android này; gói PC 1.2.3 giữ cùng phiên bản phát hành.

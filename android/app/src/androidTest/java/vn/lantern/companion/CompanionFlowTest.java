@@ -85,8 +85,12 @@ public class CompanionFlowTest {
             scenario.onActivity(activity->{ConnectionService.current.select("");ConnectionService.current.select(conversation);assertEquals("Cached history should be immediately available",1,countText(text));});
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);Thread.sleep(1600);scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);until(()->countText(text)==1);
             scenario.onActivity(activity->{try{CompanionTest.snapshotCurrent(activity,"android-live-chat.png");}catch(Exception e){throw new AssertionError(e);}});
+            ConnectionService stopped=ConnectionService.current;
+            JSONObject lateSync=new JSONObject().put("serial",Long.MAX_VALUE).put("locked",false).put("conversations",new JSONArray(ConnectionService.conversations.toString())).put("messages",new JSONArray(ConnectionService.messages.toString()));
             context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);
             assertTrue(ConnectionService.conversations.getJSONObject(0).getBoolean("locked"));assertEquals(0,ConnectionService.messages.length());
+            java.lang.reflect.Method apply=ConnectionService.class.getDeclaredMethod("applySync",String.class,JSONObject.class);apply.setAccessible(true);apply.invoke(stopped,conversation,lateSync);
+            assertTrue("Late sync must not reopen a stopped protected session",ConnectionService.conversations.getJSONObject(0).getBoolean("locked"));assertEquals(0,ConnectionService.messages.length());
         }finally{context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);DeviceKeys.forget(context);ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}
     }
     private static int countText(String text){JSONArray messages=ConnectionService.messages;int count=0;for(int i=0;i<messages.length();i++)if(text.equals(messages.optJSONObject(i).optString("text")))count++;return count;}
