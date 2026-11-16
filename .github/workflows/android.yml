@@ -34,7 +34,7 @@ jobs:
           sdkmanager 'system-images;android-35;google_apis;x86_64' 'emulator'
           echo no | avdmanager create avd --force --name lantern-test --package 'system-images;android-35;google_apis;x86_64' --device pixel_6
           "$ANDROID_HOME/emulator/emulator" -avd lantern-test -no-window -no-audio -no-snapshot -gpu swiftshader_indirect > /tmp/lantern-emulator.log 2>&1 &
-          timeout 180 adb wait-for-device
+          if ! timeout 180 adb wait-for-device; then cat /tmp/lantern-emulator.log; exit 1; fi
           for n in $(seq 1 120); do
             if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = '1' ]; then break; fi
             sleep 2
@@ -51,6 +51,11 @@ jobs:
           ./gradlew connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.pcPin=$PC_PIN" --console=plain
           mkdir -p build/screenshots
           adb pull /sdcard/Android/data/vn.lantern.companion/files/. build/screenshots/
+      - name: Emulator diagnostics
+        if: failure()
+        run: |
+          cat /tmp/lantern-emulator.log || true
+          adb logcat -d -t 200 || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
