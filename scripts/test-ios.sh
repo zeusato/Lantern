@@ -31,7 +31,16 @@ openssl req -newkey rsa:2048 -nodes -keyout /tmp/lantern-ios-relay.key -out /tmp
 printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature,keyEncipherment' 'extendedKeyUsage=serverAuth' 'subjectAltName=IP:127.0.0.1,DNS:localhost' > /tmp/lantern-ios-relay.ext
 openssl x509 -req -in /tmp/lantern-ios-relay.csr -CA /tmp/lantern-ios-root.crt -CAkey /tmp/lantern-ios-root.key -CAcreateserial \
   -out /tmp/lantern-ios-relay.crt -days 1 -sha256 -extfile /tmp/lantern-ios-relay.ext
-xcrun simctl keychain "$DEVICE_ID" add-root-cert /tmp/lantern-ios-root.crt
+openssl x509 -in /tmp/lantern-ios-root.crt -outform DER -out /tmp/lantern-ios-root.der
+python3 - <<'PY'
+import base64, pathlib, xml.etree.ElementTree as ET
+path = pathlib.Path('ios/Lantern.xcodeproj/xcshareddata/xcschemes/Lantern.xcscheme')
+tree = ET.parse(path)
+variables = tree.getroot().find('TestAction/EnvironmentVariables')
+root = base64.b64encode(pathlib.Path('/tmp/lantern-ios-root.der').read_bytes()).decode()
+ET.SubElement(variables, 'EnvironmentVariable', key='LANTERN_FIXTURE_CA', value=root, isEnabled='YES')
+tree.write(path)
+PY
 node tests/MobileInteropFixture/relay-harness.mjs /tmp/lantern-ios-relay.crt /tmp/lantern-ios-relay.key > /tmp/lantern-ios-relay.log 2>&1 &
 RELAY_PID=$!
 xcodebuild -project ios/Lantern.xcodeproj -scheme Lantern -configuration Debug \

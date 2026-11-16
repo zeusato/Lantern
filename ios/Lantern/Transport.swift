@@ -9,7 +9,7 @@ private final class CompletionGate: @unchecked Sendable {
 }
 
 // Reject redirects: relay credentials must never follow a Location header to another host.
-final class RelayDelegate: NSObject, URLSessionTaskDelegate {
+class RelayDelegate: NSObject, URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 }
@@ -24,12 +24,12 @@ final class RelayDelegate: NSObject, URLSessionTaskDelegate {
     private var received = 0
     private var stopped = false
     var onFailure: (() -> Void)?
-    init(_ config: Packet) {
+    init(_ config: Packet, delegate: RelayDelegate = RelayDelegate()) {
         self.config = config
         let settings = URLSessionConfiguration.ephemeral
         settings.timeoutIntervalForRequest = 20; settings.timeoutIntervalForResource = 25
         settings.httpCookieStorage = nil; settings.urlCache = nil
-        http = URLSession(configuration: settings, delegate: RelayDelegate(), delegateQueue: nil)
+        http = URLSession(configuration: settings, delegate: delegate, delegateQueue: nil)
     }
     private func call(_ action: String, _ body: Packet) async throws -> Packet {
         guard !stopped, let url = URL(string: config.string("url") + "v1/routes/" + config.string("id") + "/" + action) else { throw CancellationError() }
@@ -157,6 +157,10 @@ enum SocketIO {
     var onPush: ((Packet) -> Void)?
     var onDisconnect: (() -> Void)?
     private(set) var transport = "Wi-Fi/LAN"
+    #if DEBUG
+    // Tests supply their ephemeral CA without changing the simulator's global trust store.
+    var relayDelegate = RelayDelegate()
+    #endif
 
     private func connect(host: String, port: UInt16, pin: String, seconds: UInt64) async throws -> NWConnection {
         let tls = NWProtocolTLS.Options()
@@ -201,7 +205,12 @@ enum SocketIO {
         #endif
         if active == nil {
             guard !stopped, let configRelay = config["relay"] as? Packet else { throw LanternError.message("Chưa tới được PC trong Wi-Fi. Kiểm tra PC và quyền Mạng cục bộ.") }
-            let bridge = RelayBridge(configRelay); relay = bridge
+            #if DEBUG
+            let bridge = RelayBridge(configRelay, delegate: relayDelegate)
+            #else
+            let bridge = RelayBridge(configRelay)
+            #endif
+            relay = bridge
             bridge.onFailure = { [weak self] in self?.close() }
             let port = try await bridge.start()
             active = try await connect(host: "127.0.0.1", port: port, pin: config.string("pc"), seconds: 45); transport = "Internet"
