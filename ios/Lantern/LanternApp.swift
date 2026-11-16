@@ -131,7 +131,6 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { if store.current?.protected == true && !store.locked { ToolbarItem(placement: .navigationBarTrailing) { Button { Task { await store.lock() } } label: { Image(systemName: "lock") }.accessibilityLabel("Khóa hội thoại") } } }
         .onAppear { store.select(conversationID) }
-        .onChange(of: store.locked) { if !$0 { focusRequest += 1 } }
         .onDisappear { password = ""; draft = ""; store.select("") }
         .onChange(of: store.visible) { if !$0 { password = ""; if store.current?.protected == true { draft = "" } } }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item]) { result in

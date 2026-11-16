@@ -12,8 +12,10 @@ final class ChatFlowTests: XCTestCase {
         let password = app.secureTextFields["Mật khẩu hội thoại"]
         XCTAssertTrue(password.waitForExistence(timeout: 10)); password.tap(); password.typeText("qa-password")
         app.buttons["Mở khóa"].tap()
-        let composer = app.descendants(matching: .any)["composer"].firstMatch
-        XCTAssertTrue(composer.waitForExistence(timeout: 15)); composer.tap(); composer.typeText("Hello from iPhone UI")
+        let composer = app.textViews["composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 15)); composer.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 15), "Tapping the composer must show the software keyboard")
+        composer.typeText("Hello from iPhone UI")
         app.buttons["send"].tap()
         XCTAssertTrue(app.staticTexts["Hello from iPhone UI"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Incoming immediately after send"].waitForExistence(timeout: 10))

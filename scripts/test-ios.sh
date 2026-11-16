@@ -23,6 +23,7 @@ ET.SubElement(variables, 'EnvironmentVariable', key='LANTERN_FIXTURE_PIN', value
 tree.write(path)
 PY
 DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; d=json.load(sys.stdin); print(next(v["udid"] for group in d["devices"].values() for v in group if v["name"].startswith("iPhone")))')
+defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool NO
 xcrun simctl boot "$DEVICE_ID" || true
 xcrun simctl bootstatus "$DEVICE_ID" -b
 openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/lantern-ios-root.key -out /tmp/lantern-ios-root.crt -days 1 \

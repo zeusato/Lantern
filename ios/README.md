@@ -34,7 +34,7 @@ bash scripts/build-ios.sh
 bash scripts/test-ios.sh
 ```
 
-Workflow dùng runner GitHub-hosted `macos-15-intel` tiêu chuẩn trên repo public. Không dùng runner lớn, Xcode Cloud hoặc dịch vụ ký trả phí. `build-ios.sh` biên dịch Release cho **iphoneos arm64**, tắt code signing, đóng đúng `Payload/Lantern.app`, kiểm tra zip và tạo SHA-256. Không đóng binary Simulator vào IPA.
+Workflow dùng runner GitHub-hosted `macos-15` tiêu chuẩn trên repo public. Không dùng runner lớn, Xcode Cloud hoặc dịch vụ ký trả phí. `build-ios.sh` biên dịch Release cho **iphoneos arm64**, tắt code signing, đóng đúng `Payload/Lantern.app`, kiểm tra zip và tạo SHA-256. Không đóng binary Simulator vào IPA.
 
 ## Kiểm chứng
 

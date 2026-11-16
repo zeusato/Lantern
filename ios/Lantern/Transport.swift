@@ -10,6 +10,10 @@ private final class CompletionGate: @unchecked Sendable {
 
 // Reject redirects: relay credentials must never follow a Location header to another host.
 class RelayDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        completionHandler(.performDefaultHandling, nil)
+    }
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
 }
@@ -18,6 +22,7 @@ class RelayDelegate: NSObject, URLSessionTaskDelegate {
     private let config: Packet
     private let sessionID = Wire.id()
     private let http: URLSession
+    private let delegate: RelayDelegate
     private var listener: NWListener?
     private var peer: NWConnection?
     private var jobs: [Task<Void, Never>] = []
@@ -26,6 +31,7 @@ class RelayDelegate: NSObject, URLSessionTaskDelegate {
     var onFailure: (() -> Void)?
     init(_ config: Packet, delegate: RelayDelegate = RelayDelegate()) {
         self.config = config
+        self.delegate = delegate
         let settings = URLSessionConfiguration.ephemeral
         settings.timeoutIntervalForRequest = 20; settings.timeoutIntervalForResource = 25
         settings.httpCookieStorage = nil; settings.urlCache = nil
@@ -38,7 +44,7 @@ class RelayDelegate: NSObject, URLSessionTaskDelegate {
         request.setValue("Bearer " + config.string("token"), forHTTPHeaderField: "OAI-Sites-Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (stream, response) = try await http.bytes(for: request)
+        let (stream, response) = try await http.bytes(for: request, delegate: delegate)
         guard let response = response as? HTTPURLResponse else { throw LanternError.message("Relay không phản hồi.") }
         guard response.statusCode == 200 else { throw RelayError(status: response.statusCode) }
         var data = Data()
