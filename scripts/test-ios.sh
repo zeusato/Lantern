@@ -28,9 +28,12 @@ xcrun simctl boot "$DEVICE_ID" || true
 xcrun simctl bootstatus "$DEVICE_ID" -b
 OPENSSL_BIN="$(brew --prefix openssl@3)/bin/openssl"
 "$OPENSSL_BIN" version
-"$OPENSSL_BIN" req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -sha256 -nodes -keyout /tmp/lantern-ios-root.key -out /tmp/lantern-ios-root.crt -days 1 \
+# Do not inherit the runner's v3_ca extensions: combining them with -addext can
+# create duplicate basicConstraints, which Apple's SecTrust correctly rejects.
+printf '%s\n' '[req]' 'distinguished_name = dn' '[dn]' > /tmp/lantern-ios-openssl.cnf
+"$OPENSSL_BIN" req -config /tmp/lantern-ios-openssl.cnf -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -sha256 -nodes -keyout /tmp/lantern-ios-root.key -out /tmp/lantern-ios-root.crt -days 1 \
   -subj '/CN=Lantern Simulator Root' -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=critical,keyCertSign,cRLSign'
-"$OPENSSL_BIN" req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -sha256 -nodes -keyout /tmp/lantern-ios-relay.key -out /tmp/lantern-ios-relay.csr -subj '/CN=localhost'
+"$OPENSSL_BIN" req -config /tmp/lantern-ios-openssl.cnf -newkey ec -pkeyopt ec_paramgen_curve:P-256 -sha256 -nodes -keyout /tmp/lantern-ios-relay.key -out /tmp/lantern-ios-relay.csr -subj '/CN=localhost'
 printf '%s\n' 'basicConstraints=critical,CA:FALSE' 'keyUsage=critical,digitalSignature' 'extendedKeyUsage=serverAuth' 'subjectAltName=IP:127.0.0.1,DNS:localhost' > /tmp/lantern-ios-relay.ext
 "$OPENSSL_BIN" x509 -req -in /tmp/lantern-ios-relay.csr -CA /tmp/lantern-ios-root.crt -CAkey /tmp/lantern-ios-root.key -CAcreateserial \
   -out /tmp/lantern-ios-relay.crt -days 1 -sha256 -extfile /tmp/lantern-ios-relay.ext
