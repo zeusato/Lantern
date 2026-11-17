@@ -47,6 +47,7 @@
      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="ChatTitle" Text="Không gian của bạn" FontSize="19" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="ChatSubtitle" Text="Những cuộc trò chuyện ở ngay bên cạnh" Style="{StaticResource Muted}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal"><Button x:Name="HeaderLockButton" Click="LockConversationClick" Style="{StaticResource RailButton}" Visibility="Collapsed" ToolTip="Khóa hội thoại ngay" AutomationProperties.Name="Khóa hội thoại ngay"><TextBlock Text="&#xE72E;" Style="{StaticResource Icon}"/></Button><Button Click="DetailsClick" Style="{StaticResource RailButton}" ToolTip="Thông tin cuộc trò chuyện" AutomationProperties.Name="Thông tin cuộc trò chuyện"><TextBlock Text="&#xE946;" Style="{StaticResource Icon}"/></Button></StackPanel></Grid>
     </Border>
     <Border x:Name="PairBanner" Grid.Row="1" Background="{DynamicResource AccentSoftBrush}" Padding="20,12" Visibility="Collapsed"><DockPanel><Button DockPanel.Dock="Right" Content="Xác minh" Click="PairClick" Style="{StaticResource AccentButton}"/><TextBlock Text="Xác minh máy này để bắt đầu trò chuyện." TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/></DockPanel></Border>
+    <Border x:Name="SelectionBar" Grid.Row="1" Background="{DynamicResource AccentSoftBrush}" Padding="16,8" Visibility="Collapsed"><DockPanel><StackPanel DockPanel.Dock="Right" Orientation="Horizontal"><Button x:Name="DeleteSelectedButton" Content="Xóa đã chọn" Click="DeleteSelectedClick" Margin="8,0"/><Button Content="Hủy chọn" Click="CancelSelectionClick"/></StackPanel><TextBlock x:Name="SelectionCount" Text="Chọn tin nhắn cần xóa" VerticalAlignment="Center"/></DockPanel></Border>
     <Grid Grid.Row="2">
      <ScrollViewer x:Name="ChatScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="MessagesPanel" Margin="26,22"/></ScrollViewer>
      <StackPanel x:Name="WelcomePanel" MaxWidth="400" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="36">
@@ -82,6 +83,8 @@
        <Button x:Name="ExpirySettingsButton" Content="Tin nhắn tự hủy · Tắt" Click="ExpirySettingsClick" Margin="0,0,0,10"/>
        <Button x:Name="ConversationPasswordButton" Content="Mật khẩu hội thoại" Click="ConversationPasswordClick" Margin="0,0,0,10"/>
        <Button x:Name="LockConversationButton" Content="Khóa hội thoại ngay" Click="LockConversationClick" Margin="0,0,0,10" Visibility="Collapsed"/>
+       <Button x:Name="SelectMessagesButton" Content="Chọn nhiều tin nhắn" Click="SelectMessagesClick" Margin="0,0,0,10"/>
+       <Button x:Name="ClearHistoryButton" Content="Dọn lịch sử hội thoại" Click="ClearHistoryClick" Margin="0,0,0,10"/>
        <Separator Margin="0,14"/>
        <TextBlock Text="Mã hóa khi truyền" FontSize="12" Foreground="{DynamicResource AccentBrush}"/><TextBlock Text="Danh tính giữ nguyên khi IP thay đổi." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,8,0,0"/>
        <Button x:Name="BlockButton" Content="Chặn máy này" Click="BlockClick" Margin="0,20,0,0" Visibility="Collapsed"/>

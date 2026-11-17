@@ -58,7 +58,7 @@ public partial class MainWindow
                 if (closing || appLocking) { mobile.CancelInvitation(); return; }
                 using var generator = new QRCodeGenerator(); using var data = generator.CreateQrCode(payload, QRCodeGenerator.ECCLevel.M); using var png = new PngByteQRCode(data);
                 using var stream = new MemoryStream(png.GetGraphic(7)); var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.StreamSource = stream; bitmap.EndInit(); bitmap.Freeze();
-                var content = new StackPanel(); content.Children.Add(Paragraph("Quét bằng Lantern Android", 23, true));
+                var content = new StackPanel(); content.Children.Add(Paragraph("Quét bằng Lantern Android / iOS", 23, true));
                 content.Children.Add(new Image { Source = bitmap, Width = 340, Height = 340, Stretch = Stretch.Uniform });
                 content.Children.Add(Paragraph("Mã dùng một lần, hết hạn sau 2 phút. Chỉ quét trên điện thoại của bạn; sau đó xác nhận mã đối chiếu trên cả hai thiết bị.", 13, muted: true));
                 ShowDialog("Ghép đôi điện thoại", content, "Đóng mã QR");
@@ -66,6 +66,26 @@ public partial class MainWindow
             catch (Exception ex) { ShowError(ex); }
             finally { mobile.CancelInvitation(); pair.IsEnabled = true; }
         }; panel.Children.Add(pair);
+        var webPair = new Button { Content = "＋ Ghép đôi iPhone · Bản web", Margin = new Thickness(0, 0, 0, 16), IsEnabled = config.Enabled };
+        webPair.Click += async (_, _) =>
+        {
+            webPair.IsEnabled = false;
+            try
+            {
+                var payload = await mobile.CreateInvitationAsync(web: true);
+                if (closing || appLocking) { mobile.CancelInvitation(); return; }
+                using var generator = new QRCodeGenerator(); using var data = generator.CreateQrCode(payload, QRCodeGenerator.ECCLevel.M); using var png = new PngByteQRCode(data);
+                using var stream = new MemoryStream(png.GetGraphic(7)); var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.StreamSource = stream; bitmap.EndInit(); bitmap.Freeze();
+                var content = new StackPanel(); content.Children.Add(Paragraph("Lantern trên iPhone", 23, true));
+                content.Children.Add(Paragraph("Mở địa chỉ này bằng Safari, thêm vào Màn hình chính, rồi mở Lantern và quét QR:", 13, muted: true));
+                content.Children.Add(new TextBox { Text = config.Url, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 8) });
+                content.Children.Add(new Image { Source = bitmap, Width = 320, Height = 320, Stretch = Stretch.Uniform });
+                content.Children.Add(Paragraph("Mã dùng một lần, hết hạn sau 2 phút. So sánh mã đối chiếu rồi cho phép trên PC. Trang web mở công khai; không cần tài khoản ChatGPT.", 12, muted: true));
+                ShowDialog("Ghép đôi bản web", content, "Đóng mã QR");
+            }
+            catch (Exception ex) { ShowError(ex); }
+            finally { mobile.CancelInvitation(); webPair.IsEnabled = config.Enabled; }
+        }; panel.Children.Add(webPair);
         foreach (var device in mobile.Registry.Snapshot().Devices)
         {
             panel.Children.Add(Paragraph(device.Name, 15, true)); panel.Children.Add(Paragraph("Đã ghép đôi " + device.Added.ToLocalTime().ToString("dd/MM/yyyy HH:mm"), 12, muted: true));

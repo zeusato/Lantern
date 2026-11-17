@@ -1,6 +1,14 @@
+import {webAssets} from './web-assets.js';
 const ID=/^[a-f0-9]{32}$/;const KEY=/^[A-Za-z0-9_-]{43}$/;const MAX_BODY=90000;
 const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'}});
 const hash=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value))),x=>x.toString(16).padStart(2,'0')).join('');
+async function canRegister(env,body,host,now){
+ const proof=body.registration;
+ if(!env.LANTERN_REGISTRATION_KEY||!proof||!Number.isSafeInteger(proof.issuedAt)||Math.abs(now-proof.issuedAt)>300||!/^[a-f0-9]{64}$/.test(proof.signature??''))return false;
+ const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.LANTERN_REGISTRATION_KEY),{name:'HMAC',hash:'SHA-256'},false,['verify']);
+ const bytes=Uint8Array.from(proof.signature.match(/../g),x=>parseInt(x,16));
+ return crypto.subtle.verify('HMAC',key,bytes,new TextEncoder().encode(['Lantern-route-v1',body.id,host,body.clientKey,String(proof.issuedAt)].join('\n')));
+}
 async function exchange(env,id,authHash,body,now){
  if(!ID.test(body.session??'')||!Number.isSafeInteger(body.after)||body.after<0||body.after>1e9)return json({error:'invalid_ack'},400);
  if(body.data&&(typeof body.data!=='string'||body.data.length>65536||!/^[A-Za-z0-9+/]+={0,2}$/.test(body.data)||body.data.length%4!==0||!Number.isSafeInteger(body.seq)||body.seq<1||body.seq>1e9))return json({error:'invalid_packet'},400);
@@ -29,7 +37,8 @@ async function exchange(env,id,authHash,body,now){
 }
 export default {async fetch(request,env){
  try{
- const url=new URL(request.url);if(url.pathname==='/health')return json({service:'Lantern private encrypted relay',protocol:1});
+ const url=new URL(request.url);if(url.pathname==='/health')return json({service:'Lantern private encrypted relay',protocol:1,web:1});
+ if(request.method==='GET'&&webAssets[url.pathname]){const asset=webAssets[url.pathname];const bytes=Uint8Array.from(atob(asset.data),c=>c.charCodeAt(0));return new Response(bytes,{headers:{'content-type':asset.type,'cache-control':url.pathname==='/sw.js'?'no-cache':'private, max-age=0, must-revalidate','x-content-type-options':'nosniff','referrer-policy':'no-referrer','permissions-policy':'camera=(self), microphone=(), geolocation=()','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"}});}
  if(url.pathname==='/')return new Response('<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Lantern · Relay riêng</title><style>body{background:#101a21;color:#ebf2f5;font:18px system-ui;max-width:640px;margin:12vh auto;padding:28px}h1{color:#2daa9c}p{line-height:1.7;color:#a5b6c2}</style><h1>Lantern</h1><h2>Kênh kết nối thiết bị riêng</h2><p>Relay chuyển tiếp các gói dữ liệu mã hóa giữa PC và điện thoại đã ghép đôi. Mật khẩu, khóa riêng và lịch sử chat không được lưu ở đây.</p><p>Quản lý thiết bị và tạo mã QR trong ứng dụng Lantern trên PC.</p></html>',{headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store'}});
  const bearer=request.headers.get('authorization')?.replace(/^Bearer /,'')??'';if(!KEY.test(bearer))return json({error:'unauthorized'},401);
  if(Number(request.headers.get('content-length')??0)>MAX_BODY)return json({error:'too_large'},413);
@@ -39,6 +48,7 @@ export default {async fetch(request,env){
    if(!ID.test(body.id??'')||!KEY.test(body.clientKey??''))return json({error:'invalid_route'},400);
    const old=await env.DB.prepare('SELECT * FROM relay_routes WHERE id=?').bind(body.id).first();
    if(old&&old.host_hash!==authHash)return json({error:'unauthorized'},401);
+   if(!old&&!await canRegister(env,body,bearer,now))return json({error:'registration_denied'},403);
    if(!old){const count=await env.DB.prepare('SELECT COUNT(*) AS n FROM relay_routes WHERE expires>?').bind(now).first();if(count.n>=32)return json({error:'route_limit'},429)}
    await env.DB.batch([env.DB.prepare('DELETE FROM relay_packets WHERE created<?').bind(now-120),env.DB.prepare('DELETE FROM relay_routes WHERE expires<?').bind(now),env.DB.prepare('INSERT INTO relay_routes(id,host_hash,client_hash,expires) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET client_hash=excluded.client_hash,expires=excluded.expires').bind(body.id,authHash,await hash(body.clientKey),now+604800)]);
    return json({ok:true});

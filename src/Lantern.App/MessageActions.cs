@@ -10,7 +10,7 @@ namespace Lantern.App;
 
 internal sealed class MessageActions : Border
 {
-    internal MessageActions(FrameworkElement host, Action reply)
+    internal MessageActions(FrameworkElement host, Action reply, ContextMenu? menu = null)
     {
         Name = "MessageActions"; Visibility = Visibility.Collapsed; CornerRadius = new CornerRadius(12); Padding = new Thickness(3); BorderThickness = new Thickness(1);
         SetResourceReference(BackgroundProperty, "SurfaceBrush"); SetResourceReference(BorderBrushProperty, "LineBrush");
@@ -19,6 +19,11 @@ internal sealed class MessageActions : Border
         var arrow = new Path { Data = Geometry.Parse("M 10,5 L 3,11 L 10,17 M 4,11 L 14,11 Q 21,11 21,19"), StrokeThickness = 2, StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, Width = 22, Height = 22 };
         arrow.SetResourceReference(Shape.StrokeProperty, "AccentBrush");
         var quote = RoundButton(arrow, "Trả lời có trích dẫn"); quote.Width = 30; quote.Height = 30; quote.Click += (_, _) => reply(); row.Children.Add(quote);
+        if (menu is not null)
+        {
+            var more = RoundButton(new TextBlock { Text = "⋯", FontSize = 20 }, "Thao tác tin nhắn"); more.Width = more.Height = 30;
+            more.Click += (_, _) => { menu.PlacementTarget = more; menu.IsOpen = true; }; row.Children.Add(more);
+        }
         host.MouseEnter += (_, _) => Visibility = Visibility.Visible;
         host.MouseLeave += (_, _) => UpdateVisibility(host);
         host.IsKeyboardFocusWithinChanged += (_, _) => UpdateVisibility(host);

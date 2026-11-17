@@ -1,4 +1,4 @@
-param([string]$Version = '1.2.4', [string]$OutputDirectory = 'release-output', [switch]$SkipTests)
+param([string]$Version = '1.2.5', [string]$OutputDirectory = 'release-output', [switch]$SkipTests)
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Use a stable version such as 1.1.0.' }
 $projectRoot = Split-Path $PSScriptRoot -Parent

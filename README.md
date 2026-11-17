@@ -135,3 +135,7 @@ Android companion: cài `Lantern-Android.apk`, mở khóa PC → Cài đặt →
 iOS companion: mã native SwiftUI trong `ios/`; workflow **iOS IPA** tạo `Lantern-iOS-unsigned.ipa` để ký/cài bằng Scarlet, không cần tài khoản Apple Developer trả phí cho bước build. Bản đầu nhận tin khi mở app, tự nối lại khi trở lại; không có APNs. Hướng dẫn và phạm vi: [ios/README.md](ios/README.md).
 
 Thiết kế tham khảo [WinUI App skill](https://github.com/openai/skills/tree/main/skills/.curated/winui-app), [Windows design](https://learn.microsoft.com/windows/apps/design/) và [WPF Fluent](https://learn.microsoft.com/dotnet/desktop/wpf/whats-new/net100). Runtime thực tế là WPF/.NET 10; không phụ thuộc WinUI 3.
+
+### iPhone dùng bản web
+
+Từ 1.2.5 có PWA tối ưu mobile: cài qua Safari, ghép QR với PC, không cần ký IPA. Xem [hướng dẫn Lantern Web](docs/WEB-MOBILE.md). PC/PWA có 5 bảng màu, xóa từng/nhiều tin và dọn hội thoại; PC có tùy chọn khởi động cùng Windows mặc định bật.

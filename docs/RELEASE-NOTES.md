@@ -1,3 +1,18 @@
+# Lantern 1.2.5
+
+- **Lantern Web cho iPhone**: giao diện tối ưu mobile, thêm vào Màn hình chính bằng Safari, ghép QR và xác nhận trên PC. Không cần ký IPA hoặc đăng nhập ChatGPT để mở trang.
+- Tin gửi hiện ngay, giữ focus ô nhập; hàng đợi/lịch sử mã hóa trên điện thoại, tự nối lại và không gửi trùng. React/quote bằng nhấn giữ, ảnh/tệp, khóa hội thoại và thông tin chia sẻ. Chi tiết cài đặt và giới hạn bản đầu: [WEB-MOBILE.md](https://github.com/zeusato/Lantern/blob/main/docs/WEB-MOBILE.md).
+- **PC/PWA**: xóa một tin, chọn nhiều tin để xóa, dọn lịch sử hội thoại có xác nhận. Chỉ xóa bản của tài khoản mình, không thu hồi ở máy đối tác. Giữ tệp gốc ngoài workspace và chặn replay làm tin đã xóa xuất hiện lại.
+- **5 bảng màu**: Ngọc bích, Đại dương, Tử đinh hương, Hồng trà, Hổ phách, dùng cùng chế độ sáng/tối.
+- **PC**: reaction nhận hover và click, trễ ẩn 0,5 giây; đi vào dãy emoji hủy đếm ngược.
+- **PC**: tùy chọn Khởi động cùng Windows, mặc định bật. Đăng ký cho người dùng hiện tại, giữ đúng workspace; có thể tắt trong cài đặt.
+- **PC**: IP chỉ hiển thị trong bảng thông tin bên phải; bỏ khỏi danh sách hội thoại, tiêu đề chat, danh thiếp và thanh trạng thái.
+- Relay public vẫn yêu cầu khóa riêng từng thiết bị và kênh mã hóa tới PC; tạo route mới cần HMAC của PC được cấu hình. Không nhúng credential vận hành vào web hoặc bản phát hành.
+
+Cập nhật PC lên 1.2.5 trước khi ghép bản web. PC phải mở khóa và không sleep. Thông báo nền iOS không phải mục tiêu bản web này; khi app bị dừng, mở lại để nhận tin. Hai lượt đo relay thật: xác nhận gửi 0,9–2,7 giây, nhận 0,8–1,6 giây; chưa đạt dưới 2 giây ổn định và chưa thử trên iPhone vật lý.
+
+Release 1.2.5 chỉ gồm PC và APK cùng checksum; ngừng đóng gói IPA trong quy trình release. iPhone dùng PWA qua Safari. APK tiếp tục ký bằng khóa hiện có; các thay đổi giao diện mới trong bản này áp dụng cho PC/PWA.
+
 # Lantern 1.2.4
 
 - Chat gọn hơn trên PC/Android/iOS: giờ và trạng thái nằm trong bong bóng. Các tin liên tiếp cùng người gửi, cách nhau tối đa 5 phút trong cùng ngày, chỉ hiện giờ/trạng thái đọc ở tin cuối; thu hẹp khoảng cách và chỉ hiện tên ở đầu nhóm. Trạng thái đang gửi/lỗi và bộ đếm tự hủy vẫn được giữ riêng.

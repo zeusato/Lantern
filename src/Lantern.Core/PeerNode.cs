@@ -673,6 +673,17 @@ public sealed class PeerNode : IAsyncDisposable
     public async Task DeleteConversationHistoryAsync(string id)
     {
         var messages = Store.DeleteConversation(id);
+        await DeleteStoredAttachments(messages);
+    }
+    public async Task DeleteMessagesAsync(string conversation, IReadOnlySet<string> ids)
+    {
+        var messages = Store.DeleteMessages(conversation, ids);
+        await DeleteStoredAttachments(messages);
+    }
+    private async Task DeleteStoredAttachments(List<ChatMessage> messages)
+    {
+        // Publish the authoritative history change even if a media file is busy.
+        Changed?.Invoke();
         foreach (var msg in messages)
         {
             receiving.TryRemove(msg.Id, out _);
@@ -680,7 +691,8 @@ public sealed class PeerNode : IAsyncDisposable
             foreach (var file in new[] { msg.FilePath, msg.FilePath + ".part" })
             {
                 var full = Path.GetFullPath(file);
-                if (!full.StartsWith(Path.GetFullPath(Store.MediaPath) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new IOException("Từ chối xóa tệp ngoài workspace.");
+                if (!full.StartsWith(Path.GetFullPath(Store.MediaPath) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
+                if (Store.Messages(limit: int.MaxValue).Any(m => string.Equals(m.FilePath, msg.FilePath, StringComparison.OrdinalIgnoreCase))) continue;
                 for (var attempt = 0; attempt < 10; attempt++)
                 { try { File.Delete(full); break; } catch (IOException) when (attempt < 9) { await Task.Delay(100); } }
             }

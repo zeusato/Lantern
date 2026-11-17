@@ -29,3 +29,6 @@ ios/build/
 ios/output/
 ios/*.xcodeproj/
 *.ipa
+pwa/node_modules/
+relay/dist/
+pwa/vendor/

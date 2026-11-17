@@ -1,0 +1,51 @@
+using System.Windows;
+using System.Windows.Controls;
+using Lantern.Core;
+
+namespace Lantern.App;
+public partial class MainWindow
+{
+    private bool messageSelection;
+    private string selectionConversation = "";
+    private readonly HashSet<string> selectedMessages = [];
+    private ContextMenu MessageMenu(ChatMessage message)
+    {
+        var menu = new ContextMenu();
+        var select = new MenuItem { Header = "Chọn nhiều tin nhắn" };
+        select.Click += (_, _) => BeginMessageSelection(message.Id); menu.Items.Add(select);
+        var delete = new MenuItem { Header = "Xóa tin nhắn" };
+        delete.Click += async (_, _) => await ConfirmDeleteMessages(message.ConversationId, new HashSet<string> { message.Id }); menu.Items.Add(delete);
+        return menu;
+    }
+    private void ResetMessageSelection() { messageSelection = false; selectionConversation = ""; selectedMessages.Clear(); SelectionBar.Visibility = Visibility.Collapsed; }
+    private void UpdateSelectionCount() { SelectionCount.Text = $"Đã chọn {selectedMessages.Count} tin nhắn"; DeleteSelectedButton.IsEnabled = selectedMessages.Count > 0; }
+    private void BeginMessageSelection(string? first = null)
+    {
+        if (selectedId.Length == 0 || ConversationProtected || appLocking) return;
+        messageSelection = true; selectionConversation = selectedId; selectedMessages.Clear(); if (first is not null) selectedMessages.Add(first);
+        SelectionBar.Visibility = Visibility.Visible; UpdateSelectionCount(); renderKey = ""; RefreshConversation();
+    }
+    private void SelectMessagesClick(object sender, RoutedEventArgs e) => BeginMessageSelection();
+    private void CancelSelectionClick(object sender, RoutedEventArgs e) { ResetMessageSelection(); renderKey = ""; RefreshConversation(); }
+    private async void DeleteSelectedClick(object sender, RoutedEventArgs e) => await ConfirmDeleteMessages(selectedId, selectedMessages.ToHashSet());
+    private async void ClearHistoryClick(object sender, RoutedEventArgs e) => await ConfirmDeleteMessages(selectedId, null);
+    private async Task ConfirmDeleteMessages(string conversation, HashSet<string>? ids)
+    {
+        if (conversation != selectedId || ConversationProtected || appLocking || ids?.Count == 0) return;
+        var panel = new StackPanel();
+        panel.Children.Add(Paragraph(ids is null ? "Dọn lịch sử hội thoại?" : $"Xóa {ids.Count} tin nhắn?", 23, true));
+        panel.Children.Add(Paragraph("Xóa khỏi lịch sử của bạn và đồng bộ sang điện thoại đã ghép đôi. Bản ở máy đối tác vẫn còn. Tệp gốc bên ngoài workspace được giữ nguyên. Thao tác không thể hoàn tác.", 13));
+        TextBox? confirm = null;
+        if (ids is null) { panel.Children.Add(Paragraph("Nhập XÓA để xác nhận dọn toàn bộ lịch sử.", 13, true)); confirm = new TextBox(); panel.Children.Add(confirm); }
+        if (!ShowDialog("Xác nhận xóa", panel, "Xóa lịch sử", () => confirm is null || confirm.Text.Trim() == "XÓA", confirm)) return;
+        if (closing || appLocking || ConversationProtected || selectedId != conversation) return;
+        try
+        {
+            CloseMediaViews(); foreach (var player in players) player.Close();
+            if (ids is null) await node.DeleteConversationHistoryAsync(conversation); else await node.DeleteMessagesAsync(conversation, ids);
+            if (ids is null || ids.Contains(replyDrafts.GetValueOrDefault(conversation, ""))) replyDrafts.Remove(conversation);
+            ResetMessageSelection(); renderKey = ""; Refresh(); ShowToast("Đã xóa khỏi lịch sử của bạn.");
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
+}

@@ -11,6 +11,7 @@ public sealed class RelayConfiguration
 }
 public sealed class MobileRoute
 {
+    public string Transport { get; set; } = "tls";
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string HostKey { get; set; } = Secret();
     public string ClientKey { get; set; } = Secret();

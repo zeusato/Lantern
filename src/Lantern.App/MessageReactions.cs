@@ -22,7 +22,7 @@ internal sealed class MessageReactions : StackPanel
         var choices = new StackPanel { Orientation = Orientation.Horizontal };
         var surface = new Border { Child = choices, Padding = new Thickness(5), CornerRadius = new CornerRadius(15), BorderThickness = new Thickness(1) };
         surface.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush"); surface.SetResourceReference(Border.BorderBrushProperty, "LineBrush"); palette.Child = surface;
-        var closeDelay = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        var closeDelay = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         void OpenPalette() { closeDelay.Stop(); palette.IsOpen = true; }
         void CloseLater() { closeDelay.Stop(); closeDelay.Start(); }
         closeDelay.Tick += (_, _) => { closeDelay.Stop(); if (!trigger.IsMouseOver && !surface.IsMouseOver && !surface.IsKeyboardFocusWithin) palette.IsOpen = false; };

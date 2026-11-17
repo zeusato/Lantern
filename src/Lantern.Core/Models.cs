@@ -95,6 +95,8 @@ public sealed class AppSettings
 {
     public string Name { get; set; } = "";
     public string Theme { get; set; } = "system";
+    public string ColorTheme { get; set; } = "jade";
+    public bool StartWithWindows { get; set; } = true;
     public int Port { get; set; } = 45853;
     public bool Onboarded { get; set; }
     public bool AutoEmoticons { get; set; } = true;

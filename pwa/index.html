@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#f5f8f7" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta
+      name="description"
+      content="Lantern trên điện thoại. Ghép đôi PC, trò chuyện và giữ kết nối."
+    />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <title>Lantern</title>
+    <script src="/vendor/jsQR.js" defer></script>
+    <script src="/app.js" type="module"></script>
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot">
+        <img src="/icon.svg" alt="" width="64" height="64" />
+        <h1>Lantern</h1>
+        <p>Đang mở không gian của bạn…</p>
+      </div>
+    </div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <dialog id="sheet" aria-labelledby="sheet-title"></dialog>
+    <noscript>Lantern cần JavaScript để kết nối an toàn với PC.</noscript>
+  </body>
+</html>

@@ -25,9 +25,10 @@ public sealed class MobilePacket
     public List<MobileConversation> Conversations { get; set; } = [];
     public List<ChatMessage> Messages { get; set; } = [];
     public List<string> VisibleIds { get; set; } = [];
+    public List<string> MessageIds { get; set; } = [];
     public List<string> Capabilities { get; set; } = [];
 }
-public sealed record MobileConversation(string Id, string Name, string Presence, int Unread, bool Locked, bool IsGroup, bool Protected = false, int DisappearSeconds = 0);
+public sealed record MobileConversation(string Id, string Name, string Presence, int Unread, bool Locked, bool IsGroup, bool Protected = false, int DisappearSeconds = 0, long HistoryVersion = 0);
 public static class MobileProtocol
 {
     public const int Version = 1;
@@ -61,6 +62,7 @@ public static class MobileProtocol
         var bytes = new byte[length]; await stream.ReadExactlyAsync(bytes, ct);
         var packet = JsonSerializer.Deserialize<MobilePacket>(bytes, Json) ?? throw new InvalidDataException();
         if (packet.VisibleIds is null || packet.VisibleIds.Count > 100 || packet.VisibleIds.Any(id => id is null || !Protocol.ValidId(id))) throw new InvalidDataException("Danh sách tin đã đọc không hợp lệ.");
+        if (packet.MessageIds is null || packet.MessageIds.Count > 500 || packet.MessageIds.Any(id => id is null || !Protocol.ValidId(id))) throw new InvalidDataException("Danh sách tin nhắn không hợp lệ.");
         if (packet.Type is null || packet.Id is null || packet.Conversation is null || packet.Text is null || packet.Password is null || packet.Nonce is null || packet.Name is null || packet.MessageId is null || packet.Emoji is null || packet.ReplyTo is null || packet.Data is null || packet.FileName is null || packet.Hash is null) throw new InvalidDataException("Trường mobile không hợp lệ.");
         if (packet.Text.Length > 16000 || packet.Password.Length > 256 || packet.Name.Length > 80 || packet.Nonce.Length > 256 || packet.Id.Length > 64 || packet.Conversation.Length > 128 || packet.Data.Length > 90000) throw new InvalidDataException("Gói mobile vượt giới hạn.");
         return packet;

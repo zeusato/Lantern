@@ -117,7 +117,7 @@ public partial class MainWindow : Window
             await mobile.StartAsync(App.TestMode ? 0 : 45854, App.TestMode);
             await UpdatePresence();
             MyInitials.Text = Initials(identity.Name);
-            NetworkStatus.Text = App.TestMode ? $"Kiểm thử cục bộ · 127.0.0.1:{node.Port}" : $"LAN · {string.Join(" · ", PeerNode.LocalAddresses())} · Cổng {node.Port}";
+            NetworkStatus.Text = App.TestMode ? "Kiểm thử cục bộ · Kết nối mã hóa" : "LAN · Kết nối trực tiếp · Mã hóa TLS";
             Title = $"Lantern · {identity.Name}";
             tray = new TrayIcon(() => Dispatcher.BeginInvoke(RestoreFromTray), () => Dispatcher.BeginInvoke(LockApp), () => Dispatcher.BeginInvoke(ExitApplication), id => Dispatcher.BeginInvoke(() => OpenNotification(id)));
             Refresh();
@@ -186,8 +186,8 @@ public partial class MainWindow : Window
         refreshing = true;
         var unreadCounts = store.UnreadCounts();
         var query = ContactSearch.Text.Trim();
-        var rows = node.Peers.Where(p => !p.Blocked).Select(p => new ContactRow(p.Id, p.DisplayName, p.Initials, !p.Trusted ? p.Connected ? "Chờ xác minh · " + p.Address : "Máy trong LAN · " + p.Address : p.Connected ? "Đang online · " + p.Address : "Offline · Tin nhắn sẽ chờ gửi", false)).Concat(store.Groups().Select(g => new ContactRow(g.Id, g.Name, "#", $"Nhóm · {g.Members.Count} thành viên", true))).Where(r => r.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
-        rows = rows.Select(row => { var peer = node.FindPeer(row.Id); var presence = peer is { Connected: true } ? peer.Presence : "offline"; var result = row with { Unread = unreadCounts.GetValueOrDefault(row.Id), Presence = presence }; return peer is null || !peer.Trusted ? result : result with { Subtitle = result.PresenceLabel + " · " + peer.Address }; }).ToList();
+        var rows = node.Peers.Where(p => !p.Blocked).Select(p => new ContactRow(p.Id, p.DisplayName, p.Initials, !p.Trusted ? p.Connected ? "Chờ xác minh" : "Máy trong LAN" : p.Connected ? "Đang online" : "Offline · Tin nhắn sẽ chờ gửi", false)).Concat(store.Groups().Select(g => new ContactRow(g.Id, g.Name, "#", $"Nhóm · {g.Members.Count} thành viên", true))).Where(r => r.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
+        rows = rows.Select(row => { var peer = node.FindPeer(row.Id); var presence = peer is { Connected: true } ? peer.Presence : "offline"; var result = row with { Unread = unreadCounts.GetValueOrDefault(row.Id), Presence = presence }; return peer is null || !peer.Trusted ? result : result with { Subtitle = result.PresenceLabel }; }).ToList();
         ContactsList.ItemsSource = rows; ContactsList.SelectedItem = rows.Find(r => r.Id == selectedId);
         NoContacts.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         OnlineCount.Text = $"{node.Peers.Count(p => p.Connected && !p.Blocked)} online";
@@ -225,7 +225,7 @@ public partial class MainWindow : Window
         BlockButton.Visibility = peer is not null && peer.Trusted ? Visibility.Visible : Visibility.Collapsed;
         ChatTitle.Text = group?.Name ?? peer?.DisplayName ?? "Không gian của bạn";
         var presenceLabel = peer is null ? "" : new ContactRow("", "", "", "", false, Presence: peer.Connected ? peer.Presence : "offline").PresenceLabel;
-        ChatSubtitle.Text = group is not null ? $"Nhóm riêng · {group.Members.Count} thành viên" : peer is not null ? $"{presenceLabel} · {peer.Address}:{peer.Port}{(peer.Trusted ? " · Đã xác minh" : " · Chưa xác minh")}" : "Những cuộc trò chuyện ở ngay bên cạnh";
+        ChatSubtitle.Text = group is not null ? $"Nhóm riêng · {group.Members.Count} thành viên" : peer is not null ? $"{presenceLabel}{(peer.Trusted ? " · Đã xác minh" : " · Chưa xác minh")}" : "Những cuộc trò chuyện ở ngay bên cạnh";
         DetailName.Text = group?.Name ?? peer?.DisplayName ?? "Kết nối riêng tư";
         DetailInitials.Text = group is not null ? "#" : peer?.Initials ?? "L";
         DetailStatus.Text = group is not null ? string.Join("\n", group.Members.Select(id => id == identity.Id ? identity.Name + " (bạn)" : node.FindPeer(id)?.DisplayName ?? "Thành viên chưa ghép đôi")) : peer is null ? "Dữ liệu truyền trực tiếp giữa các máy trong mạng LAN." : $"{peer.Address}:{peer.Port}\nID: {peer.Id[..12]}…\n{(peer.Trusted ? "Đã xác minh danh tính" : "Cần đối chiếu mã xác minh")}";
@@ -236,6 +236,8 @@ public partial class MainWindow : Window
         ExpirySettingsButton.IsEnabled = !protectedDetails && allowed;
         BlockButton.IsEnabled = !protectedDetails;
         LockConversationButton.IsEnabled = !protectedDetails;
+        SelectMessagesButton.IsEnabled = ClearHistoryButton.IsEnabled = !protectedDetails && hasChat;
+        if (protectedDetails || selectionConversation != selectedId) ResetMessageSelection();
         RefreshReplyPreview();
         if (ConversationProtected || appLocking)
         {
@@ -306,10 +308,18 @@ public partial class MainWindow : Window
         var bubble = new Border { Name = "MessageSurface", CornerRadius = new CornerRadius(12, 12, msg.Outgoing ? 4 : 12, msg.Outgoing ? 12 : 4), Padding = new Thickness(12, 9, 12, 9), BorderThickness = new Thickness(msg.Outgoing ? 0 : 1) };
         bubble.SetResourceReference(Border.BackgroundProperty, msg.Outgoing ? "OwnBrush" : "SurfaceBrush"); bubble.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
         var content = new StackPanel(); bubble.Child = content;
+        var messageMenu = MessageMenu(msg); bubble.ContextMenu = messageMenu;
+        if (messageSelection)
+        {
+            var choose = new CheckBox { Content = "Chọn tin nhắn", IsChecked = selectedMessages.Contains(msg.Id), Margin = new Thickness(0, 0, 0, 6) };
+            choose.SetResourceReference(Control.ForegroundProperty, "AccentBrush");
+            choose.Click += (_, _) => { if (choose.IsChecked == true) selectedMessages.Add(msg.Id); else selectedMessages.Remove(msg.Id); UpdateSelectionCount(); };
+            content.Children.Add(choose);
+        }
         if (!joinsPrevious && !msg.Outgoing && msg.GroupId.Length > 0) { var author = Paragraph(node.FindPeer(msg.SenderId)?.DisplayName ?? msg.SenderName, 11, true, true); author.Margin = new Thickness(0, 0, 0, 5); content.Children.Add(author); }
         var bubbleLayer = new Grid { HorizontalAlignment = alignment }; bubbleLayer.Children.Add(bubble); outer.Children.Add(bubbleLayer);
         var overlay = new Canvas { ClipToBounds = false }; Panel.SetZIndex(overlay, 2); bubbleLayer.Children.Add(overlay);
-        var toolbar = new MessageActions(outer, () => BeginReply(msg));
+        var toolbar = new MessageActions(outer, () => BeginReply(msg), messageMenu);
         if (msg.Outgoing) Canvas.SetRight(toolbar, 0); else Canvas.SetLeft(toolbar, 0);
         Canvas.SetTop(toolbar, -18); overlay.Children.Add(toolbar);
         var reactions = new MessageReactions(outer, msg.Reactions, identity.Id, id => node.FindPeer(id)?.DisplayName ?? "Thành viên", emoji => ToggleReaction(msg.Id, emoji));
@@ -331,7 +341,7 @@ public partial class MainWindow : Window
         if (msg.Kind == "contact" && msg.Contact is { } card)
         {
             content.Children.Add(Paragraph("👤 " + (node.FindPeer(card.Id)?.DisplayName ?? card.Name), 16, true));
-            content.Children.Add(Paragraph($"{card.Address}:{card.Port}\nDanh tính: {card.Id[..12]}…", 11, muted: true));
+            content.Children.Add(Paragraph($"Danh tính: {card.Id[..12]}…", 11, muted: true));
             var connect = new Button { Content = "Kết nối với liên hệ", HorizontalAlignment = HorizontalAlignment.Left };
             connect.Click += async (_, _) => { try { if (card.Id == identity.Id) { ShowToast("Đây là liên hệ của bạn."); return; } await node.ConnectAsync(card.Address, card.Port, card.Id); ContactSearch.Clear(); Refresh(); ContactsList.SelectedItem = ContactsList.Items.OfType<ContactRow>().FirstOrDefault(r => r.Id == card.Id); ShowToast("Đối chiếu mã xác minh để tin cậy liên hệ mới."); } catch (Exception ex) { ShowError(ex); } }; content.Children.Add(connect);
         }
@@ -608,7 +618,6 @@ public partial class MainWindow : Window
             var panel = new StackPanel(); panel.Children.Add(Paragraph("Xác minh " + peer.Name, 23, true));
             panel.Children.Add(Paragraph("Mở Xác minh trên cả hai máy và đối chiếu trực tiếp hoặc qua một kênh đã tin cậy. Chỉ xác nhận khi toàn bộ mã dưới đây giống nhau.", muted: true));
             var code = new TextBox { Text = Identity.VerificationCode(identity.Id, peer.Id), IsReadOnly = true, FontFamily = new FontFamily("Consolas"), FontSize = 19, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 20) }; panel.Children.Add(code);
-            panel.Children.Add(Paragraph(peer.Address + ":" + peer.Port, muted: true));
             if (ShowDialog("Ghép đôi an toàn", panel, "Mã giống nhau · Tin cậy máy này")) { await node.TrustAsync(peer.Id); ShowToast("Đã lưu danh tính. Máy bên kia cũng cần xác nhận mã."); Refresh(); }
         }
         catch (Exception ex) { ShowError(ex); }
@@ -654,7 +663,10 @@ public partial class MainWindow : Window
         toasts.Click += (_, _) => toastMode.IsEnabled = toasts.IsChecked == true;
         var closeToTray = new CheckBox { Content = "Đóng cửa sổ xuống khay hệ thống", IsChecked = App.Settings.CloseToTray, Margin = new Thickness(0, 0, 0, 6) }; closeToTray.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(closeToTray);
         panel.Children.Add(Paragraph("Khi bật, nút X chỉ ẩn cửa sổ; Lantern vẫn nhận tin nhắn. Nhấp đúp icon tray để mở lại. Chọn Thoát Lantern ở tray để thoát hẳn.", 12, muted: true));
+        var startup = new CheckBox { Content = "Khởi động cùng Windows", IsChecked = App.Settings.StartWithWindows, Margin = new Thickness(0, 0, 0, 18) }; startup.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(startup);
         panel.Children.Add(Paragraph("Giao diện", bold: true)); var theme = new ComboBox { ItemsSource = new[] { "Theo Windows", "Sáng", "Tối" }, SelectedIndex = App.Settings.Theme == "dark" ? 2 : App.Settings.Theme == "light" ? 1 : 0, Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 18) }; panel.Children.Add(theme);
+        panel.Children.Add(Paragraph("Bảng màu", bold: true));
+        var colorTheme = new ComboBox { ItemsSource = ColorThemes.All, DisplayMemberPath = "Name", SelectedItem = ColorThemes.Get(App.Settings.ColorTheme), Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 18) }; panel.Children.Add(colorTheme);
         panel.Children.Add(Paragraph("Danh tính cố định", bold: true)); panel.Children.Add(new TextBox { Text = identity.Fingerprint, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas"), FontSize = 12, Margin = new Thickness(0, 0, 0, 18) });
         var actions = new WrapPanel(); AddButton(actions, "Sao lưu danh tính", ExportIdentity); AddButton(actions, "Khôi phục danh tính", ImportIdentity); panel.Children.Add(actions);
         panel.Children.Add(Paragraph("Nội dung lịch sử được mã hóa bằng khóa của mật khẩu ứng dụng. Tệp ảnh/video đã lưu chưa mã hóa riêng trên ổ đĩa. Mật khẩu hội thoại là lớp khóa xem cục bộ, không đặt mật khẩu ở máy người khác.", 12, muted: true));
@@ -673,6 +685,8 @@ public partial class MainWindow : Window
             try
             {
                 App.Settings.Name = PeerNode.ValidateDisplayName(name.Text); App.Settings.MessageToasts = toasts.IsChecked == true; App.Settings.MessageToastMode = toastMode.SelectedIndex == 1 ? "private" : "full"; App.Settings.CloseToTray = closeToTray.IsChecked == true; App.Settings.Theme = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" }; App.SaveSettings();
+                App.Settings.ColorTheme = ((ColorTheme)colorTheme.SelectedItem).Id; App.SaveSettings();
+                WindowsStartup.Apply(startup.IsChecked == true); App.Settings.StartWithWindows = startup.IsChecked == true; App.SaveSettings();
                 await node.UpdateDisplayNameAsync(App.Settings.Name);
                 App.ApplyTheme(App.Settings.Theme); MyInitials.Text = Initials(identity.Name); Title = "Lantern · " + identity.Name; renderKey = ""; Refresh(); ShowToast("Đã lưu hồ sơ và cập nhật tên hiển thị.");
             }
@@ -696,7 +710,7 @@ public partial class MainWindow : Window
     {
         if (ConversationProtected || appLocking) return;
         var contact = node.FindPeer(selectedId); if (contact is null) return;
-        var choices = node.Peers.Where(p => p.Trusted && !p.Blocked && p.Id != contact.Id).Select(p => new ContactRow(p.Id, p.DisplayName, p.Initials, p.Address, false)).ToList();
+        var choices = node.Peers.Where(p => p.Trusted && !p.Blocked && p.Id != contact.Id).Select(p => new ContactRow(p.Id, p.DisplayName, p.Initials, "Đã xác minh", false)).ToList();
         if (choices.Count == 0) { ShowToast("Cần ghép đôi với người nhận trước khi chia sẻ liên hệ."); return; }
         var panel = new StackPanel(); panel.Children.Add(Paragraph("Chia sẻ liên hệ", 24, true)); panel.Children.Add(Paragraph("Gửi tên công khai, IP và danh tính của " + contact.Name + ". Người nhận vẫn phải xác minh ghép đôi. IP có thể đổi khi đối tác chuyển mạng.", 13, muted: true));
         var target = new ComboBox { ItemsSource = choices, DisplayMemberPath = "Name", SelectedIndex = 0, Padding = new Thickness(12) }; panel.Children.Add(target);
@@ -754,7 +768,7 @@ public partial class MainWindow : Window
                 if (contacts.Count == 0) results.Children.Add(Paragraph("Chưa tìm thấy. Thử tên khác, IP hoặc liên hệ được chia sẻ.", 13, muted: true));
                 foreach (var card in contacts)
                 {
-                    var button = new Button { Content = new TextBlock { Text = $"{card.Name}\n{card.Address}:{card.Port} · {card.Id[..12]}…", TextWrapping = TextWrapping.Wrap }, HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 9) };
+                    var button = new Button { Content = new TextBlock { Text = $"{card.Name}\nDanh tính · {card.Id[..12]}…", TextWrapping = TextWrapping.Wrap }, HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 9) };
                     button.Click += async (_, _) => { button.IsEnabled = false; try { await node.ConnectAsync(card.Address, card.Port, card.Id); window.Close(); ContactSearch.Clear(); Refresh(); ContactsList.SelectedItem = ContactsList.Items.OfType<ContactRow>().FirstOrDefault(row => row.Id == card.Id); ShowToast("Đối chiếu mã để xác minh người dùng vừa tìm thấy."); } catch (Exception ex) { button.IsEnabled = true; ShowError(ex); } }; results.Children.Add(button);
                 }
             }

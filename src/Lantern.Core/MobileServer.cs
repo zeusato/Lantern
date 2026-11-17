@@ -87,11 +87,11 @@ public sealed class MobileServer : IAsyncDisposable
                     {
                         previous = session;
                         await using var stream = new HttpRelayStream(api, route, session, true, life.Token);
-                        await Serve(stream, route.Id);
+                        await Serve(stream, route.Id, route.Transport == "web-v1" ? session : null);
                     }
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException) { RelayStatus = "Đang thử nối lại relay"; Changed?.Invoke(); }
-                await Task.Delay(2500, life.Token);
+                await Task.Delay(route.Transport == "web-v1" ? 250 : 2500, life.Token);
             }
         }
         catch (OperationCanceledException) { }
@@ -101,15 +101,18 @@ public sealed class MobileServer : IAsyncDisposable
             if (!life.IsCancellationRequested) { try { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8)); await api.Call("v1/routes/" + route.Id + "/revoke", route.HostKey, new { }, timeout.Token); } catch (Exception) { } }
         }
     }
-    public async Task<string> CreateInvitationAsync()
+    public async Task<string> CreateInvitationAsync(bool web = false)
     {
         CancelInvitation(); var state = Registry.Snapshot();
-        var route = state.Relay.Enabled ? new MobileRoute() : null;
+        if (web && !state.Relay.Enabled) throw new InvalidOperationException("Cần cấu hình relay Internet trước khi ghép đôi bản web.");
+        var route = state.Relay.Enabled ? new MobileRoute { Transport = web ? "web-v1" : "tls" } : null;
         if (route is not null) { using var api = new RelayApi(state.Relay); await api.Register(route, life.Token); }
         var pending = new MobileInvitation(MobileRoute.Secret(), DateTimeOffset.UtcNow.AddMinutes(2), route);
         lock (invitationGate) invitation = pending;
         if (route is not null) Watch(route);
-        return JsonSerializer.Serialize(new { v = 1, name = node.Identity.Name, pc = node.Identity.Id, addresses = PeerNode.LocalAddresses(), port = Port, nonce = pending.Nonce, expires = pending.Expires.ToUnixTimeSeconds(), relay = route is null ? null : new { url = state.Relay.Url, token = state.Relay.ServiceToken, id = route.Id, key = route.ClientKey } }, MobileProtocol.Json);
+        // The browser never receives the Sites service credential; its own Site session
+        // and this device-specific route capability authorize relay requests.
+        return JsonSerializer.Serialize(new { v = web ? 2 : 1, name = node.Identity.Name, pc = node.Identity.Id, addresses = web ? [] : PeerNode.LocalAddresses(), port = Port, nonce = pending.Nonce, expires = pending.Expires.ToUnixTimeSeconds(), relay = route is null ? null : new { url = state.Relay.Url, token = web ? "" : state.Relay.ServiceToken, id = route.Id, key = route.ClientKey } }, MobileProtocol.Json);
     }
     public void CancelInvitation() { lock (invitationGate) invitation = null; }
     public void LockConversation(string id) { foreach (var client in clients.Values) client.Unlocked.TryRemove(id, out _); Changed?.Invoke(); }
@@ -120,20 +123,37 @@ public sealed class MobileServer : IAsyncDisposable
         { try { using var api = new RelayApi(Registry.Snapshot().Relay); await api.Call("v1/routes/" + route.Id + "/revoke", route.HostKey, new { }, life.Token); } catch (HttpRequestException) { } }
         Changed?.Invoke();
     }
-    private async Task Serve(Stream transport, string? routeId)
+    private async Task Serve(Stream transport, string? routeId, string? webSession = null)
+    {
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(life.Token); timeout.CancelAfter(TimeSpan.FromSeconds(35));
+            if (webSession is not null)
+            {
+                await using var channel = await WebSecureStream.AcceptAsync(transport, node.Identity, routeId!, webSession, timeout.Token);
+                await ServeAuthenticated(channel, routeId, channel.RemoteId);
+            }
+            else
+            {
+                using var ssl = new SslStream(transport, true, (_, cert, _, _) => cert is not null);
+                await ssl.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = node.Identity.Certificate, ClientCertificateRequired = true, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, CertificateRevocationCheckMode = X509RevocationMode.NoCheck }, timeout.Token);
+                if (ssl.RemoteCertificate is null) throw new AuthenticationException();
+                using var certificate = new X509Certificate2(ssl.RemoteCertificate);
+                await ServeAuthenticated(ssl, routeId, Identity.PeerId(certificate));
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { }
+    }
+    private async Task ServeAuthenticated(Stream ssl, string? routeId, string deviceId)
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(life.Token);
-        using var ssl = new SslStream(transport, true, (_, cert, _, _) => cert is not null);
-        string deviceId = ""; var client = new Client(stop);
+        var client = new Client(stop);
         using var writes = new SemaphoreSlim(1, 1);
         using var updates = new SemaphoreSlim(0, 1);
         Task? pushing = null; Action? onChange = null; long serial = 0;
         try
         {
             using var helloTimeout = CancellationTokenSource.CreateLinkedTokenSource(stop.Token); helloTimeout.CancelAfter(TimeSpan.FromSeconds(70));
-            await ssl.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = node.Identity.Certificate, ClientCertificateRequired = true, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, CertificateRevocationCheckMode = X509RevocationMode.NoCheck }, helloTimeout.Token);
-            if (ssl.RemoteCertificate is null) throw new AuthenticationException();
-            using var certificate = new X509Certificate2(ssl.RemoteCertificate); deviceId = Identity.PeerId(certificate);
             var hello = await MobileProtocol.ReadAsync(ssl, helloTimeout.Token);
             if (hello.Type != "hello") throw new AuthenticationException();
             var known = Registry.Snapshot().Devices.Find(d => d.Id == deviceId);
@@ -205,6 +225,13 @@ public sealed class MobileServer : IAsyncDisposable
     private async Task<MobilePacket> Handle(Client client, string deviceId, MobilePacket request, CancellationToken ct)
     {
         var reply = new MobilePacket { Type = "ok", Conversation = request.Conversation };
+        if (request.Type is "delete-messages" or "clear-history")
+        {
+            ValidateConversation(client, request.Conversation);
+            if (request.Type == "clear-history") await node.DeleteConversationHistoryAsync(request.Conversation);
+            else await node.DeleteMessagesAsync(request.Conversation, request.MessageIds.ToHashSet());
+            FillHistory(reply, ""); return reply;
+        }
         if (request.Type is "list" or "sync")
         {
             if (request.Type == "sync") client.Selected = request.Conversation;
@@ -224,7 +251,8 @@ public sealed class MobileServer : IAsyncDisposable
                 }
             }
             var policies = node.Store.Policies().ToDictionary(p => p.Id, p => p.DisappearSeconds);
-            reply.Conversations = reply.Conversations.Select(c => c with { DisappearSeconds = policies.GetValueOrDefault(c.Id) }).ToList();
+            var versions = node.Store.HistoryVersions();
+            reply.Conversations = reply.Conversations.Select(c => c with { DisappearSeconds = policies.GetValueOrDefault(c.Id), HistoryVersion = versions.GetValueOrDefault(c.Id) }).ToList();
             return reply;
         }
         if (request.Type == "unlock")

@@ -2,8 +2,21 @@ import test from 'node:test';import assert from 'node:assert/strict';import {Dat
 const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../drizzle/0000_relay.sql',import.meta.url),'utf8'));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)??null},async all(){return {results:db.prepare(sql).all(...args)}},async run(){return /^SELECT/.test(sql)?{results:db.prepare(sql).all(...args)}:db.prepare(sql).run(...args)}});
 const env={DB:{prepare:wrap,async batch(list){db.exec('BEGIN');try{const results=[];for(const stmt of list)results.push(await stmt.run());db.exec('COMMIT');return results}catch(e){db.exec('ROLLBACK');throw e}}}};
+env.LANTERN_REGISTRATION_KEY='synthetic-registration-key-only';
 const host='h'.repeat(43),client='c'.repeat(43),route='a'.repeat(32),session='b'.repeat(32);
-async function call(path,key=host,body=null){const request=new Request('https://relay.test'+path,{method:body?'POST':'GET',headers:{authorization:'Bearer '+key},...(body?{body:JSON.stringify(body)}:{})});const r=await worker.fetch(request,env);return {status:r.status,body:await r.json()}}
+async function proof(id,key,clientKey,issuedAt=Math.floor(Date.now()/1000)){const hmac=await crypto.subtle.importKey('raw',new TextEncoder().encode(env.LANTERN_REGISTRATION_KEY),{name:'HMAC',hash:'SHA-256'},false,['sign']);const signature=Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',hmac,new TextEncoder().encode(['Lantern-route-v1',id,key,clientKey,String(issuedAt)].join('\n')))),x=>x.toString(16).padStart(2,'0')).join('');return {issuedAt,signature};}
+async function call(path,key=host,body=null,sign=true){if(path==='/v1/routes'&&body&&sign)body={...body,registration:await proof(body.id,key,body.clientKey)};const request=new Request('https://relay.test'+path,{method:body?'POST':'GET',headers:{authorization:'Bearer '+key},...(body?{body:JSON.stringify(body)}:{})});const r=await worker.fetch(request,env);return {status:r.status,body:await r.json()}}
+test('public visitors cannot create routes, forge registration or reuse stale proof',async()=>{
+ const id='7'.repeat(32),body={id,clientKey:client};
+ assert.equal((await call('/v1/routes',host,body,false)).status,403);
+ assert.equal((await call('/v1/routes',host,{...body,registration:{issuedAt:Math.floor(Date.now()/1000),signature:'0'.repeat(64)}},false)).status,403);
+ assert.equal((await call('/v1/routes',host,{...body,registration:await proof(id,host,client,1)},false)).status,403);
+ const valid=await proof(id,host,client);
+ assert.equal((await call('/v1/routes',host,{...body,clientKey:'k'.repeat(43),registration:valid},false)).status,403);
+ assert.equal((await call('/v1/routes',host,{...body,registration:valid},false)).status,200);
+ assert.equal((await call('/v1/routes',host,body,false)).status,200);
+ await call('/v1/routes/'+id+'/revoke',host,{});
+});
 test('authenticated routes carry opaque packets, reject replay conflicts, separate roles and revoke',async()=>{
  assert.equal((await call('/v1/routes','bad',{id:route,clientKey:client})).status,401);
  assert.equal((await call('/v1/routes',host,{id:route,clientKey:client})).status,200);

@@ -18,6 +18,7 @@ public sealed class LocalStore : IDisposable
         Directory.CreateDirectory(MediaPath);
         db = new SqliteConnection($"Data Source={Path.Combine(directory, "history.db")};Pooling=False");
         db.Open();
+        using (var revisions = db.CreateCommand()) { revisions.CommandText = "CREATE TABLE IF NOT EXISTS history_revisions(conversation TEXT PRIMARY KEY, revision INTEGER NOT NULL)"; revisions.ExecuteNonQuery(); }
         using var cmd = db.CreateCommand();
         cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA secure_delete=ON; CREATE TABLE IF NOT EXISTS peers(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,conversation TEXT NOT NULL,time TEXT NOT NULL,data TEXT NOT NULL); CREATE INDEX IF NOT EXISTS ix_messages_conversation ON messages(conversation,time); CREATE TABLE IF NOT EXISTS groups(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS deleted_messages(id TEXT PRIMARY KEY);";
         cmd.ExecuteNonQuery();
@@ -177,11 +178,11 @@ public sealed class LocalStore : IDisposable
     }
     private void WriteMessage(ChatMessage value, SqliteTransaction? transaction = null)
     {
-            using var cmd = db.CreateCommand(); cmd.Transaction = transaction; cmd.CommandText = "INSERT INTO messages(id,conversation,time,data) VALUES($id,$c,$t,$d) ON CONFLICT(id) DO UPDATE SET data=$d";
+            using var cmd = db.CreateCommand(); cmd.Transaction = transaction; cmd.CommandText = "INSERT INTO messages(id,conversation,time,data) SELECT $id,$c,$t,$d WHERE NOT EXISTS(SELECT 1 FROM deleted_messages WHERE id=$id) ON CONFLICT(id) DO UPDATE SET data=$d";
             cmd.Parameters.AddWithValue("$id", value.Id); cmd.Parameters.AddWithValue("$c", value.ConversationId);
             cmd.Parameters.AddWithValue("$t", value.Time.ToString("O")); cmd.Parameters.AddWithValue("$d", Seal(Codec.Encode(value))); cmd.ExecuteNonQuery();
             using var expiry = db.CreateCommand(); expiry.Transaction = transaction;
-            expiry.CommandText = "DELETE FROM message_expiry WHERE id=$id; INSERT INTO message_expiry(id,expires) SELECT $id,$expires WHERE $expires IS NOT NULL;";
+            expiry.CommandText = "DELETE FROM message_expiry WHERE id=$id; INSERT INTO message_expiry(id,expires) SELECT $id,$expires WHERE $expires IS NOT NULL AND EXISTS(SELECT 1 FROM messages WHERE id=$id);";
             expiry.Parameters.AddWithValue("$id", value.Id); expiry.Parameters.AddWithValue("$expires", (object?)value.ExpiresAt?.UtcDateTime.ToString("O") ?? DBNull.Value); expiry.ExecuteNonQuery();
     }
     public ChatMessage? Message(string id)
@@ -213,13 +214,27 @@ public sealed class LocalStore : IDisposable
     {
         lock (gate) { using var cmd = db.CreateCommand(); cmd.CommandText = "SELECT 1 FROM deleted_messages WHERE id=$id"; cmd.Parameters.AddWithValue("$id", id); return cmd.ExecuteScalar() is not null; }
     }
-    public List<ChatMessage> DeleteConversation(string id)
+    public List<ChatMessage> DeleteConversation(string id) => DeleteMessages(id, null);
+    public Dictionary<string, long> HistoryVersions()
+    {
+        lock (gate) { using var cmd = db.CreateCommand(); cmd.CommandText = "SELECT conversation,revision FROM history_revisions"; using var reader = cmd.ExecuteReader(); var values = new Dictionary<string, long>(); while (reader.Read()) values[reader.GetString(0)] = reader.GetInt64(1); return values; }
+    }
+    public List<ChatMessage> DeleteMessages(string conversation, IReadOnlySet<string>? ids)
     {
         lock (gate)
         {
-            var messages = Messages(id, limit: int.MaxValue);
-            using var tx = db.BeginTransaction(); using var cmd = db.CreateCommand(); cmd.Transaction = tx;
-            cmd.CommandText = "INSERT OR IGNORE INTO deleted_messages(id) SELECT id FROM messages WHERE conversation=$id; DELETE FROM unread_messages WHERE id IN (SELECT id FROM messages WHERE conversation=$id); DELETE FROM messages WHERE conversation=$id;"; cmd.Parameters.AddWithValue("$id", id); cmd.ExecuteNonQuery(); tx.Commit(); return messages;
+            var messages = Messages(conversation, limit: int.MaxValue).Where(m => ids is null || ids.Contains(m.Id)).ToList();
+            using var tx = db.BeginTransaction();
+            using var cmd = db.CreateCommand(); cmd.Transaction = tx;
+            cmd.CommandText = "INSERT OR IGNORE INTO deleted_messages(id) VALUES($id); DELETE FROM unread_messages WHERE id=$id; DELETE FROM message_expiry WHERE id=$id; DELETE FROM expired_messages WHERE id=$id; DELETE FROM messages WHERE id=$id;";
+            var parameter = cmd.Parameters.Add("$id", SqliteType.Text);
+            foreach (var message in messages) { parameter.Value = message.Id; cmd.ExecuteNonQuery(); }
+            if (messages.Count > 0)
+            {
+                using var revision = db.CreateCommand(); revision.Transaction = tx;
+                revision.CommandText = "INSERT INTO history_revisions(conversation,revision) VALUES($c,1) ON CONFLICT(conversation) DO UPDATE SET revision=revision+1"; revision.Parameters.AddWithValue("$c", conversation); revision.ExecuteNonQuery();
+            }
+            tx.Commit(); return messages;
         }
     }
     public void Dispose() { lock (gate) db.Dispose(); }

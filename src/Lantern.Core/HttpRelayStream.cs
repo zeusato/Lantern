@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text;
+using System.Security.Cryptography;
 using System.Threading.Channels;
 
 namespace Lantern.Core;
@@ -9,9 +11,11 @@ namespace Lantern.Core;
 public sealed class RelayApi : IDisposable
 {
     private readonly HttpClient http;
+    private readonly byte[] registrationKey;
     public RelayApi(RelayConfiguration config)
     {
         if (!config.Enabled) throw new ArgumentException("Relay chưa được cấu hình.");
+        registrationKey = Encoding.UTF8.GetBytes(config.ServiceToken);
         http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = new Uri(config.Url), Timeout = TimeSpan.FromSeconds(20) };
         http.DefaultRequestHeaders.Add("OAI-Sites-Authorization", "Bearer " + config.ServiceToken);
     }
@@ -26,8 +30,14 @@ public sealed class RelayApi : IDisposable
         using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
         return doc.RootElement.Clone();
     }
-    public Task<JsonElement> Register(MobileRoute route, CancellationToken ct) => Call("v1/routes", route.HostKey, new { id = route.Id, clientKey = route.ClientKey }, ct);
-    public void Dispose() => http.Dispose();
+    public Task<JsonElement> Register(MobileRoute route, CancellationToken ct)
+    {
+        long issuedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var payload = Encoding.UTF8.GetBytes(string.Join("\n", "Lantern-route-v1", route.Id, route.HostKey, route.ClientKey, issuedAt.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        var signature = Convert.ToHexString(HMACSHA256.HashData(registrationKey, payload)).ToLowerInvariant();
+        return Call("v1/routes", route.HostKey, new { id = route.Id, clientKey = route.ClientKey, registration = new { issuedAt, signature } }, ct);
+    }
+    public void Dispose() { http.Dispose(); CryptographicOperations.ZeroMemory(registrationKey); }
 }
 
 public sealed class HttpRelayStream : Stream

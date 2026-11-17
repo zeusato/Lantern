@@ -94,14 +94,25 @@ internal sealed class UiHarness : Application
             var reactionPalette = Field<Popup>(liveDock, "palette");
             Check(reactionPalette.IsOpen, "Hovering the reaction trigger opens emoji choices without a click");
             liveTrigger.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseLeaveEvent });
+            await Task.Delay(300); Check(reactionPalette.IsOpen, "Reaction picker leaves half a second to cross the gap");
             ((FrameworkElement)reactionPalette.Child).RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
-            await Task.Delay(250); Check(reactionPalette.IsOpen, "Moving from reaction trigger into the palette keeps the choices open");
+            await Task.Delay(550); Check(reactionPalette.IsOpen, "Moving from reaction trigger into the palette cancels delayed hiding");
+            reactionPalette.IsOpen = false;
+            liveTrigger.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Check(reactionPalette.IsOpen, "Clicking the reaction trigger also opens emoji choices");
             await Task.Delay(60); Snapshot((FrameworkElement)reactionPalette.Child, Path.Combine(root, "reaction-picker.png"));
             Visuals<Button>(reactionPalette.Child).Single(button => button.Content is Image { Tag: "😂" }).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => remoteStore.Message(first.Id)!.Reactions.GetValueOrDefault(node.Identity.Id) == "😂", "New picker delivers reaction"); Check(true, "Bubble-edge reaction picker sends the selected colored emoji");
             Call(window, "Refresh"); Visuals<Button>(LiveReactions()).Single(button => button.Name == "ReactionSummary").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => remoteStore.Message(first.Id)!.Reactions.GetValueOrDefault(node.Identity.Id) == "", "Summary removes own reaction"); Check(true, "Clicking the reaction count removes the user's own reaction");
             await (Task)Call(window, "ToggleReaction", first.Id, "❤️")!;
+            Call(window, "BeginMessageSelection", first.Id);
+            Check(((Border)window.FindName("SelectionBar")).Visibility == Visibility.Visible && Field<HashSet<string>>(window, "selectedMessages").Contains(first.Id), "Multi-select shows inline controls and selects the invoked message");
+            Check(Visuals<CheckBox>((Panel)window.FindName("MessagesPanel")).Any(box => box.IsChecked == true), "Messages expose checkboxes while selecting");
+            Call(window, "CancelSelectionClick", window, new RoutedEventArgs());
+            Check(((Border)window.FindName("SelectionBar")).Visibility == Visibility.Collapsed && store.Message(first.Id) is not null, "Cancelling message selection preserves history");
+            Check(!((TextBlock)window.FindName("ChatSubtitle")).Text.Contains("127.0.0.1") && ((ListBox)window.FindName("ContactsList")).Items.Cast<ContactRow>().All(row => !row.Subtitle.Contains("127.0.0.1")), "Peer IP is absent from conversation rows and chat header");
+            Check(((TextBlock)window.FindName("DetailStatus")).Text.Contains("127.0.0.1") && !((TextBlock)window.FindName("NetworkStatus")).Text.Contains("127.0.0.1"), "IP is visible only in the information pane, not the status bar");
             var pixels = new byte[64 * 48 * 4]; for (int i = 0; i < pixels.Length; i += 4) { pixels[i] = 100; pixels[i + 1] = 190; pixels[i + 2] = 35; pixels[i + 3] = 0; }
             var clipboardImage = BitmapSource.Create(64, 48, 96, 96, PixelFormats.Bgra32, null, pixels, 64 * 4);
             var normalized = ClipboardImages.NormalizeBitmap(clipboardImage);
@@ -216,6 +227,9 @@ internal sealed class UiHarness : Application
                     Check(!mode.IsEnabled && mode.Items.Cast<string>().SequenceEqual(new[] { "Hiện người gửi và nội dung", "Chỉ báo có tin nhắn mới" }), "Settings offer both toast modes while notifications default to off");
                     var enable = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Hiện thông báo Windows khi có tin nhắn mới"); enable.IsChecked = true; enable.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); mode.SelectedIndex = 1;
                     var closeToTray = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Đóng cửa sổ xuống khay hệ thống"); Check(closeToTray.IsChecked == false, "Close-to-tray setting defaults to off"); closeToTray.IsChecked = true;
+                    var startup = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Khởi động cùng Windows"); Check(startup.IsChecked == true, "Windows startup option defaults on"); startup.IsChecked = false;
+                    var color = Visuals<ComboBox>(dialog).Single(combo => combo.Items.Count == 5); color.SelectedIndex = 2;
+                    Check(color.Items.Cast<ColorTheme>().Select(t => t.Accent).Distinct().Count() == 5, "Settings expose five distinct color palettes");
                     Snapshot(dialog, Path.Combine(root, "toast-settings.png"));
                     ApplyTheme("dark"); Snapshot(dialog, Path.Combine(root, "settings-dark.png"));
                     var settingsScroll = Visuals<ScrollViewer>(dialog).First(); settingsScroll.ScrollToBottom(); Snapshot(dialog, Path.Combine(root, "settings-bottom.png"));
@@ -228,6 +242,8 @@ internal sealed class UiHarness : Application
             if (settingsFailure is not null) throw settingsFailure;
             Check(Settings.MessageToasts && Settings.MessageToastMode == "private", "Saving settings applies the private toast mode");
             Check(Settings.CloseToTray && Codec.Decode<AppSettings>(File.ReadAllText(Path.Combine(workspace, "settings.json"))).CloseToTray, "Close-to-tray choice is saved to disk");
+            Check(!Settings.StartWithWindows && Settings.ColorTheme == "violet" && Codec.Decode<AppSettings>(File.ReadAllText(Path.Combine(workspace, "settings.json"))).ColorTheme == "violet", "Startup opt-out and color palette are persisted");
+            Check(WindowsStartup.Command(@"C:\Program Files\Lantern\Lantern.exe") == "\"C:\\Program Files\\Lantern\\Lantern.exe\"", "Windows startup command safely quotes a path containing spaces");
             Exception? mobileFailure = null;
             _ = Dispatcher.InvokeAsync(() =>
             {
@@ -291,7 +307,7 @@ internal sealed class UiHarness : Application
             Settings.CloseToTray = false; Vault.Dispose(); window = new MainWindow(requireLogin: true); MainWindow = window; window.Show(); ActivateFixture(window); await Task.Delay(120);
             Check(Field<PeerNode>(window, "node") is null && Windows.Count == 1 && Visuals<LoginView>(window).Single().IsVisible, "Cold startup stays in one window and does not start networking before authentication");
             var startupHandle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
-            var startupLogin = Visuals<LoginView>(window).Single(); var startupPassword = Visuals<PasswordBox>(startupLogin).Single(); Check(startupPassword.IsKeyboardFocused, "Cold startup automatically focuses the password field");
+            var startupLogin = Visuals<LoginView>(window).Single(); var startupPassword = Visuals<PasswordBox>(startupLogin).Single(); await Until(() => startupPassword.IsKeyboardFocused, "Cold startup keyboard focus"); Check(startupPassword.IsKeyboardFocused, "Cold startup automatically focuses the password field");
             startupPassword.Password = "synthetic QA password only"; Visuals<Button>(startupLogin).Single(button => button.Content as string == "Mở khóa").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => Field<PeerNode>(window, "node") is { Port: > 0 }, "Second startup"); Check(new System.Windows.Interop.WindowInteropHelper(window).Handle == startupHandle && Windows.Count == 1 && !Visuals<LoginView>(window).Any(), "Successful startup login reuses the same native app window");
             var closedDefault = new TaskCompletionSource(); window.Closed += (_, _) => closedDefault.TrySetResult(); window.Close(); await closedDefault.Task.WaitAsync(TimeSpan.FromSeconds(8)); Check(true, "Close button exits normally when close-to-tray is disabled"); window = null;
