@@ -5,9 +5,12 @@ namespace Lantern.Core;
 
 public sealed class RelayConfiguration
 {
+    public const string PublicUrl = "https://lantern-private-relay-zeusato.tranquymtcn.chatgpt.site/";
     public string Url { get; set; } = "";
     public string ServiceToken { get; set; } = "";
-    public bool Enabled => Uri.TryCreate(Url, UriKind.Absolute, out var uri) && uri.Scheme == "https" && uri.AbsolutePath == "/" && string.IsNullOrEmpty(uri.UserInfo) && uri.Query.Length == 0 && uri.Fragment.Length == 0 && ServiceToken.Length is > 0 and <= 6000 && !ServiceToken.Any(char.IsControl);
+    public string InstallationKey { get; set; } = "";
+    public bool Automatic => Url == PublicUrl && InstallationKey.Length == 43 && InstallationKey.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_') && ServiceToken.Length == 0;
+    public bool Enabled => Uri.TryCreate(Url, UriKind.Absolute, out var uri) && uri.Scheme == "https" && uri.AbsolutePath == "/" && string.IsNullOrEmpty(uri.UserInfo) && uri.Query.Length == 0 && uri.Fragment.Length == 0 && (Automatic || ServiceToken.Length is > 0 and <= 6000 && !ServiceToken.Any(char.IsControl));
 }
 public sealed class MobileRoute
 {
@@ -49,6 +52,18 @@ public sealed class MobileRegistry
     }
     private static T Copy<T>(T value) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(value, MobileProtocol.Json), MobileProtocol.Json)!;
     public MobileState Snapshot() { lock (gate) return Copy(state); }
+    public void EnsureAutomaticRelay()
+    {
+        lock (gate)
+        {
+            if (state.Relay.Enabled) return;
+            if (state.Relay.Url.Length > 0 || state.Relay.ServiceToken.Length > 0 || state.Relay.InstallationKey.Length > 0)
+                throw new InvalidOperationException("Cấu hình relay riêng không hợp lệ. Kiểm tra trong mục Nâng cao.");
+            // Persist BEFORE contacting the relay: retries/restarts reuse the same installation.
+            state.Relay = new() { Url = RelayConfiguration.PublicUrl, InstallationKey = MobileRoute.Secret() };
+            Save();
+        }
+    }
     public bool Contains(string id) { lock (gate) return state.Devices.Any(d => d.Id == id); }
     public void Add(MobileDevice device)
     {

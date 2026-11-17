@@ -1,3 +1,12 @@
+# Lantern 1.2.7
+
+- **Ghép đôi trên mọi PC cài mới:** tự thiết lập relay, không nhập URL/khóa thủ công và không cần tài khoản ChatGPT. Nút **Ghép đôi iPhone · Bản web** luôn bấm được.
+- Hiện trạng thái đang kết nối/tạo QR, lỗi mạng và cho thử lại; đóng bảng ghép đôi sẽ hủy thao tác đang chờ. Cấu hình relay riêng chuyển vào **Nâng cao**.
+- Mỗi bản cài có khóa riêng, lưu mã hóa trong workspace. Khóa quản trị không nằm trong bộ cài; QR chỉ chứa quyền kết nối của thiết bị. Relay có giới hạn đăng ký và số kết nối theo từng bản cài.
+- Giữ cấu hình relay và thiết bị đã ghép đôi. Android hỗ trợ relay công khai mà không gửi header credential rỗng; nếu Internet lỗi vẫn có thể ghép đôi trong LAN.
+
+Cập nhật PC lên **1.2.7** rồi vào **Cài đặt → Điện thoại → Ghép đôi iPhone · Bản web**. Máy cài mới chỉ cần có Internet. APK cập nhật cùng bản; không phát hành IPA.
+
 # Lantern 1.2.6
 
 - PC: chọn bảng màu bằng 5 ô có màu mẫu, tên và dấu chọn. Bấm là áp dụng và lưu ngay toàn giao diện, không cần đóng cài đặt. Chế độ sáng/tối/theo Windows cũng đổi trực tiếp bằng nút.

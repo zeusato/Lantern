@@ -286,5 +286,6 @@ await UpdaterTests.Run(root, Check);
 await PreviewTests.Run(Check);
 await AutoImageTests.Run(root, Check);
 await MobileTests.Run(root, Check);
+await RelayEnrollmentTests.Run(root, Check);
 await DeletionTests.Run(root, Check);
 Console.WriteLine($"\n{passed} checks passed. Test data: {root}");

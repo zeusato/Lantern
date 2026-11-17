@@ -130,7 +130,7 @@ Mở hồ sơ thử nghiệm tách biệt:
 - `tests/Lantern.Tests`: chương trình kiểm thử tích hợp có exit code; không cần framework test bổ sung.
 - `docs/PROTOCOL.md`: quy ước giao thức và ràng buộc tin cậy.
 
-Android companion: cài `Lantern-Android.apk`, mở khóa PC → Cài đặt → Điện thoại → Ghép đôi QR. Đối chiếu mã rồi chấp nhận trên PC. PC cần chạy và không sleep; mạng Internet dùng relay riêng trên Sites, không cần VPN hay mở cổng router. Credential relay được cấu hình riêng, không chứa trong bản phát hành công khai. Chi tiết và giới hạn bản mobile đầu: [docs/MOBILE-PLAN.md](docs/MOBILE-PLAN.md).
+Android companion: cài `Lantern-Android.apk`, mở khóa PC → Cài đặt → Điện thoại → Ghép đôi QR. Đối chiếu mã rồi chấp nhận trên PC. PC cần chạy và không sleep; mạng Internet dùng relay riêng trên Sites, không cần VPN hay mở cổng router. Từ 1.2.7, relay được thiết lập tự động với khóa riêng cho mỗi PC; người dùng không nhập cấu hình và bộ cài không chứa khóa quản trị. Chi tiết và giới hạn bản mobile đầu: [docs/MOBILE-PLAN.md](docs/MOBILE-PLAN.md).
 
 iOS companion: mã native SwiftUI trong `ios/`; workflow **iOS IPA** tạo `Lantern-iOS-unsigned.ipa` để ký/cài bằng Scarlet, không cần tài khoản Apple Developer trả phí cho bước build. Bản đầu nhận tin khi mở app, tự nối lại khi trở lại; không có APNs. Hướng dẫn và phạm vi: [ios/README.md](ios/README.md).
 

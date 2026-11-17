@@ -28,7 +28,9 @@ final class RelayBridge implements AutoCloseable {
         HttpsURLConnection http=(HttpsURLConnection)url.openConnection();
         try {
             http.setInstanceFollowRedirects(false); http.setConnectTimeout(15000); http.setReadTimeout(20000); http.setRequestMethod("POST"); http.setDoOutput(true);
-            http.setRequestProperty("Authorization","Bearer "+config.getString("key")); http.setRequestProperty("OAI-Sites-Authorization","Bearer "+config.getString("token")); http.setRequestProperty("Content-Type","application/json");
+            http.setRequestProperty("Authorization","Bearer "+config.getString("key"));
+            if(!config.optString("token").isEmpty())http.setRequestProperty("OAI-Sites-Authorization","Bearer "+config.getString("token"));
+            http.setRequestProperty("Content-Type","application/json");
             byte[] bytes=body.toString().getBytes(StandardCharsets.UTF_8); http.setFixedLengthStreamingMode(bytes.length);
             try(OutputStream out=http.getOutputStream()){out.write(bytes);}
             int status=http.getResponseCode(); if(status!=200)throw new RelayFailure(status);

@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';import {readFileSync} from 'node:fs';import worker from '../worker/index.js';
 const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../drizzle/0000_relay.sql',import.meta.url),'utf8'));
+db.exec(readFileSync(new URL('../drizzle/0001_installations.sql',import.meta.url),'utf8'));
 const wrap=(sql,args=[])=>({bind(...values){return wrap(sql,values)},async first(){return db.prepare(sql).get(...args)??null},async all(){return {results:db.prepare(sql).all(...args)}},async run(){return /^SELECT/.test(sql)?{results:db.prepare(sql).all(...args)}:db.prepare(sql).run(...args)}});
 const env={DB:{prepare:wrap,async batch(list){db.exec('BEGIN');try{const results=[];for(const stmt of list)results.push(await stmt.run());db.exec('COMMIT');return results}catch(e){db.exec('ROLLBACK');throw e}}}};
 env.LANTERN_REGISTRATION_KEY='synthetic-registration-key-only';
@@ -41,7 +42,53 @@ test('relay drops expired bytes and cannot read plaintext or private keys',async
  await call('/v1/routes',host,{id:route,clientKey:client});await call('/v1/routes/'+route+'/open',client,{session});
  db.prepare('INSERT INTO relay_packets VALUES(?,?,?,?,?,?)').run(route,session,'client',1,'YQ==',0);
  assert.equal((await call('/v1/routes/'+route+'/exchange',host,{session,after:0})).body.packets.length,0);
- assert.deepEqual(Object.keys(db.prepare('SELECT * FROM relay_routes').get()).sort(),['client_hash','expires','host_hash','id','session']);
+ assert.deepEqual(Object.keys(db.prepare('SELECT * FROM relay_routes').get()).sort(),['client_hash','expires','host_hash','id','installation_hash','session']);
+});
+async function automatic(path,key,body={},installation,ip='192.0.2.1'){
+ const response=await worker.fetch(new Request('https://relay.test'+path,{method:'POST',headers:{authorization:'Bearer '+key,'cf-connecting-ip':ip,...(installation?{'x-lantern-installation':installation}:{})},body:JSON.stringify(body)}),env);
+ return {status:response.status,body:await response.json()};
+}
+test('fresh installations enroll without a service credential, retry safely and own separate routes',async()=>{
+ const first='A'.repeat(43),second='B'.repeat(43),id='1'.repeat(32),id2='2'.repeat(32);
+ assert.equal((await automatic('/v1/routes',host,{id,clientKey:client},first)).status,403);
+ assert.equal((await automatic('/v1/installations',first)).status,200);
+ assert.equal((await automatic('/v1/installations',first)).status,200);
+ assert.equal(db.prepare('SELECT COUNT(*) AS n FROM relay_installations').get().n,1);
+ assert.equal((await automatic('/v1/installations',second)).status,200);
+ assert.equal((await automatic('/v1/routes',host,{id,clientKey:client},first)).status,200);
+ assert.equal((await automatic('/v1/routes','z'.repeat(43),{id,clientKey:client},second)).status,401);
+ assert.equal((await automatic('/v1/routes','z'.repeat(43),{id:id2,clientKey:'y'.repeat(43)},second)).status,200);
+ assert.equal((await call('/v1/routes/'+id+'/state','z'.repeat(43))).status,401);
+ assert.equal((await automatic('/v1/routes',host,{id,clientKey:client})).status,200);
+ const stored=JSON.stringify(db.prepare('SELECT * FROM relay_installations').all());
+ assert.ok(!stored.includes(first)&&!stored.includes(second)&&!stored.includes('192.0.2.1'));
+ await call('/v1/routes/'+id+'/revoke',host,{});await call('/v1/routes/'+id2+'/revoke','z'.repeat(43),{});
+});
+test('installation active-route and daily limits cannot block other PCs or existing renewals',async()=>{
+ const installation='C'.repeat(43);await automatic('/v1/installations',installation);
+ for(let n=0;n<12;n++)assert.equal((await automatic('/v1/routes',host,{id:(100+n).toString(16).padStart(32,'0'),clientKey:client},installation)).status,200);
+ assert.equal((await automatic('/v1/routes',host,{id:'3'.repeat(32),clientKey:client},installation)).status,429);
+ const digest=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(installation))).toString('hex');
+ db.prepare('UPDATE relay_installations SET route_count=60 WHERE key_hash=?').run(digest);
+ assert.equal((await automatic('/v1/routes',host,{id:'3'.repeat(32),clientKey:client},installation)).status,429);
+ assert.equal((await automatic('/v1/routes',host,{id:'3'.repeat(32),clientKey:client},installation)).status,429);
+ assert.equal((await automatic('/v1/routes',host,{id:(100).toString(16).padStart(32,'0'),clientKey:client},installation)).status,200);
+ assert.equal((await automatic('/v1/routes',host,{id:'4'.repeat(32),clientKey:client},'A'.repeat(43))).status,200);
+ for(let n=0;n<12;n++)await call('/v1/routes/'+(100+n).toString(16).padStart(32,'0')+'/revoke',host,{});
+ await call('/v1/routes/'+'4'.repeat(32)+'/revoke',host,{});
+ db.prepare('UPDATE relay_installations SET route_day=0 WHERE key_hash=?').run(digest);
+ assert.equal((await automatic('/v1/routes',host,{id:'3'.repeat(32),clientKey:client},installation)).status,200);
+ await call('/v1/routes/'+'3'.repeat(32)+'/revoke',host,{});
+});
+test('enrollment quotas bound new registrations while allowing idempotent retry and another network',async()=>{
+ for(let n=0;n<100;n++)assert.equal((await automatic('/v1/installations','Q'+n.toString().padStart(42,'0'),{},null,'192.0.2.2')).status,200);
+ assert.equal((await automatic('/v1/installations','D'.repeat(43),{},null,'192.0.2.2')).status,429);
+ assert.equal((await automatic('/v1/installations','Q'+'0'.repeat(42),{},null,'192.0.2.2')).status,200);
+ assert.equal((await automatic('/v1/installations','D'.repeat(43),{},null,'192.0.2.3')).status,200);
+ const now=Math.floor(Date.now()/1000),day=Math.floor(now/86400)*86400;
+ for(let n=db.prepare('SELECT COUNT(*) AS n FROM relay_installations WHERE created>=?').get(day).n;n<500;n++)db.prepare('INSERT INTO relay_installations(key_hash,created,last_seen,source_hash) VALUES(?,?,?,?)').run('fixture-'+n,now,now,'fixture');
+ assert.equal((await automatic('/v1/installations','E'.repeat(43),{},null,'192.0.2.4')).status,429);
+ assert.equal((await automatic('/v1/installations','D'.repeat(43),{},null,'192.0.2.3')).status,200);
 });
 test('batched polling preserves order, bounded queues and acknowledgements under pressure',async()=>{
  await call('/v1/routes',host,{id:route,clientKey:client});await call('/v1/routes/'+route+'/open',client,{session:'e'.repeat(32)});const active='e'.repeat(32),path='/v1/routes/'+route+'/exchange';

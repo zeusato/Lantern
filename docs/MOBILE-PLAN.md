@@ -25,7 +25,7 @@ PC cần chạy Lantern, đăng nhập sau khởi động và không sleep. Ch�
 4. PC mã hóa danh sách thiết bị trong `mobile-devices.enc`. Android mã hóa cấu hình bằng khóa AES trong Keystore và tắt backup dữ liệu ghép đôi.
 5. Gỡ thiết bị trên PC đóng phiên và từ chối reconnect. Quên PC trên điện thoại xóa cấu hình, lịch sử cache và hàng đợi cục bộ; khi mất điện thoại cần gỡ trên PC. Tối đa 8 thiết bị.
 
-Credential relay cá nhân không nằm trong Git, ZIP PC hoặc APK. Cấu hình riêng được DPAPI bảo vệ tại `%LOCALAPPDATA%\LanternRelay\relay-bootstrap.bin`, nhập vào vault sau đăng nhập. Máy PC khác cần relay và quyền truy cập riêng trong mục Cấu hình relay; public release không tự cấp quyền vào relay cá nhân.
+Credential relay cá nhân không nằm trong Git, ZIP PC hoặc APK. Cấu hình riêng được DPAPI bảo vệ tại `%LOCALAPPDATA%\LanternRelay\relay-bootstrap.bin`, nhập vào vault sau đăng nhập. Từ 1.2.7, PC cài mới tự đăng ký relay công khai bằng khóa riêng lưu trong vault; không cần cấu hình thủ công. Cấu hình relay riêng và thiết bị từ bản cũ được giữ nguyên. Khóa đăng ký của PC không được đưa vào QR.
 
 ## Phạm vi Android bản đầu
 

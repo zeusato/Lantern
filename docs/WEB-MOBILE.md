@@ -2,7 +2,7 @@
 
 ## Cài và ghép đôi
 
-1. Cập nhật Lantern PC lên **1.2.6** và mở khóa workspace.
+1. Cập nhật Lantern PC lên **1.2.7** và mở khóa workspace.
 2. Trên iPhone, dùng Safari mở [Lantern Web](https://lantern-private-relay-zeusato.tranquymtcn.chatgpt.site). Trang được mở công khai; không cần tài khoản ChatGPT hoặc ký IPA.
 3. Chọn **Chia sẻ → Thêm vào Màn hình chính**, rồi mở biểu tượng Lantern mới.
 4. Tạo mật khẩu bảo vệ bản lưu trên điện thoại. Đây là mật khẩu cục bộ, không phải tài khoản cloud mới.
@@ -11,7 +11,7 @@
 
 Nếu camera khó nhận, dùng **Chọn ảnh QR** với ảnh chụp trọn mã. Bộ quét hiển thị riêng lỗi hết hạn và lỗi dùng mã Android/iOS; hãy tạo đúng mã Bản web.
 
-PC giữ danh tính LAN. Điện thoại cần PC đang chạy, đã mở khóa Lantern và không sleep. Internet dùng cùng relay HTTPS, không cần mở cổng router hay VPN toàn máy. PC mới vẫn cần cấu hình relay riêng; khóa vận hành relay không nằm trong bản phát hành công khai.
+PC giữ danh tính LAN. Điện thoại cần PC đang chạy, đã mở khóa Lantern và không sleep. Internet dùng cùng relay HTTPS, không cần mở cổng router hay VPN toàn máy. Từ 1.2.7, PC mới tự đăng ký relay bằng khóa riêng khi ghép đôi, không phải nhập địa chỉ hay khóa thủ công. Nút ghép đôi web luôn khả dụng; đang tạo QR và lỗi mạng đều có thông báo.
 
 ## Trải nghiệm mobile
 
@@ -31,7 +31,7 @@ Trang công khai chỉ cung cấp giao diện. Mỗi thiết bị cần route ke
 
 Mật khẩu cục bộ dẫn xuất khóa bằng PBKDF2-SHA256 (310.000 vòng). Lịch sử hội thoại có mật khẩu được mã hóa thêm bằng khóa riêng; hàng đợi/nháp có hộp mã hóa riêng để việc xóa cache lịch sử không làm mất tin chưa gửi. Mã nguồn và browser bundle không chứa service credential của Sites.
 
-Relay chỉ cho PC có cấu hình hợp lệ tạo route mới: yêu cầu HMAC có hạn thời gian, khóa kiểm chứng nằm trong secret runtime `LANTERN_REGISTRATION_KEY`. Route đã tồn tại có thể gia hạn bằng host key để giữ tương thích PC cũ. Các endpoint trao đổi/thu hồi vẫn kiểm tra host/client key, phiên và thời hạn. Không có API liệt kê người dùng/hội thoại công khai.
+PC mới tự tạo capability ngẫu nhiên 256 bit, lưu mã hóa trong workspace trước khi đăng ký để thử lại/khởi động lại không tạo bản đăng ký mới. Relay chỉ lưu SHA-256 của capability; khóa này chỉ cấp quyền tạo route của bản cài, không truy cập dữ liệu PC khác và không xuất hiện trong QR. Có giới hạn theo bản cài, số lần đăng ký và dung lượng toàn dịch vụ. PC dùng relay riêng từ bản cũ vẫn dùng HMAC có hạn thời gian với secret runtime `LANTERN_REGISTRATION_KEY`. Route đã tồn tại có thể gia hạn bằng host key để giữ tương thích PC cũ. Các endpoint trao đổi/thu hồi vẫn kiểm tra host/client key, phiên và thời hạn. Không có API liệt kê người dùng/hội thoại công khai.
 
 Nguồn ở `pwa/`, Worker ở `relay/`. Chạy `npm ci --prefix pwa`, `node relay/scripts/build-web.mjs` để tạo Worker chứa tài nguyên web. `scripts/Test-Web.ps1` kiểm thử WebCrypto thực với PC giả lập, chống giả mạo/replay, gửi trùng, khóa và xóa. Không đóng gói fixture vào app.
 

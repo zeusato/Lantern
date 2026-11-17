@@ -64,15 +64,15 @@ public sealed class MobileServer : IAsyncDisposable
         CancelInvitation(); Registry.Configure(config); StartRelay();
     }
     private void StartRelay() { foreach (var device in Registry.Snapshot().Devices) if (device.Route is not null) Watch(device.Route); }
-    private void Watch(MobileRoute route) { if (watching.TryAdd(route.Id, 0)) Track(WatchRoute(route)); }
+    private void Watch(MobileRoute route, bool registered = false) { if (watching.TryAdd(route.Id, 0)) Track(WatchRoute(route, registered)); }
     private bool RouteActive(string id)
     {
         lock (invitationGate) return invitation is { } p && p.Expires > DateTimeOffset.UtcNow && p.Route?.Id == id || Registry.Snapshot().Devices.Any(d => d.Route?.Id == id);
     }
-    private async Task WatchRoute(MobileRoute route)
+    private async Task WatchRoute(MobileRoute route, bool alreadyRegistered)
     {
         var config = Registry.Snapshot().Relay;
-        using var api = new RelayApi(config); string previous = ""; DateTime registered = DateTime.MinValue;
+        using var api = new RelayApi(config); string previous = ""; DateTime registered = alreadyRegistered ? DateTime.UtcNow : DateTime.MinValue;
         try
         {
             while (!life.IsCancellationRequested && RouteActive(route.Id))
@@ -101,18 +101,46 @@ public sealed class MobileServer : IAsyncDisposable
             if (!life.IsCancellationRequested) { try { using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8)); await api.Call("v1/routes/" + route.Id + "/revoke", route.HostKey, new { }, timeout.Token); } catch (Exception) { } }
         }
     }
-    public async Task<string> CreateInvitationAsync(bool web = false)
+    public async Task<string> CreateInvitationAsync(bool web = false, bool allowLanFallback = false, CancellationToken cancellationToken = default)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(life.Token, cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
         CancelInvitation(); var state = Registry.Snapshot();
-        if (web && !state.Relay.Enabled) throw new InvalidOperationException("Cần cấu hình relay Internet trước khi ghép đôi bản web.");
+        if (web && !state.Relay.Enabled) { Registry.EnsureAutomaticRelay(); state = Registry.Snapshot(); }
         var route = state.Relay.Enabled ? new MobileRoute { Transport = web ? "web-v1" : "tls" } : null;
-        if (route is not null) { using var api = new RelayApi(state.Relay); await api.Register(route, life.Token); }
+        if (route is not null)
+        {
+            try
+            {
+                using var api = new RelayApi(state.Relay); await api.Register(route, timeout.Token);
+                cancellationToken.ThrowIfCancellationRequested(); life.Token.ThrowIfCancellationRequested();
+            }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
+            {
+                // Registration may have committed before its response was lost/cancelled.
+                // Release that capability so retries do not consume the active-route quota.
+                Track(RevokeUnclaimedRoute(route, state.Relay));
+                if (web || !allowLanFallback || life.IsCancellationRequested || cancellationToken.IsCancellationRequested) throw;
+                route = null;
+            }
+        }
+        cancellationToken.ThrowIfCancellationRequested(); life.Token.ThrowIfCancellationRequested();
         var pending = new MobileInvitation(MobileRoute.Secret(), DateTimeOffset.UtcNow.AddMinutes(2), route);
         lock (invitationGate) invitation = pending;
-        if (route is not null) Watch(route);
-        // The browser never receives the Sites service credential; its own Site session
-        // and this device-specific route capability authorize relay requests.
+        if (route is not null) Watch(route, registered: true);
+        // The phone receives only its route capability, never the installation key.
+        // Legacy native private-relay configurations retain their service header.
         return JsonSerializer.Serialize(new { v = web ? 2 : 1, name = node.Identity.Name, pc = node.Identity.Id, addresses = web ? [] : PeerNode.LocalAddresses(), port = Port, nonce = pending.Nonce, expires = pending.Expires.ToUnixTimeSeconds(), relay = route is null ? null : new { url = state.Relay.Url, token = web ? "" : state.Relay.ServiceToken, id = route.Id, key = route.ClientKey } }, MobileProtocol.Json);
+    }
+    private static async Task RevokeUnclaimedRoute(MobileRoute route, RelayConfiguration config)
+    {
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            using var api = new RelayApi(config);
+            await api.Call("v1/routes/" + route.Id + "/revoke", route.HostKey, new { }, timeout.Token);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException) { }
     }
     public void CancelInvitation() { lock (invitationGate) invitation = null; }
     public void LockConversation(string id) { foreach (var client in clients.Values) client.Unlocked.TryRemove(id, out _); Changed?.Invoke(); }

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -29,6 +30,7 @@ public partial class MainWindow
             }
             catch (Exception ex) when (ex is CryptographicException or JsonException or ArgumentException or InvalidOperationException) { }
         }
+        if (!App.TestMode) mobile.Registry.EnsureAutomaticRelay();
         mobile.ApprovePairing = request => Dispatcher.InvokeAsync(() =>
         {
             if (appLocking || closing) return false;
@@ -46,34 +48,53 @@ public partial class MainWindow
         var panel = new StackPanel(); panel.Children.Add(Paragraph("Điện thoại của bạn", 25, true));
         panel.Children.Add(Paragraph("PC đang mở là cầu nối. Điện thoại dùng cùng tài khoản, kể cả qua 4G/5G; không cần VPN hay mở cổng router.", 13, muted: true));
         var config = mobile.Registry.Snapshot().Relay;
-        panel.Children.Add(Paragraph(config.Enabled ? "Internet · Relay riêng đã cấu hình" : "LAN sẵn sàng · Chưa cấu hình relay Internet", 14, true));
+        var status = Paragraph(config.Enabled && !config.Automatic ? "Internet · Đang dùng relay riêng" : "Kết nối Internet được thiết lập tự động khi ghép đôi", 14, true);
+        panel.Children.Add(status);
         panel.Children.Add(Paragraph("Cổng LAN: " + mobile.Port + " · Tối đa 8 thiết bị. PC cần mở Lantern, đã đăng nhập và không sleep.", 12, muted: true));
         var pair = new Button { Content = "＋ Ghép đôi điện thoại bằng QR", Margin = new Thickness(0, 10, 0, 16), Style = (Style)FindResource("AccentButton") };
+        var webPair = new Button { Content = "＋ Ghép đôi iPhone · Bản web", Margin = new Thickness(0, 0, 0, 16) };
+        var advanced = new Button { Content = "Cấu hình relay riêng…", HorizontalAlignment = HorizontalAlignment.Left };
+        using var pending = new CancellationTokenSource(); bool active = true;
+        void Busy(bool busy) { pair.IsEnabled = webPair.IsEnabled = advanced.IsEnabled = !busy; if (busy) status.Text = "Đang kết nối và tạo mã QR… Vui lòng chờ."; }
+        void PairingError(Exception ex)
+        {
+            if (!active || closing || appLocking) return;
+            status.Text = ex is HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests }
+                ? "Dịch vụ đang bận. Vui lòng thử ghép đôi lại sau."
+                : ex is HttpRequestException or OperationCanceledException
+                    ? "Chưa kết nối được dịch vụ Lantern. Kiểm tra Internet rồi bấm ghép đôi để thử lại."
+                    : "Không tạo được mã QR. " + ex.Message;
+        }
         pair.Click += async (_, _) =>
         {
-            pair.IsEnabled = false;
+            Busy(true);
             try
             {
-                var payload = await mobile.CreateInvitationAsync();
-                if (closing || appLocking) { mobile.CancelInvitation(); return; }
+                var payload = await mobile.CreateInvitationAsync(allowLanFallback: true, cancellationToken: pending.Token);
+                if (!active || closing || appLocking) { mobile.CancelInvitation(); return; }
+                using var invitation = JsonDocument.Parse(payload);
+                bool internet = invitation.RootElement.GetProperty("relay").ValueKind != JsonValueKind.Null;
+                status.Text = internet ? "Đã kết nối · Sẵn sàng ghép đôi" : "LAN sẵn sàng · Chưa nối được Internet";
                 using var generator = new QRCodeGenerator(); using var data = generator.CreateQrCode(payload, QRCodeGenerator.ECCLevel.M); using var png = new PngByteQRCode(data);
                 using var stream = new MemoryStream(png.GetGraphic(7)); var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.StreamSource = stream; bitmap.EndInit(); bitmap.Freeze();
                 var content = new StackPanel(); content.Children.Add(Paragraph("Quét bằng Lantern Android / iOS", 23, true));
+                if (!internet) content.Children.Add(Paragraph("Mã này dùng khi điện thoại và PC cùng mạng Wi-Fi/LAN. Để dùng qua 4G/5G, kết nối Internet rồi tạo mã mới.", 13, muted: true));
                 content.Children.Add(new Image { Source = bitmap, Width = 340, Height = 340, Stretch = Stretch.Uniform });
                 content.Children.Add(Paragraph("Mã dùng một lần, hết hạn sau 2 phút. Chỉ quét trên điện thoại của bạn; sau đó xác nhận mã đối chiếu trên cả hai thiết bị.", 13, muted: true));
                 ShowDialog("Ghép đôi điện thoại", content, "Đóng mã QR");
             }
-            catch (Exception ex) { ShowError(ex); }
-            finally { mobile.CancelInvitation(); pair.IsEnabled = true; }
+            catch (Exception ex) { PairingError(ex); }
+            finally { mobile.CancelInvitation(); Busy(false); }
         }; panel.Children.Add(pair);
-        var webPair = new Button { Content = "＋ Ghép đôi iPhone · Bản web", Margin = new Thickness(0, 0, 0, 16), IsEnabled = config.Enabled };
         webPair.Click += async (_, _) =>
         {
-            webPair.IsEnabled = false;
+            Busy(true);
             try
             {
-                var payload = await mobile.CreateInvitationAsync(web: true);
-                if (closing || appLocking) { mobile.CancelInvitation(); return; }
+                var payload = await mobile.CreateInvitationAsync(web: true, cancellationToken: pending.Token);
+                if (!active || closing || appLocking) { mobile.CancelInvitation(); return; }
+                config = mobile.Registry.Snapshot().Relay;
+                status.Text = "Đã kết nối · Sẵn sàng ghép đôi";
                 using var generator = new QRCodeGenerator(); using var data = generator.CreateQrCode(payload, QRCodeGenerator.ECCLevel.M); using var png = new PngByteQRCode(data);
                 using var stream = new MemoryStream(png.GetGraphic(7)); var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.StreamSource = stream; bitmap.EndInit(); bitmap.Freeze();
                 var content = new StackPanel(); content.Children.Add(Paragraph("Lantern trên iPhone", 23, true));
@@ -83,8 +104,8 @@ public partial class MainWindow
                 content.Children.Add(Paragraph("Mã dùng một lần, hết hạn sau 2 phút. So sánh mã đối chiếu rồi cho phép trên PC. Trang web mở công khai; không cần tài khoản ChatGPT.", 12, muted: true));
                 ShowDialog("Ghép đôi bản web", content, "Đóng mã QR");
             }
-            catch (Exception ex) { ShowError(ex); }
-            finally { mobile.CancelInvitation(); webPair.IsEnabled = config.Enabled; }
+            catch (Exception ex) { PairingError(ex); }
+            finally { mobile.CancelInvitation(); Busy(false); }
         }; panel.Children.Add(webPair);
         foreach (var device in mobile.Registry.Snapshot().Devices)
         {
@@ -92,17 +113,18 @@ public partial class MainWindow
             var revoke = new Button { Content = "Gỡ thiết bị", Margin = new Thickness(0, 0, 0, 12) };
             revoke.Click += async (_, _) => { try { await mobile.RevokeAsync(device.Id); revoke.IsEnabled = false; revoke.Content = "Đã thu hồi quyền truy cập"; } catch (Exception ex) { ShowError(ex); } }; panel.Children.Add(revoke);
         }
-        var advanced = new Button { Content = "Cấu hình relay riêng…", HorizontalAlignment = HorizontalAlignment.Left };
         advanced.Click += (_, _) =>
         {
+            config = mobile.Registry.Snapshot().Relay;
             var form = new StackPanel(); form.Children.Add(Paragraph("Relay HTTPS riêng", 23, true));
-            var url = new TextBox { Text = config.Url }; var token = new PasswordBox { Password = config.ServiceToken, Padding = new Thickness(12) };
+            var url = new TextBox { Text = config.Automatic ? "" : config.Url }; var token = new PasswordBox { Password = config.ServiceToken, Padding = new Thickness(12) };
             form.Children.Add(Paragraph("Địa chỉ relay", 12, true)); form.Children.Add(url); form.Children.Add(Paragraph("Khóa truy cập Sites", 12, true)); form.Children.Add(token);
             form.Children.Add(Paragraph("Gỡ các điện thoại trước khi đổi relay, rồi ghép đôi lại. Khóa được mã hóa trong workspace.", 12, muted: true));
             if (ShowDialog("Cấu hình relay", form, "Lưu", initialFocus: url))
-            { try { mobile.ConfigureRelay(new() { Url = url.Text.Trim().TrimEnd('/') + "/", ServiceToken = token.Password.Trim() }); ShowToast("Đã lưu relay. Mở lại mục Điện thoại để ghép đôi."); } catch (Exception ex) { ShowError(ex); } }
+            { try { mobile.ConfigureRelay(new() { Url = url.Text.Trim().TrimEnd('/') + "/", ServiceToken = token.Password.Trim() }); config = mobile.Registry.Snapshot().Relay; status.Text = "Internet · Đang dùng relay riêng"; ShowToast("Đã lưu relay."); } catch (Exception ex) { ShowError(ex); } }
             token.Clear();
-        }; panel.Children.Add(advanced);
+        }; panel.Children.Add(new Expander { Header = "Nâng cao", Content = advanced, Margin = new Thickness(0, 8, 0, 0) });
         ShowDialog("Thiết bị di động", panel, "Xong");
+        active = false; pending.Cancel(); mobile.CancelInvitation();
     }
 }

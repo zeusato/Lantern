@@ -21,9 +21,17 @@ var lockedId = new string('b', 64); store.SavePeer(new Peer { Id = lockedId, Nam
 // Reloading peers is unnecessary for the real connected conversation; use that one for lock tests.
 await using var server = new MobileServer(node, vault); server.ApprovePairing = _ => Task.FromResult(true);
 var route = new MobileRoute { Transport = "web-v1" }; var nonce = MobileRoute.Secret(); var sessionLife = new CancellationTokenSource();
-typeof(MobileServer).GetField("invitation", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(server, new MobileInvitation(nonce, DateTimeOffset.UtcNow.AddHours(2), route));
+JsonElement? publicQr = null;
+if (args.Contains("--public-relay"))
+{
+ await server.StartAsync(0, true);
+ using var generated = JsonDocument.Parse(await server.CreateInvitationAsync(web: true)); publicQr = generated.RootElement.Clone();
+ var invitation = (MobileInvitation)typeof(MobileServer).GetField("invitation", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(server)!;
+ route = invitation.Route!; nonce = invitation.Nonce;
+}
+else typeof(MobileServer).GetField("invitation", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(server, new MobileInvitation(nonce, DateTimeOffset.UtcNow.AddHours(2), route));
 var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start(); int port = ((IPEndPoint)listener.LocalEndpoint).Port;
-var metadata = new { port, conversation = peerIdentity.Id, qr = new { v = 2, name = identity.Name, pc = identity.Id, nonce, expires = DateTimeOffset.UtcNow.AddHours(2).ToUnixTimeSeconds(), relay = new { url = "http://localhost:5180/", id = route.Id, key = route.ClientKey } } };
+var metadata = new { port, conversation = peerIdentity.Id, qr = (object?)publicQr ?? new { v = 2, name = identity.Name, pc = identity.Id, nonce, expires = DateTimeOffset.UtcNow.AddHours(2).ToUnixTimeSeconds(), relay = new { url = "http://localhost:5180/", id = route.Id, key = route.ClientKey } } };
 Console.WriteLine(JsonSerializer.Serialize(metadata, MobileProtocol.Json));
 var serving = typeof(MobileServer).GetMethod("Serve", BindingFlags.Instance | BindingFlags.NonPublic)!;
 while (true)
@@ -35,6 +43,7 @@ while (true)
   if(open.Type == "fixture-renew") { typeof(MobileServer).GetField("invitation", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(server, new MobileInvitation(nonce, DateTimeOffset.UtcNow.AddHours(2), route)); await MobileProtocol.WriteAsync(tcp.GetStream(), new MobilePacket { Type = "ok" }, timeout.Token); return; }
   if(open.Type == "fixture-lock") { vault.SetConversationPassword(peerIdentity.Id, "conversation-secret"); server.LockConversation(peerIdentity.Id); await MobileProtocol.WriteAsync(tcp.GetStream(), new MobilePacket { Type = "ok" }, timeout.Token); return; }
   if(open.Type == "fixture-message") { await peer.SendTextAsync(identity.Id, open.Text); await MobileProtocol.WriteAsync(tcp.GetStream(), new MobilePacket { Type = "ok" }, timeout.Token); return; }
+  if(open.Type == "fixture-revoke") { foreach(var device in server.Registry.Snapshot().Devices) await server.RevokeAsync(device.Id); server.CancelInvitation(); await MobileProtocol.WriteAsync(tcp.GetStream(), new MobilePacket { Type = "ok" }, timeout.Token); return; }
   if(open.Type != "web-open" || !Guid.TryParseExact(open.Id, "N", out _)) return;
   await (Task)serving.Invoke(server, [tcp.GetStream(), route.Id, open.Id])!;
  } catch(Exception ex) { Console.Error.WriteLine(ex.GetType().Name + ": " + ex.Message); } });

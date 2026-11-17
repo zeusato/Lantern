@@ -12,17 +12,20 @@ public sealed class RelayApi : IDisposable
 {
     private readonly HttpClient http;
     private readonly byte[] registrationKey;
-    public RelayApi(RelayConfiguration config)
+    private readonly string installationKey;
+    public RelayApi(RelayConfiguration config, HttpMessageHandler? handler = null)
     {
         if (!config.Enabled) throw new ArgumentException("Relay chưa được cấu hình.");
         registrationKey = Encoding.UTF8.GetBytes(config.ServiceToken);
-        http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = new Uri(config.Url), Timeout = TimeSpan.FromSeconds(20) };
-        http.DefaultRequestHeaders.Add("OAI-Sites-Authorization", "Bearer " + config.ServiceToken);
+        installationKey = config.Automatic ? config.InstallationKey : "";
+        http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = new Uri(config.Url), Timeout = TimeSpan.FromSeconds(15) };
+        if (config.ServiceToken.Length > 0) http.DefaultRequestHeaders.Add("OAI-Sites-Authorization", "Bearer " + config.ServiceToken);
     }
     public async Task<JsonElement> Call(string path, string key, object? body, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(body is null ? HttpMethod.Get : HttpMethod.Post, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+        if (path == "v1/routes" && installationKey.Length > 0) request.Headers.Add("X-Lantern-Installation", installationKey);
         if (body is not null) request.Content = JsonContent.Create(body);
         using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
@@ -30,12 +33,17 @@ public sealed class RelayApi : IDisposable
         using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
         return doc.RootElement.Clone();
     }
-    public Task<JsonElement> Register(MobileRoute route, CancellationToken ct)
+    public async Task<JsonElement> Register(MobileRoute route, CancellationToken ct)
     {
+        if (installationKey.Length > 0)
+        {
+            await Call("v1/installations", installationKey, new { }, ct);
+            return await Call("v1/routes", route.HostKey, new { id = route.Id, clientKey = route.ClientKey }, ct);
+        }
         long issuedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         var payload = Encoding.UTF8.GetBytes(string.Join("\n", "Lantern-route-v1", route.Id, route.HostKey, route.ClientKey, issuedAt.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         var signature = Convert.ToHexString(HMACSHA256.HashData(registrationKey, payload)).ToLowerInvariant();
-        return Call("v1/routes", route.HostKey, new { id = route.Id, clientKey = route.ClientKey, registration = new { issuedAt, signature } }, ct);
+        return await Call("v1/routes", route.HostKey, new { id = route.Id, clientKey = route.ClientKey, registration = new { issuedAt, signature } }, ct);
     }
     public void Dispose() { http.Dispose(); CryptographicOperations.ZeroMemory(registrationKey); }
 }

@@ -257,6 +257,8 @@ internal sealed class UiHarness : Application
                 try
                 {
                     Check(Windows.Count == 1 && Field<MobileServer>(window, "mobile").Port > 0, "Mobile device management is embedded and starts only after PC login");
+                    Check(Visuals<Button>(dialog).Single(button => button.Content as string == "＋ Ghép đôi iPhone · Bản web").IsEnabled, "A fresh PC can start web pairing without manual relay configuration");
+                    Check(Visuals<Expander>(dialog).Any(view => view.Header as string == "Nâng cao" && !view.IsExpanded), "Manual relay settings are optional and collapsed");
                     _ = Dispatcher.InvokeAsync(() =>
                     {
                         try
