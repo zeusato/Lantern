@@ -1,3 +1,12 @@
+# Lantern 1.2.8
+
+- **PC:** bảng nội dung chia sẻ giữ nguyên thumbnail khi có tin chữ, reaction hoặc trạng thái đọc; chỉ cập nhật ô ảnh/tệp thay đổi. Có nút **Làm mới** để tải lại thủ công.
+- **Android:** giữ ô nhập, con trỏ và phần chữ đang gõ khi có tin đến hoặc kết nối đổi trạng thái. Nháp giữ khi chuyển hội thoại/xoay màn hình; ô nhập tự giãn tối đa 6 dòng và nút gửi dùng biểu tượng máy bay giấy.
+- **Web/iPhone:** mở bằng giao diện **Máy tính**, có phép tính thông thường, phần trăm và đổi dấu. Gõ **123456789 × 91**, bấm **=** để vào Lantern; mật khẩu bảo vệ dữ liệu vẫn giữ nguyên.
+- Chế độ máy tính không hiện thông báo chat/cập nhật, không âm thanh, không badge số tin hay nội dung chat. Tin vẫn đồng bộ âm thầm, chưa đánh dấu đã đọc. Chuyển app ra nền tự che lại; có nút **Mở máy tính** trong cài đặt. Tên và icon PWA mới là **Máy tính**.
+
+Cài đè PC/APK để giữ dữ liệu. Web: **Cài đặt → Kiểm tra cập nhật → Cài bản web mới**. Lớp máy tính chỉ che giao diện, không thay mật khẩu hay mã hóa. Không phát hành IPA.
+
 # Lantern 1.2.7
 
 - **Ghép đôi trên mọi PC cài mới:** tự thiết lập relay, không nhập URL/khóa thủ công và không cần tài khoản ChatGPT. Nút **Ghép đôi iPhone · Bản web** luôn bấm được.

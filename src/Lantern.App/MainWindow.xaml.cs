@@ -241,9 +241,9 @@ public partial class MainWindow : Window
         RefreshReplyPreview();
         if (ConversationProtected || appLocking)
         {
-            Composer.Clear(); MessageSearch.Clear();
+            Composer.Clear(); MessageSearch.Clear(); ClearSharedContent(); RefreshSharedButton.IsEnabled = false;
             Composer.IsEnabled = false; SendButton.IsEnabled = false; AttachButton.IsEnabled = false; PairBanner.Visibility = Visibility.Collapsed;
-            foreach (var player in players) player.Close(); players.Clear(); MessagesPanel.Children.Clear(); SharedFiles.Children.Clear(); SharedMedia.Children.Clear(); SharedLinks.Children.Clear(); expiryLabels.Clear(); progress.Clear();
+            foreach (var player in players) player.Close(); players.Clear(); MessagesPanel.Children.Clear(); expiryLabels.Clear(); progress.Clear();
             WelcomePanel.Visibility = Visibility.Visible; WelcomeTitle.Text = "Cuộc trò chuyện\nđang được khóa."; WelcomeBody.Text = "Nhập mật khẩu riêng để xem nội dung\nvà tệp đã chia sẻ trong cuộc trò chuyện này."; WelcomeAction.Content = "Mở khóa hội thoại"; WelcomeAction.Visibility = Visibility.Visible; NoFiles.Visibility = Visibility.Collapsed; renderKey = "locked:" + selectedId; return;
         }
         WelcomeAction.Content = "Tìm người trong LAN";
@@ -253,11 +253,12 @@ public partial class MainWindow : Window
         WelcomeBody.Text = hasChat ? "Gửi một tin nhắn, một tấm ảnh\nhay điều bạn muốn chia sẻ." : "Chat, gửi ảnh và chia sẻ tệp trực tiếp.\nMọi thứ ở lại trên máy của bạn.";
         WelcomeAction.Visibility = hasChat ? Visibility.Collapsed : Visibility.Visible;
         var key = selectedId + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + Codec.Encode(m.Reactions) + string.Join(',', m.Delivery.Values)));
+        RefreshSharedContent();
         if (key == renderKey) return;
         renderKey = key;
         var shouldScroll = ChatScroll.ScrollableHeight - ChatScroll.VerticalOffset < 80;
         foreach (var player in players) player.Close(); players.Clear();
-        MessagesPanel.Children.Clear(); SharedFiles.Children.Clear(); SharedMedia.Children.Clear(); SharedLinks.Children.Clear(); expiryLabels.Clear(); progress.Clear();
+        MessagesPanel.Children.Clear(); expiryLabels.Clear(); progress.Clear();
         if (messages.Count >= messageLimit)
         {
             var more = new Button { Content = "Xem tin nhắn trước đó", HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 18) };
@@ -275,28 +276,6 @@ public partial class MainWindow : Window
             var joinsPrevious = index > 0 && MessageGrouping.CanJoin(messages[index - 1], msg);
             var joinsNext = index + 1 < messages.Count && MessageGrouping.CanJoin(msg, messages[index + 1]);
             MessagesPanel.Children.Add(MessageBubble(msg, joinsPrevious, joinsNext));
-        }
-        var history = store.Messages(selectedId, limit: int.MaxValue);
-        var shared = history.Where(m => m.Kind is "file" or "image" or "video").TakeLast(100).Reverse().ToList();
-        NoFiles.Visibility = shared.Any(m => m.Kind == "file") ? Visibility.Collapsed : Visibility.Visible;
-        NoMedia.Visibility = shared.Any(m => m.Kind is "image" or "video") ? Visibility.Collapsed : Visibility.Visible;
-        foreach (var file in shared)
-        {
-            if (file.Kind is "image" or "video")
-            {
-                SharedMedia.Children.Add(new MediaThumbnail(file, () => { if (!File.Exists(file.FilePath)) GoToMessage(file.Id); else if (file.Kind == "image") ShowImage(file); else OpenAttachment(file); }, uiLifetime.Token)); continue;
-            }
-            var button = new Button { HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(10), ToolTip = file.FileName };
-            var content = new StackPanel(); var title = Paragraph(file.FileName, 12, true); title.MaxWidth = 175; title.TextTrimming = TextTrimming.CharacterEllipsis; title.TextWrapping = TextWrapping.NoWrap; title.Margin = new Thickness(0, 0, 0, 4); content.Children.Add(title);
-            var subtitle = Paragraph(FormatBytes(file.FileSize), 11, muted: true); subtitle.Margin = new Thickness(); content.Children.Add(subtitle); button.Content = content;
-            button.Click += (_, _) => { if (File.Exists(file.FilePath)) OpenAttachment(file); else GoToMessage(file.Id); }; SharedFiles.Children.Add(button);
-        }
-        var links = history.Where(m => m.Kind == "text").SelectMany(m => System.Text.RegularExpressions.Regex.Matches(m.Text, @"https?://[^\s<>]+", System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(200)).Select(match => match.Value.TrimEnd('.', ',', '!', '?', ')', ']'))).Distinct().TakeLast(100).Reverse().ToList();
-        NoLinks.Visibility = links.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var link in links)
-        {
-            if (!Uri.TryCreate(link, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http")) continue;
-            SharedLinks.Children.Add(new LinkPreviewCard(uri, linkPreviews, () => { try { Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); } catch (Exception ex) { ShowError(ex); } }));
         }
         if (shouldScroll) Dispatcher.BeginInvoke(() => ChatScroll.ScrollToEnd(), DispatcherPriority.Loaded);
     }

@@ -6,6 +6,10 @@ public sealed class LocalStore : IDisposable
 {
     private readonly SqliteConnection db;
     private readonly object gate = new();
+    private readonly Dictionary<string, long> messageVersions = [];
+    // In-process invalidation for views; it is deliberately separate from deletion revisions.
+    public long MessageVersion(string conversation) { lock (gate) return messageVersions.GetValueOrDefault(conversation); }
+    private void MessagesChanged(string conversation) => messageVersions[conversation] = messageVersions.GetValueOrDefault(conversation) + 1;
     private readonly WorkspaceVault? vault;
     public string DirectoryPath { get; }
     public string MediaPath => Path.Combine(DirectoryPath, "media");
@@ -159,7 +163,7 @@ public sealed class LocalStore : IDisposable
                 cmd.CommandText = "INSERT OR REPLACE INTO expired_messages(id,data) VALUES($id,$data); INSERT OR IGNORE INTO deleted_messages(id) VALUES($id); DELETE FROM unread_messages WHERE id=$id; DELETE FROM message_expiry WHERE id=$id; DELETE FROM messages WHERE id=$id;";
                 cmd.Parameters.AddWithValue("$id", message.Id); cmd.Parameters.AddWithValue("$data", Seal(Codec.Encode(tombstone))); cmd.ExecuteNonQuery();
             }
-            tx.Commit(); return messages;
+            tx.Commit(); foreach (var conversation in messages.Select(m => m.ConversationId).Distinct()) MessagesChanged(conversation); return messages;
         }
     }
     private List<T> ReadAll<T>(string table)
@@ -184,6 +188,7 @@ public sealed class LocalStore : IDisposable
             using var expiry = db.CreateCommand(); expiry.Transaction = transaction;
             expiry.CommandText = "DELETE FROM message_expiry WHERE id=$id; INSERT INTO message_expiry(id,expires) SELECT $id,$expires WHERE $expires IS NOT NULL AND EXISTS(SELECT 1 FROM messages WHERE id=$id);";
             expiry.Parameters.AddWithValue("$id", value.Id); expiry.Parameters.AddWithValue("$expires", (object?)value.ExpiresAt?.UtcDateTime.ToString("O") ?? DBNull.Value); expiry.ExecuteNonQuery();
+            MessagesChanged(value.ConversationId);
     }
     public ChatMessage? Message(string id)
     {
@@ -234,7 +239,7 @@ public sealed class LocalStore : IDisposable
                 using var revision = db.CreateCommand(); revision.Transaction = tx;
                 revision.CommandText = "INSERT INTO history_revisions(conversation,revision) VALUES($c,1) ON CONFLICT(conversation) DO UPDATE SET revision=revision+1"; revision.Parameters.AddWithValue("$c", conversation); revision.ExecuteNonQuery();
             }
-            tx.Commit(); return messages;
+            tx.Commit(); if (messages.Count > 0) MessagesChanged(conversation); return messages;
         }
     }
     public void Dispose() { lock (gate) db.Dispose(); }

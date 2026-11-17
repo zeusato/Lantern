@@ -1,28 +1,41 @@
 <!doctype html>
-<html lang="vi">
+<html lang="vi" data-calculator="on">
   <head>
     <meta charset="utf-8" />
     <meta
       name="viewport"
       content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#f5f8f7" />
+    <meta name="theme-color" content="#101114" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta
       name="description"
-      content="Lantern trên điện thoại. Ghép đôi PC, trò chuyện và giữ kết nối."
+      content="Máy tính cá nhân. Tính toán nhanh, sử dụng ngoại tuyến."
     />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/style.css" />
-    <title>Lantern</title>
+    <link rel="stylesheet" href="/calculator.css" />
+    <meta name="apple-mobile-web-app-title" content="Máy tính" />
+    <title>Máy tính</title>
     <script src="/vendor/jsQR.js" defer></script>
     <script src="/app.js" type="module"></script>
   </head>
   <body>
-    <div id="app">
+    <main id="calculator" aria-label="Máy tính">
+      <h1 class="calculator-heading">Máy tính</h1>
+      <div class="calculator-screen"><div id="calculator-expression"></div><output id="calculator-display" aria-live="polite">0</output><button class="calculator-backspace" data-key="backspace" aria-label="Xóa một chữ số">⌫</button></div>
+      <div class="calculator-keys">
+        <button class="utility" data-key="AC" aria-label="Xóa tất cả">AC</button><button class="utility" data-key="±" aria-label="Đổi dấu">+/−</button><button class="utility" data-key="%" aria-label="Phần trăm">%</button><button class="operator" data-key="/" aria-label="Chia">÷</button>
+        <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button><button class="operator" data-key="*" aria-label="Nhân">×</button>
+        <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button><button class="operator" data-key="-" aria-label="Trừ">−</button>
+        <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button><button class="operator" data-key="+" aria-label="Cộng">+</button>
+        <button class="zero" data-key="0">0</button><button data-key="." aria-label="Dấu thập phân">.</button><button class="operator" data-key="=" aria-label="Bằng">=</button>
+      </div>
+    </main>
+    <div id="app" hidden inert>
       <div class="boot">
         <img src="/icon.svg" alt="" width="64" height="64" />
         <h1>Lantern</h1>
@@ -31,6 +44,6 @@
     </div>
     <div id="toast" role="status" aria-live="polite"></div>
     <dialog id="sheet" aria-labelledby="sheet-title"></dialog>
-    <noscript>Lantern cần JavaScript để kết nối an toàn với PC.</noscript>
+    <noscript>Bật JavaScript để sử dụng máy tính.</noscript>
   </body>
 </html>

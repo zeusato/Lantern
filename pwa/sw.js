@@ -1,4 +1,4 @@
-const VERSION = "lantern-web-1.2.5-r3";
+const VERSION = "lantern-web-1.2.8";
 const ASSETS = [
   "/",
   "/index.html",
@@ -9,6 +9,9 @@ const ASSETS = [
   "/vault.js",
   "/model.js",
   "/qr-scanner.js",
+  "/calculator.js",
+  "/camouflage.js",
+  "/calculator.css",
   "/vendor/jsQR.js",
   "/icon.svg",
   "/icon-192.png",

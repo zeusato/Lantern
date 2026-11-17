@@ -71,11 +71,11 @@
       <TextBlock x:Name="DetailStatus" Style="{StaticResource Muted}" TextWrapping="Wrap" LineHeight="18" FontSize="11"/>
      </StackPanel>
      <TabControl x:Name="InfoTabs" Background="Transparent" BorderThickness="0" FontSize="11">
-      <TabItem Header="Chia sẻ"><TabControl Background="Transparent" BorderThickness="0" Margin="0,12,0,0" FontSize="11">
+      <TabItem Header="Chia sẻ"><DockPanel><Button x:Name="RefreshSharedButton" DockPanel.Dock="Top" Click="RefreshSharedClick" HorizontalAlignment="Right" Margin="0,8,0,0" Padding="9,5" ToolTip="Làm mới nội dung chia sẻ" AutomationProperties.Name="Làm mới nội dung chia sẻ"><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE72C;" Style="{StaticResource Icon}" FontSize="13"/><TextBlock Text="Làm mới" Margin="6,0,0,0"/></StackPanel></Button><TabControl Background="Transparent" BorderThickness="0" Margin="0,8,0,0" FontSize="11">
        <TabItem Header="Media"><ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="4,14"><TextBlock x:Name="NoMedia" Text="Ảnh và video được chia sẻ xuất hiện ở đây." Style="{StaticResource Muted}" TextWrapping="Wrap"/><WrapPanel x:Name="SharedMedia"/></StackPanel></ScrollViewer></TabItem>
        <TabItem Header="Tệp"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="4,14"><TextBlock x:Name="NoFiles" Text="Chưa có tệp được chia sẻ." Style="{StaticResource Muted}" TextWrapping="Wrap"/><StackPanel x:Name="SharedFiles"/></StackPanel></ScrollViewer></TabItem>
        <TabItem Header="Link"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="4,14"><TextBlock x:Name="NoLinks" Text="Link trong tin nhắn xuất hiện ở đây." Style="{StaticResource Muted}" TextWrapping="Wrap"/><StackPanel x:Name="SharedLinks"/></StackPanel></ScrollViewer></TabItem>
-      </TabControl></TabItem>
+      </TabControl></DockPanel></TabItem>
       <TabItem Header="Tìm kiếm"><StackPanel Margin="6,18"><TextBlock Text="Tìm trong hội thoại" FontWeight="SemiBold" Margin="0,0,0,10"/><TextBox x:Name="MessageSearch" TextChanged="MessageSearchChanged" AutomationProperties.Name="Tìm trong trò chuyện"/><TextBlock Text="Kết quả xuất hiện trong log chat. Xóa từ khóa để xem lại hội thoại." Style="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,12,0,0"/></StackPanel></TabItem>
       <TabItem Header="Cài đặt"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="6,16">
        <Button x:Name="RenamePeerButton" Content="Đặt tên riêng" Click="RenamePeerClick" Margin="0,0,0,10" Visibility="Collapsed"/>

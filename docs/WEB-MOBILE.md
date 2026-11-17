@@ -2,10 +2,10 @@
 
 ## Cài và ghép đôi
 
-1. Cập nhật Lantern PC lên **1.2.7** và mở khóa workspace.
+1. Cập nhật Lantern PC lên **1.2.8** và mở khóa workspace.
 2. Trên iPhone, dùng Safari mở [Lantern Web](https://lantern-private-relay-zeusato.tranquymtcn.chatgpt.site). Trang được mở công khai; không cần tài khoản ChatGPT hoặc ký IPA.
-3. Chọn **Chia sẻ → Thêm vào Màn hình chính**, rồi mở biểu tượng Lantern mới.
-4. Tạo mật khẩu bảo vệ bản lưu trên điện thoại. Đây là mật khẩu cục bộ, không phải tài khoản cloud mới.
+3. Chọn **Chia sẻ → Thêm vào Màn hình chính**, rồi mở biểu tượng **Máy tính** mới.
+4. Gõ **123456789 × 91**, bấm **=** để mở Lantern. Tạo mật khẩu bảo vệ bản lưu trên điện thoại. Đây là mật khẩu cục bộ, không phải tài khoản cloud mới.
 5. Trên PC: **Cài đặt → Điện thoại → Ghép đôi iPhone · Bản web**. Trên điện thoại chọn **Mở camera** và cho phép camera.
 6. So sánh mã xác minh trên hai máy, chọn **Cho phép thiết bị** trên PC. QR dùng một lần, hết hạn sau 2 phút.
 
@@ -14,6 +14,8 @@ Nếu camera khó nhận, dùng **Chọn ảnh QR** với ảnh chụp trọn m�
 PC giữ danh tính LAN. Điện thoại cần PC đang chạy, đã mở khóa Lantern và không sleep. Internet dùng cùng relay HTTPS, không cần mở cổng router hay VPN toàn máy. Từ 1.2.7, PC mới tự đăng ký relay bằng khóa riêng khi ghép đôi, không phải nhập địa chỉ hay khóa thủ công. Nút ghép đôi web luôn khả dụng; đang tạo QR và lỗi mạng đều có thông báo.
 
 ## Trải nghiệm mobile
+
+- Mở app hiện máy tính hoạt động bình thường. Đúng phép tính **123456789 × 91** rồi **=** mới mở giao diện chat; vẫn cần mật khẩu nếu bản lưu đang khóa. Chuyển app ra nền tự che lại, hoặc chọn **Cài đặt → Mở máy tính**. Khi đang che, mọi thông báo trong app (kể cả cập nhật) bị bỏ qua, không phát âm thanh/badge và không đánh dấu tin là đã đọc; dữ liệu tiếp tục đồng bộ khi trình duyệt cho phép. Đây là lớp che giao diện, không phải một mật khẩu mới hoặc biện pháp chống người kiểm tra mã nguồn.
 
 - Bố cục một cột, chat toàn màn hình, ô nhập bám bàn phím, vùng chạm lớn và bảng thao tác trượt từ dưới.
 - Bấm gửi: ô nhập trống, tin xuất hiện ngay; lưu hàng đợi mã hóa trước khi chuyển về PC. Tự thử lại cùng mã tin để không gửi trùng. Gửi xong giữ focus.

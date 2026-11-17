@@ -13,6 +13,7 @@ import {
 import { Client, validatePairing } from "./channel.js";
 import { Vault, passwordKey, seal, unseal } from "./vault.js";
 import { CameraScanner, readQrPhoto } from "./qr-scanner.js";
+import { isCalculator, showCalculator, showNotice as toast } from "./camouflage.js";
 import {
   joins,
   alive,
@@ -193,7 +194,7 @@ async function sync() {
   }
 }
 function visibleIds() {
-  if (!current || isLocked(current) || document.hidden || !$("#timeline"))
+  if (isCalculator() || !current || isLocked(current) || document.hidden || !$("#timeline"))
     return [];
   const r = $("#timeline").getBoundingClientRect();
   return [...$("#timeline").querySelectorAll("[data-message]")]
@@ -207,7 +208,7 @@ function visibleIds() {
 }
 function markRead() {
   clearTimeout(markRead.timer);
-  if (!client?.ready || !current || isLocked(current) || document.hidden)
+  if (isCalculator() || !client?.ready || !current || isLocked(current) || document.hidden)
     return;
   markRead.timer = setTimeout(() => {
     const ids = visibleIds();
@@ -532,7 +533,7 @@ async function lockApp() {
 function settingsSheet() {
   showSheet(
     "Cài đặt",
-    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.7</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
+    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.8</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
   );
   for (const b of sheet.querySelectorAll("[data-theme]"))
     b.onclick = () => {
@@ -552,6 +553,7 @@ function settingsSheet() {
   };
   $("#settings-lock").onclick = () =>
     lockApp().catch(() => toast("Chưa lưu được dữ liệu."));
+  $("#settings-calculator").onclick = showCalculator;
   $("#settings-reset").onclick = resetSheet;
   $("#settings-update").onclick = async () => {
     await save();
@@ -933,6 +935,10 @@ document.addEventListener("visibilitychange", () => {
     }
   }
 });
+document.addEventListener("calculator-mode", (event) => {
+  if (event.detail.covered) { clearTimeout(markRead.timer); closeSheet(); }
+  else { resizeViewport(); if (state) { lastRender = ""; renderMessages(); sync(); } }
+});
 window.addEventListener("online", () => {
   if (state?.pairing && !client?.ready) connect();
 });
@@ -1040,12 +1046,6 @@ const sessionKeys = new Map(),
 const history = (id) => (state?.histories?.[id] || []).filter((x) => alive(x));
 const contact = (id) => state?.conversations?.find((c) => c.id === id);
 const isLocked = (id) => !!contact(id)?.protected && !sessionKeys.has(id);
-function toast(message) {
-  $("#toast").textContent = message;
-  $("#toast").classList.add("visible");
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => $("#toast").classList.remove("visible"), 4200);
-}
 function closeSheet() {
   sheetCleanup?.();
   sheetCleanup = null;
@@ -1060,7 +1060,7 @@ function showSheet(title, body) {
   closeSheet();
   sheet.innerHTML = `<div class="grab"></div><div class="sheet-head"><h2 id="sheet-title">${esc(title)}</h2><button class="icon" aria-label="Đóng">${icon("close")}</button></div><div class="sheet-body">${body}</div>`;
   sheet.querySelector(".sheet-head button").onclick = closeSheet;
-  sheet.showModal();
+  if (!isCalculator()) sheet.showModal();
   return sheet;
 }
 function save() {
