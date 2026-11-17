@@ -28,7 +28,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create $env:GITHUB_REF_NAME release-output/Lantern-Windows-x64.zip release-output/SHA256SUMS.txt --draft --verify-tag --notes-file docs/RELEASE-NOTES.md --title "Lantern $env:GITHUB_REF_NAME"
+          gh release create $env:GITHUB_REF_NAME release-output/Lantern-Windows-x64.zip release-output/SHA256SUMS.txt --draft --verify-tag --notes "Sửa lỗi và cải thiện trải nghiệm." --title "Lantern $env:GITHUB_REF_NAME"
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed.' }
   android:
     needs: release

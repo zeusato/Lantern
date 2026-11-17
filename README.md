@@ -140,4 +140,3 @@ Thiết kế tham khảo [WinUI App skill](https://github.com/openai/skills/tree
 
 Từ 1.2.5 có PWA tối ưu mobile: cài qua Safari, ghép QR với PC, không cần ký IPA. Xem [hướng dẫn Lantern Web](docs/WEB-MOBILE.md). PC/PWA có 5 bảng màu, xóa từng/nhiều tin và dọn hội thoại; PC có tùy chọn khởi động cùng Windows mặc định bật.
 
-Từ 1.2.8, PWA mở dưới tên/icon **Máy tính**. Gõ **123456789 × 91** rồi **=** để vào Lantern; mật khẩu dữ liệu vẫn giữ nguyên. Khi đang ở máy tính không có thông báo, âm thanh hay badge chat; chuyển app ra nền sẽ tự che lại. PC có nút **Làm mới** nội dung chia sẻ; Android giữ focus khi đồng bộ và dùng nút gửi hình máy bay giấy.
