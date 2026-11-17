@@ -108,6 +108,19 @@ final class ProtocolTests: XCTestCase {
         let anchor = try XCTUnwrap(SecCertificateCreateWithData(nil, rootData as CFData))
         let delegate = FixtureRelayDelegate(anchor: anchor)
         pc.relayDelegate = delegate
+        // The HTTPS harness owns a TCP connection to the sequential .NET fixture.
+        // Close it explicitly after this test; an idle timer can kill a slow CI TLS handshake.
+        addTeardownBlock {
+            await pc.close()
+            let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+            defer { session.finishTasksAndInvalidate() }
+            var request = URLRequest(url: URL(string: "https://127.0.0.1:45855/fixture/reset")!)
+            request.httpMethod = "POST"; request.httpBody = Data("{}".utf8)
+            request.setValue("Bearer " + String(repeating: "b", count: 43), forHTTPHeaderField: "Authorization")
+            request.setValue("Bearer fixture-only", forHTTPHeaderField: "OAI-Sites-Authorization")
+            let (_, response) = try await session.data(for: request)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        }
         defer { XCTAssertGreaterThan(delegate.validations, 0, "Fixture CA must be explicitly validated") }
         let relay: Packet = ["url": "https://127.0.0.1:45855/", "id": String(repeating: "a", count: 32), "key": String(repeating: "b", count: 43), "token": "fixture-only"]
         let welcome = try await pc.open(["pc": pin, "port": 45854, "addresses": [], "relay": relay])
