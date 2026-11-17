@@ -20,6 +20,10 @@ for (int i = 0; i < 30; i++) store.SaveMessage(new ChatMessage { Id = i.ToString
 var lockedId = new string('b', 64); store.SavePeer(new Peer { Id = lockedId, Name = "Hội thoại riêng tư", Trusted = true, Address = "127.0.0.1", Port = 1 });
 // Reloading peers is unnecessary for the real connected conversation; use that one for lock tests.
 await using var server = new MobileServer(node, vault); server.ApprovePairing = _ => Task.FromResult(true);
+var desktop = new FixtureDesktop(); server.PcControl = new PcControl(server.Registry, desktop, () => true);
+var sharedPath = Path.Combine(root, "pc-shared"); Directory.CreateDirectory(sharedPath);
+File.WriteAllText(Path.Combine(sharedPath, "document.txt"), "Lantern PC file fixture");
+var sharedRoot = new PcRoot(Guid.NewGuid().ToString("N"), "Documents", sharedPath);
 var route = new MobileRoute { Transport = "web-v1" }; var nonce = MobileRoute.Secret(); var sessionLife = new CancellationTokenSource();
 JsonElement? publicQr = null;
 if (args.Contains("--public-relay"))
@@ -40,6 +44,7 @@ while (true)
  _ = Task.Run(async () => { using(tcp) try {
   using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
   var open = await MobileProtocol.ReadAsync(tcp.GetStream(), timeout.Token);
+  if(open.Type == "fixture-pc-grant") { foreach(var device in server.Registry.Snapshot().Devices) server.Registry.SetAccess(device.Id, new() { Power = true, Ai = true, Roots = [sharedRoot] }); await MobileProtocol.WriteAsync(tcp.GetStream(), new MobilePacket { Type = "ok" }, timeout.Token); return; }
   if(open.Type == "fixture-renew") { typeof(MobileServer).GetField("invitation", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(server, new MobileInvitation(nonce, DateTimeOffset.UtcNow.AddHours(2), route)); await MobileProtocol.WriteAsync(tcp.GetStream(), new MobilePacket { Type = "ok" }, timeout.Token); return; }
   if(open.Type == "fixture-lock") { vault.SetConversationPassword(peerIdentity.Id, "conversation-secret"); server.LockConversation(peerIdentity.Id); await MobileProtocol.WriteAsync(tcp.GetStream(), new MobilePacket { Type = "ok" }, timeout.Token); return; }
   if(open.Type == "fixture-message") { await peer.SendTextAsync(identity.Id, open.Text); await MobileProtocol.WriteAsync(tcp.GetStream(), new MobilePacket { Type = "ok" }, timeout.Token); return; }
@@ -47,4 +52,10 @@ while (true)
   if(open.Type != "web-open" || !Guid.TryParseExact(open.Id, "N", out _)) return;
   await (Task)serving.Invoke(server, [tcp.GetStream(), route.Id, open.Id])!;
  } catch(Exception ex) { Console.Error.WriteLine(ex.GetType().Name + ": " + ex.Message); } });
+}
+sealed class FixtureDesktop : IPcDesktop
+{
+ private int calls;
+ public Task<List<PcTarget>> InspectAsync(CancellationToken ct) => Task.FromResult(new List<PcTarget> { new("fixture-ai", "Synthetic AI", "Test chat", "idle", "fixture-version", "Ready") });
+ public Task<string> ExecuteAsync(PcPacket request, Action authorize, CancellationToken ct) { authorize(); return Task.FromResult("fixture call " + Interlocked.Increment(ref calls)); }
 }

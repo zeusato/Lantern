@@ -30,4 +30,4 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --prefix pwa --ignore-scripts
-      - run: node --test relay/tests/relay.test.mjs pwa/tests/model.test.mjs pwa/tests/qr-scanner.test.mjs pwa/tests/calculator.test.mjs pwa/tests/camouflage.test.mjs
+      - run: node --test relay/tests/relay.test.mjs pwa/tests/model.test.mjs pwa/tests/pc.test.mjs pwa/tests/qr-scanner.test.mjs pwa/tests/calculator.test.mjs pwa/tests/camouflage.test.mjs

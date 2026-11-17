@@ -24,6 +24,7 @@ public sealed class MobileServer : IAsyncDisposable
     public int Port { get; private set; }
     public string RelayStatus { get; private set; } = "Chưa cấu hình Internet";
     public Func<MobilePairingRequest, Task<bool>>? ApprovePairing { get; set; }
+    public PcControl? PcControl { get; set; }
     public event Action? Changed;
     private sealed class Client(CancellationTokenSource stop)
     {
@@ -205,7 +206,7 @@ public sealed class MobileServer : IAsyncDisposable
             }
             else if (routeId is not null && known.Route?.Id != routeId) throw new AuthenticationException();
             if (clients.TryGetValue(deviceId, out var old)) old.Stop.Cancel(); clients[deviceId] = client;
-            await MobileProtocol.WriteAsync(ssl, new MobilePacket { Type = "welcome", Name = node.Identity.Name, Id = node.Identity.Id, Capabilities = ["sync-v1", "push-v1"] }, stop.Token);
+            await MobileProtocol.WriteAsync(ssl, new MobilePacket { Type = "welcome", Name = node.Identity.Name, Id = node.Identity.Id, Capabilities = PcControl is null ? ["sync-v1", "push-v1"] : ["sync-v1", "push-v1", "pc-v1"] }, stop.Token);
             if (hello.Capabilities?.Contains("push-v1") == true)
             {
                 onChange = () => { try { if (updates.CurrentCount == 0) updates.Release(); } catch (SemaphoreFullException) { } catch (ObjectDisposedException) { } };
@@ -230,11 +231,25 @@ public sealed class MobileServer : IAsyncDisposable
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stop.Token); timeout.CancelAfter(TimeSpan.FromSeconds(90));
                 var request = await MobileProtocol.ReadAsync(ssl, timeout.Token);
                 if (!Registry.Contains(deviceId)) throw new AuthenticationException();
+                // PC operations may inspect another app or hash a file. They must not hold the
+                // stream write lock and block chat push updates while that work is running.
+                MobilePacket? pcResponse = null;
+                if (request.Type == "pc")
+                {
+                    try
+                    {
+                        using var pcTimeout = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
+                        pcTimeout.CancelAfter(TimeSpan.FromSeconds(15));
+                        pcResponse = new() { Pc = await (PcControl ?? throw new InvalidOperationException("PC chưa hỗ trợ chức năng này.")).HandleAsync(deviceId, request.Pc ?? throw new ArgumentException("Thiếu yêu cầu PC."), pcTimeout.Token), Type = "pc" };
+                    }
+                    catch (Exception ex) when (ex is not OutOfMemoryException)
+                    { pcResponse = new() { Type = "error", Text = ex is OperationCanceledException ? "PC phản hồi chậm; kiểm tra kết quả trước khi gửi lại." : ex.Message }; }
+                }
                 await writes.WaitAsync(stop.Token);
                 try
                 {
                     MobilePacket response;
-                    try { response = await Handle(client, deviceId, request, stop.Token); }
+                    try { response = pcResponse ?? await Handle(client, deviceId, request, stop.Token); }
                     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or UnauthorizedAccessException) { response = new() { Type = "error", Text = ex.Message }; }
                     response.Id = request.Id; response.Serial = ++serial; await MobileProtocol.WriteAsync(ssl, response, timeout.Token);
                 }
@@ -359,6 +374,6 @@ public sealed class MobileServer : IAsyncDisposable
     {
         life.Cancel(); listener?.Stop(); foreach (var client in clients.Values) client.Stop.Cancel();
         try { await Task.WhenAll(tasks.Values).WaitAsync(TimeSpan.FromSeconds(10)); } catch (Exception) { }
-        life.Dispose();
+        PcControl?.Dispose(); life.Dispose();
     }
 }

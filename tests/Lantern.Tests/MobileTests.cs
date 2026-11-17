@@ -26,6 +26,8 @@ internal static class MobileTests
         await node.StartAsync(0, false, true); await other.StartAsync(0, false, true);
         await node.ConnectAsync("127.0.0.1", other.Port, otherId.Id); await node.TrustAsync(otherId.Id); await other.TrustAsync(identity.Id);
         await using var server = new MobileServer(node, vault); if (relay is not null) server.ConfigureRelay(relay);
+        var desktop = new PcControlTests.Desktop();
+        server.PcControl = new PcControl(server.Registry, desktop, () => true);
         server.ApprovePairing = _ => Task.FromResult(true); await server.StartAsync(0, true);
         using var phone = new Identity(Path.Combine(path, "phone"), "Điện thoại QA");
         using var invitation = JsonDocument.Parse(await server.CreateInvitationAsync());
@@ -49,6 +51,13 @@ internal static class MobileTests
             var welcome = await Call(new() { Type = "hello", Nonce = qr.GetProperty("nonce").GetString()!, Name = "Android QA" });
             check(welcome.Type == "welcome" && welcome.Id == identity.Id, relay is null ? "Mobile QR pairing uses mutually authenticated TLS" : "Public managed relay carries end-to-end mutual TLS successfully");
             check(server.Registry.Contains(phone.Id), "Only approved phone certificate is persisted");
+            check(welcome.Capabilities.Contains("pc-v1"), "Paired mobile connection negotiates PC command capability");
+            check((await Call(new() { Type = "pc", Pc = new() { Action = "prepare", Command = "power.lock" } })).Type == "error", "TLS PC requests enforce default-deny authority");
+            server.Registry.SetAccess(phone.Id, new() { Power = true });
+            var prepared = await Call(new() { Type = "pc", Pc = new() { Action = "prepare", Command = "power.lock" } });
+            var executed = await Call(new() { Type = "pc", Pc = new() { Action = "execute", Ticket = prepared.Pc!.Ticket } });
+            await Call(new() { Type = "pc", Pc = new() { Action = "execute", Ticket = prepared.Pc!.Ticket } });
+            check(executed.Pc?.State == "done" && desktop.Calls == 1, "Authenticated mobile protocol dispatches a PC action exactly once per ticket");
             var registryText = File.ReadAllText(Path.Combine(path, "mobile-devices.enc"));
             check(!registryText.Contains(phone.Id) && (relay is null || !registryText.Contains(relay.ServiceToken)), "Device credentials are encrypted in the workspace");
             check((await Call(new() { Type = "list" })).Conversations.Any(c => c.Id == otherId.Id), "Phone uses the PC contact list");
