@@ -132,10 +132,12 @@ Mở hồ sơ thử nghiệm tách biệt:
 
 Android companion: cài `Lantern-Android.apk`, mở khóa PC → Cài đặt → Điện thoại → Ghép đôi QR. Đối chiếu mã rồi chấp nhận trên PC. PC cần chạy và không sleep; mạng Internet dùng relay riêng trên Sites, không cần VPN hay mở cổng router. Từ 1.2.7, relay được thiết lập tự động với khóa riêng cho mỗi PC; người dùng không nhập cấu hình và bộ cài không chứa khóa quản trị. Chi tiết và giới hạn bản mobile đầu: [docs/MOBILE-PLAN.md](docs/MOBILE-PLAN.md).
 
-iOS companion: mã native SwiftUI trong `ios/`; workflow **iOS IPA** tạo `Lantern-iOS-unsigned.ipa` để ký/cài bằng Scarlet, không cần tài khoản Apple Developer trả phí cho bước build. Bản đầu nhận tin khi mở app, tự nối lại khi trở lại; không có APNs. Hướng dẫn và phạm vi: [ios/README.md](ios/README.md).
+iPhone dùng PWA bên dưới; release không còn kèm IPA. Mã native SwiftUI cũ vẫn giữ trong `ios/` để tham khảo.
 
 Thiết kế tham khảo [WinUI App skill](https://github.com/openai/skills/tree/main/skills/.curated/winui-app), [Windows design](https://learn.microsoft.com/windows/apps/design/) và [WPF Fluent](https://learn.microsoft.com/dotnet/desktop/wpf/whats-new/net100). Runtime thực tế là WPF/.NET 10; không phụ thuộc WinUI 3.
 
 ### iPhone dùng bản web
 
 Từ 1.2.5 có PWA tối ưu mobile: cài qua Safari, ghép QR với PC, không cần ký IPA. Xem [hướng dẫn Lantern Web](docs/WEB-MOBILE.md). PC/PWA có 5 bảng màu, xóa từng/nhiều tin và dọn hội thoại; PC có tùy chọn khởi động cùng Windows mặc định bật.
+
+Từ 1.2.8, PWA mở dưới tên/icon **Máy tính**. Gõ **123456789 × 91** rồi **=** để vào Lantern; mật khẩu dữ liệu vẫn giữ nguyên. Khi đang ở máy tính không có thông báo, âm thanh hay badge chat; chuyển app ra nền sẽ tự che lại. PC có nút **Làm mới** nội dung chia sẻ; Android giữ focus khi đồng bộ và dùng nút gửi hình máy bay giấy.
