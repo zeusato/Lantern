@@ -35,11 +35,16 @@ public class ComposerTest {
             scenario.onActivity(a->{try{
                 ConnectionService.selected="c".repeat(64);ConnectionService.connected=true;
                 ConnectionService.conversations=new JSONArray().put(new JSONObject().put("id",ConnectionService.selected).put("name","QA").put("locked",false));
-                ConnectionService.messages=new JSONArray().put(message("stable","Keep this row")).put(message("expire","Short-lived").put("expiresAt",OffsetDateTime.now().plusSeconds(2).toString()));
+                ConnectionService.messages=new JSONArray().put(message("stable","Keep this row")).put(message("anchor","Keep this group boundary"));
                 call(a,"build");
             }catch(Exception e){throw new AssertionError(e);}});
             onView(withContentDescription("Soạn tin nhắn")).perform(typeText("Dang go tieng Viet"));
-            scenario.onActivity(a->{try{EditText editor=field(a,"composer");editor.setSelection(5);buffer.set(editor.getText());BaseInputConnection.setComposingSpans(editor.getText());retainedRow.set(((LinearLayout)field(a,"messagesBox")).getChildAt(0));}catch(Exception e){throw new AssertionError(e);}});
+            scenario.onActivity(a->{try{
+                EditText editor=field(a,"composer");editor.setSelection(5);buffer.set(editor.getText());BaseInputConnection.setComposingSpans(editor.getText());
+                // Start expiry after IME startup/typeText, which can be slow on CI emulators.
+                ConnectionService.messages.put(message("expire","Short-lived").put("expiresAt",OffsetDateTime.now().plusSeconds(2).toString()));call(a,"refresh");
+                retainedRow.set(((LinearLayout)field(a,"messagesBox")).getChildAt(0));
+            }catch(Exception e){throw new AssertionError(e);}});
             for(int n=0;n<6;n++){
                 final int index=n;scenario.onActivity(a->{try{
                     ConnectionService.status="Đang đồng bộ "+index;
