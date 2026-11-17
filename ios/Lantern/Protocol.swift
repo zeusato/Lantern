@@ -95,4 +95,10 @@ struct Message: Identifiable {
     var pending: Bool { !raw.string("localRequest").isEmpty }
     var ephemeral: Bool { raw.int("disappearAfterSeconds") > 0 || Wire.date(raw.string("expiresAt")) != nil }
     var expired: Bool { Wire.date(raw.string("expiresAt")).map { $0 <= Date() } ?? false }
+    static func joins(_ previous: Message, _ next: Message) -> Bool {
+        guard previous.outgoing == next.outgoing, previous.raw.string("conversationId") == next.raw.string("conversationId"),
+              previous.outgoing || (!previous.raw.string("senderId").isEmpty && previous.raw.string("senderId") == next.raw.string("senderId")),
+              let a = Wire.date(previous.raw.string("time")), let b = Wire.date(next.raw.string("time")) else { return false }
+        return b >= a && b.timeIntervalSince(a) <= 300 && Calendar.current.isDate(a, inSameDayAs: b)
+    }
 }

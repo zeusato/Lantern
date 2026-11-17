@@ -159,15 +159,20 @@ struct ChatView: View {
         }
     }
     private var history: some View {
-        ScrollViewReader { proxy in
+        let visible = store.messages.filter { !$0.expired }
+        let rows = visible.enumerated().map { index, message in
+            GroupedMessage(message: message, joinsPrevious: index > 0 && Message.joins(visible[index - 1], message), joinsNext: index + 1 < visible.count && Message.joins(message, visible[index + 1]))
+        }
+        return ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 10) {
+                LazyVStack(spacing: 0) {
                     if store.messages.isEmpty { Text("Chưa có tin nhắn").foregroundStyle(.secondary).padding(40) }
-                    ForEach(store.messages) { message in
-                        MessageRow(message: message)
-                            .id(message.id)
-                            .onAppear { store.displayed(message, true) }
-                            .onDisappear { store.displayed(message, false) }
+                    ForEach(rows) { row in
+                        MessageRow(message: row.message, showSender: !row.joinsPrevious, showFooter: !row.joinsNext)
+                            .padding(.top, row.joinsPrevious ? 4 : 12)
+                            .id(row.id)
+                            .onAppear { store.displayed(row.message, true) }
+                            .onDisappear { store.displayed(row.message, false) }
                     }
                     Color.clear.frame(height: 1).id("end")
                 }.padding(12)
@@ -231,14 +236,22 @@ struct ImportedMedia: Transferable {
     }
 }
 
+struct GroupedMessage: Identifiable {
+    let message: Message
+    let joinsPrevious: Bool
+    let joinsNext: Bool
+    var id: String { message.id }
+}
 struct MessageRow: View {
     let message: Message
+    let showSender: Bool
+    let showFooter: Bool
     @EnvironmentObject private var store: ChatStore
     var body: some View {
         HStack {
             if message.outgoing { Spacer(minLength: 45) }
             VStack(alignment: .leading, spacing: 6) {
-                if !message.outgoing && !message.raw.string("senderName").isEmpty { Text(message.raw.string("senderName")).font(.caption.bold()).foregroundStyle(.secondary) }
+                if showSender && !message.outgoing && !message.raw.string("senderName").isEmpty { Text(message.raw.string("senderName")).font(.caption.bold()).foregroundStyle(.secondary) }
                 if !message.raw.string("replyToId").isEmpty { Label("Trả lời tin nhắn", systemImage: "arrowshape.turn.up.left").font(.caption).foregroundStyle(.secondary) }
                 if message.kind == "text" { Text(message.text).textSelection(.enabled) }
                 else if ["image", "video", "file"].contains(message.kind) {
@@ -247,15 +260,19 @@ struct MessageRow: View {
                     }.disabled(!store.connected || store.transferProgress != nil)
                 } else { Text(message.text.isEmpty ? "Nội dung: " + message.kind : message.text) }
                 if let reactions = message.raw["reactions"] as? [String: String], !reactions.isEmpty { Text(reactions.values.sorted().joined(separator: " ")).font(.caption) }
-                HStack(spacing: 5) {
-                    if let time = Wire.date(message.raw.string("time")) { Text(time, style: .time) }
+                if showFooter || message.pending || message.ephemeral || ["error", "queued", "receiving"].contains(message.raw.string("status")) {
+                  HStack(spacing: 5) {
+                    if showFooter, let time = Wire.date(message.raw.string("time")) { Text(time, style: .time) }
                     if message.outgoing {
                         if message.pending {
                             Button(message.raw.string("status") == "retry" ? "Chạm để gửi lại" : "Đang gửi…") { Task { await store.retry(message.id) } }.disabled(message.raw.string("status") != "retry")
-                        } else { Text(message.raw.string("status") == "read" ? "Đã đọc" : message.raw.string("status") == "delivered" ? "Đã nhận" : "Đã gửi PC") }
+                        } else if message.raw.string("status") == "error" { Text("Lỗi gửi") }
+                        else if message.raw.string("status") == "queued" { Text("Đang chuyển tiếp") }
+                        else if showFooter { Text(message.raw.string("status") == "read" ? "Đã đọc" : message.raw.string("status") == "delivered" ? "Đã nhận" : "Đã gửi PC") }
                     }
                     if message.ephemeral { Image(systemName: "timer") }
-                }.font(.caption2).foregroundStyle(.secondary)
+                  }.font(.caption2).foregroundStyle(.secondary)
+                }
             }
             .padding(12)
             .background(message.outgoing ? Color.accentColor.opacity(0.16) : Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))

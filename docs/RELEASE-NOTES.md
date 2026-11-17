@@ -1,5 +1,8 @@
 # Lantern 1.2.4
 
+- Chat gọn hơn trên PC/Android/iOS: giờ và trạng thái nằm trong bong bóng. Các tin liên tiếp cùng người gửi, cách nhau tối đa 5 phút trong cùng ngày, chỉ hiện giờ/trạng thái đọc ở tin cuối; thu hẹp khoảng cách và chỉ hiện tên ở đầu nhóm. Trạng thái đang gửi/lỗi và bộ đếm tự hủy vẫn được giữ riêng.
+- PC: rê chuột vào nút reaction mở ngay dãy emoji; chuyển chuột từ nút sang dãy chọn vẫn giữ mở. Không cần bấm để mở bảng chọn.
+
 - Android: mục **⋯ → Cập nhật ứng dụng**, tự kiểm tra khi mở/quay lại app (giãn cách 6 giờ), tùy chọn tự tải và báo bản mới ngay trong app. Bấm **Cài đặt bản đã tải**, cấp quyền cài từ Lantern lần đầu và xác nhận với Android. Cài đè giữ ghép đôi/lịch sử.
 - APK được đối chiếu SHA-256, mã ứng dụng, phiên bản và khóa ký của bản đang cài. Gói lỗi, gói cũ hoặc khác khóa ký bị từ chối. Tải cập nhật có tiến trình riêng, không xếp hàng cùng gửi/nhận tin nhắn.
 - iOS: bổ sung IPA arm64 cho iOS 16+, ghép QR cùng PC, chat và lưu cache mã hóa. **Cài đặt → Cập nhật ứng dụng** tự kiểm tra/tải IPA, xác minh SHA-256 rồi chia sẻ sang Scarlet hoặc lưu vào Tệp để nhập trong Scarlet.

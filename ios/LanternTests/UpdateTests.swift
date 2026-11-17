@@ -3,6 +3,20 @@ import CryptoKit
 @testable import Lantern
 
 final class UpdateTests: XCTestCase {
+    func testMessageGroupingUsesIdentityFiveMinutesAndLocalDay() throws {
+        let start = Calendar.current.date(bySettingHour: 10, minute: 0, second: 0, of: Date())!
+        let format = ISO8601DateFormatter()
+        let a = Message(raw: ["senderId": "a", "conversationId": "chat", "time": format.string(from: start), "outgoing": false])
+        var b = a; b.raw["time"] = format.string(from: start.addingTimeInterval(300)); XCTAssertTrue(Message.joins(a, b))
+        b.raw["time"] = format.string(from: start.addingTimeInterval(301)); XCTAssertFalse(Message.joins(a, b))
+        b.raw["time"] = format.string(from: start.addingTimeInterval(-1)); XCTAssertFalse(Message.joins(a, b))
+        b = a; b.raw["senderId"] = "b"; XCTAssertFalse(Message.joins(a, b))
+        b = a; b.raw["conversationId"] = "other"; XCTAssertFalse(Message.joins(a, b))
+        b = a; b.raw["outgoing"] = true; XCTAssertFalse(Message.joins(a, b))
+        let midnight = Calendar.current.startOfDay(for: start)
+        var previous = a; previous.raw["time"] = format.string(from: midnight.addingTimeInterval(-30)); b = a; b.raw["time"] = format.string(from: midnight.addingTimeInterval(30)); XCTAssertFalse(Message.joins(previous, b))
+        previous = a; previous.raw["outgoing"] = true; previous.raw.removeValue(forKey: "senderId"); b = a; b.raw["outgoing"] = true; XCTAssertTrue(Message.joins(previous, b))
+    }
     private func metadata() -> [String: Any] {
         let base = "https://github.com/zeusato/Lantern/releases/download/v9.9.9/"
         return ["draft": false, "prerelease": false, "tag_name": "v9.9.9", "assets": [

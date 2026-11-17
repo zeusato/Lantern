@@ -18,6 +18,18 @@ import static androidx.test.espresso.assertion.ViewAssertions.matches;
 
 @RunWith(AndroidJUnit4.class)
 public class UpdateTest {
+    @Test public void groupingRespectsAuthorTimeDirectionAndDay() throws Exception {
+        java.time.OffsetDateTime start=java.time.ZonedDateTime.now().withHour(10).withMinute(0).withSecond(0).withNano(0).toOffsetDateTime();
+        JSONObject a=new JSONObject().put("senderId","a").put("conversationId","chat").put("time",start.toString()).put("outgoing",false);
+        JSONObject b=new JSONObject(a.toString()).put("time",start.plusSeconds(300).toString());assertTrue(MessageGrouping.joins(a,b));
+        b.put("time",start.plusSeconds(301).toString());assertFalse(MessageGrouping.joins(a,b));
+        b.put("time",start.minusSeconds(1).toString());assertFalse(MessageGrouping.joins(a,b));
+        b.put("time",start.plusSeconds(1).toString()).put("senderId","other");assertFalse(MessageGrouping.joins(a,b));
+        b.put("senderId","a").put("outgoing",true);assertFalse(MessageGrouping.joins(a,b));
+        b.put("outgoing",false).put("conversationId","other");assertFalse(MessageGrouping.joins(a,b));
+        a.put("time",start.withHour(23).withMinute(59).toString());b.put("conversationId","chat").put("time",start.plusDays(1).withHour(0).toString());assertFalse(MessageGrouping.joins(a,b));
+        a.put("outgoing",true).remove("senderId");b.put("outgoing",true).put("time",a.getString("time"));assertTrue(MessageGrouping.joins(a,b));
+    }
     private JSONObject metadata() throws Exception {
         String base="https://github.com/zeusato/Lantern/releases/download/v9.9.9/";
         return new JSONObject().put("draft",false).put("prerelease",false).put("tag_name","v9.9.9").put("assets",new JSONArray()

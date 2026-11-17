@@ -89,8 +89,13 @@ internal sealed class UiHarness : Application
             await (Task)Call(window, "ToggleReaction", first.Id, "❤️")!; await Until(() => remoteStore.Message(first.Id)!.Reactions.ContainsKey(node.Identity.Id), "UI reaction delivery"); Check(true, "Reaction button updates remote message");
             Call(window, "Refresh");
             MessageReactions LiveReactions() => Visuals<MessageReactions>(((Panel)window.FindName("MessagesPanel")).Children.OfType<FrameworkElement>().Single(view => view.Tag as string == first.Id)).Single();
-            var liveDock = LiveReactions(); Visuals<Button>(liveDock).Single(button => button.Name == "ReactionTrigger").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var liveDock = LiveReactions(); var liveTrigger = Visuals<Button>(liveDock).Single(button => button.Name == "ReactionTrigger");
+            liveTrigger.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
             var reactionPalette = Field<Popup>(liveDock, "palette");
+            Check(reactionPalette.IsOpen, "Hovering the reaction trigger opens emoji choices without a click");
+            liveTrigger.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseLeaveEvent });
+            ((FrameworkElement)reactionPalette.Child).RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
+            await Task.Delay(250); Check(reactionPalette.IsOpen, "Moving from reaction trigger into the palette keeps the choices open");
             await Task.Delay(60); Snapshot((FrameworkElement)reactionPalette.Child, Path.Combine(root, "reaction-picker.png"));
             Visuals<Button>(reactionPalette.Child).Single(button => button.Content is Image { Tag: "😂" }).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => remoteStore.Message(first.Id)!.Reactions.GetValueOrDefault(node.Identity.Id) == "😂", "New picker delivers reaction"); Check(true, "Bubble-edge reaction picker sends the selected colored emoji");
@@ -128,15 +133,16 @@ internal sealed class UiHarness : Application
             {
                 var message = new ChatMessage { ConversationId = remoteIdentity.Id, SenderId = outgoing ? node.Identity.Id : remoteIdentity.Id, Text = text, Outgoing = outgoing, Status = "delivered" };
                 if (reacted) message.Reactions[node.Identity.Id] = "❤️";
-                var view = (FrameworkElement)Call(window, "MessageBubble", message)!; gallery.Children.Add(view); return view;
+                var view = (FrameworkElement)Call(window, "MessageBubble", message, false, false)!; gallery.Children.Add(view); return view;
             }
             var shortView = Sample("OK", false, true); var ownView = Sample("Em nhận rồi 👍", true, true); var emojiView = Sample("👍", false);
             var multilineView = Sample("Một dòng\nDòng thứ hai dài hơn", true); var longView = Sample(string.Concat(Enumerable.Repeat("Tin dài sẽ tự xuống dòng, không làm rộng cả bong bóng. ", 8)), false);
             var galleryWindow = new Window { Owner = window, Width = 640, Height = 680, Content = new ScrollViewer { Content = gallery, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } }; galleryWindow.Show(); galleryWindow.UpdateLayout();
             Border Bubble(FrameworkElement view) => (Border)((StackPanel)view).Children.OfType<Grid>().Single().Children[0];
             var shortBubble = Bubble(shortView); var ownBubble = Bubble(ownView); var longBubble = Bubble(longView);
-            Check(shortBubble.ActualWidth < 90 && ownBubble.ActualWidth > shortBubble.ActualWidth + 30 && Bubble(emojiView).ActualWidth < 80, "Short and emoji-only bubbles fit their content instead of filling the row");
-            Check(shortBubble.ActualHeight < 55 && ownBubble.ActualHeight < 55 && Bubble(multilineView).ActualHeight < 80, "Natural-width text and emoji stay on their intended lines without accidental wrapping");
+            Check(shortBubble.ActualWidth < 160 && ownBubble.ActualWidth < 190 && Bubble(emojiView).ActualWidth < 160, "Short and emoji-only bubbles fit content plus the internal timestamp instead of filling the row");
+            Check(shortBubble.ActualHeight < 75 && ownBubble.ActualHeight < 75 && Bubble(multilineView).ActualHeight < 100, "Text and metadata remain compact without accidental wrapping");
+            Check(Visuals<TextBlock>(shortBubble).Any(view => view.Name == "MessageFooter") && !((StackPanel)shortView).Children.OfType<TextBlock>().Any(), "Time and delivery state live inside the bubble");
             var incomingLeft = shortBubble.TranslatePoint(new Point(), gallery).X; var outgoingRight = ownBubble.TranslatePoint(new Point(ownBubble.ActualWidth, 0), gallery).X;
             Check(incomingLeft < 1 && Math.Abs(outgoingRight - gallery.ActualWidth) < 1, "Incoming bubbles align left and outgoing bubbles align right");
             Check(longBubble.ActualWidth <= 560 && longBubble.ActualHeight > ownBubble.ActualHeight * 2 && Bubble(multilineView).ActualHeight > ownBubble.ActualHeight, "Long text wraps at the maximum width and explicit newlines remain visible");
@@ -145,6 +151,20 @@ internal sealed class UiHarness : Application
             var shortHeight = shortBubble.ActualHeight; var longHeight = longBubble.ActualHeight;
             galleryWindow.Width = 360; galleryWindow.UpdateLayout(); Check(longBubble.ActualWidth <= gallery.ActualWidth - 30 + 1 && longBubble.ActualHeight > longHeight && shortBubble.ActualHeight == shortHeight, "Bubbles reflow without clipping when the window narrows"); galleryWindow.Width = 640; galleryWindow.UpdateLayout();
             Snapshot(galleryWindow, Path.Combine(root, "bubble-layout.png")); galleryWindow.Close(); window.Activate();
+            var compactGallery = new StackPanel { Margin = new Thickness(20) };
+            FrameworkElement CompactSample(string text, bool outgoing, bool previous, bool next, string status = "read")
+            {
+                var message = new ChatMessage { ConversationId = remoteIdentity.Id, SenderId = outgoing ? node.Identity.Id : remoteIdentity.Id, SenderName = "Minh Anh", GroupId = "sample", Text = text, Outgoing = outgoing, Status = status };
+                var view = (FrameworkElement)Call(window, "MessageBubble", message, previous, next)!; compactGallery.Children.Add(view); return view;
+            }
+            var groupedFirst = CompactSample("Có cần em gửi thêm bản thiết kế không?", false, false, true);
+            CompactSample("Có gì cứ nhắn em nhé 👋", false, true, false);
+            CompactSample("Em nhận được rồi", true, false, true);
+            CompactSample("Để em kiểm tra và gửi lại nhé", true, true, false);
+            var pendingMiddle = CompactSample("Tin đang chờ gửi vẫn có trạng thái riêng", true, true, true, "queued");
+            Check(Visuals<TextBlock>(compactGallery).Count(view => view.Name == "MessageFooter") == 2 && Visuals<TextBlock>(pendingMiddle).Any(view => view.Name == "MessagePendingStatus"), "Only group tails show time/read status while pending messages retain feedback");
+            Check(groupedFirst.Margin.Bottom == 5, "Messages in the same group use a compact five-pixel gap");
+            var compactWindow = new Window { Owner = window, Width = 720, Height = 430, Content = compactGallery }; compactWindow.SetResourceReference(Window.BackgroundProperty, "CanvasBrush"); compactWindow.Show(); compactWindow.UpdateLayout(); Snapshot(compactWindow, Path.Combine(root, "chat-grouped.png")); compactWindow.Close(); window.Activate();
             var badgeView = new Image { Source = TaskbarBadge.Create(100), Width = 64, Height = 64 }; badgeView.Measure(new Size(64, 64)); badgeView.Arrange(new Rect(0, 0, 64, 64)); Snapshot(badgeView, Path.Combine(root, "taskbar-badge.png"));
             Snapshot(window, Path.Combine(root, "chat-light.png"));
             var chatPanel = (Panel)window.FindName("MessagesPanel"); var messageView = chatPanel.Children.OfType<FrameworkElement>().First(view => view.Tag as string == first.Id); var heightBefore = messageView.ActualHeight;
@@ -255,7 +275,7 @@ internal sealed class UiHarness : Application
             ActivateFixture(window); Call(window, "RestoreFromTray"); await Task.Delay(100);
             var login = Visuals<LoginView>(window).Single();
             Check(login.IsVisible && ((FrameworkElement)window.FindName("Shell")).Visibility == Visibility.Collapsed, "Restoring a locked tray session requires the password again");
-            var secret = Visuals<PasswordBox>(login).Single(); Check(secret.IsKeyboardFocused, "App unlock automatically focuses the password input");
+            var secret = Visuals<PasswordBox>(login).Single(); await Until(() => secret.IsKeyboardFocused, "Restored login keyboard focus"); Check(secret.IsKeyboardFocused, "App unlock automatically focuses the password input");
             Check(Visuals<TextBlock>(login).Any(block => block.Text == $"Chào mừng\n{Settings.Name} trở lại."), "Login greeting shows the account display name"); Snapshot(window, Path.Combine(root, "login-greeting.png")); secret.Password = "wrong workspace password";
             Visuals<Button>(login).Single(button => button.Content as string == "Mở khóa").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => Visuals<TextBlock>(login).Any(block => block.Foreground == Brushes.IndianRed && block.Text.Length > 0), "Wrong password rejected");

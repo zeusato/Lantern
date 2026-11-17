@@ -92,12 +92,18 @@ public final class MainActivity extends Activity {
         String signature=ConnectionService.messages.toString()+locked+ConnectionService.images.keySet().toString()+ConnectionService.status+(expiring?System.currentTimeMillis()/1000:0);if(signature.equals(renderKey))return;renderKey=signature;
         int previousY=scroll.getScrollY();boolean bottom=previousY+scroll.getHeight()>=messagesBox.getHeight()-dp(120);messagesBox.removeAllViews();
         if(locked){messagesBox.addView(text("🔒  Hội thoại được bảo vệ",21,TEXT));messagesBox.addView(text("Nhập mật khẩu để mở trong phiên kết nối này.",14,MUTED));messagesBox.addView(button("Mở khóa hội thoại",this::unlock));return;}
+        java.util.List<JSONObject> visibleMessages=new java.util.ArrayList<>();
         for(int i=0;i<ConnectionService.messages.length();i++)try{
             JSONObject message=ConnectionService.messages.getJSONObject(i);
             if(!message.isNull("expiresAt")&&OffsetDateTime.parse(message.getString("expiresAt")).toInstant().toEpochMilli()<=System.currentTimeMillis()){File expired=ConnectionService.images.remove(message.optString("id"));if(expired!=null)expired.delete();continue;}
-            boolean own=message.optBoolean("outgoing");LinearLayout row=new LinearLayout(this);row.setTag(message.getString("id"));row.setGravity(own?Gravity.RIGHT:Gravity.LEFT);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(10);messagesBox.addView(row,rp);
+            visibleMessages.add(message);
+        }catch(Exception ignored){}
+        for(int i=0;i<visibleMessages.size();i++)try{
+            JSONObject message=visibleMessages.get(i);
+            boolean joinsPrevious=i>0&&MessageGrouping.joins(visibleMessages.get(i-1),message),joinsNext=i+1<visibleMessages.size()&&MessageGrouping.joins(message,visibleMessages.get(i+1));
+            boolean own=message.optBoolean("outgoing");LinearLayout row=new LinearLayout(this);row.setTag(message.getString("id"));row.setGravity(own?Gravity.RIGHT:Gravity.LEFT);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(joinsPrevious?4:12);messagesBox.addView(row,rp);
             LinearLayout bubble=column();bubble.setPadding(dp(12),dp(10),dp(12),dp(8));bubble.setBackground(shape(own?Color.rgb(29,77,72):SURFACE,16));row.addView(bubble,new LinearLayout.LayoutParams(-2,-2));int max=getResources().getDisplayMetrics().widthPixels-dp(100);
-            if(!own){TextView sender=text(message.optString("senderName"),12,ACCENT);sender.setMaxWidth(max);bubble.addView(sender);}
+            if(!own&&!joinsPrevious){TextView sender=text(message.optString("senderName"),12,ACCENT);sender.setMaxWidth(max);bubble.addView(sender);}
             String reply=message.optString("replyToId");if(!reply.isEmpty()){String snippet="Tin được trích dẫn";for(int j=0;j<ConnectionService.messages.length();j++){JSONObject q=ConnectionService.messages.optJSONObject(j);if(q!=null&&reply.equals(q.optString("id")))snippet=q.optString("text",q.optString("fileName"));}TextView q=text("↳ "+snippet,12,MUTED);q.setMaxWidth(max);q.setMaxLines(2);bubble.addView(q);}
             String kind=message.optString("kind");if("text".equals(kind)){TextView content=text(message.optString("text"),16,TEXT);content.setMaxWidth(max);content.setTextIsSelectable(true);bubble.addView(content);}
             else if("contact".equals(kind)){JSONObject contact=message.optJSONObject("contact");bubble.addView(text("👤 "+(contact==null?"Liên hệ":contact.optString("name")),16,TEXT));}
@@ -107,7 +113,10 @@ public final class MainActivity extends Activity {
                 boolean ready=own||"received".equals(message.optString("status"));bubble.addView(button(ready?"Mở tệp":"Nhận tệp",()->attachment(message,ready)));
             }
             String stamp="";try{stamp=OffsetDateTime.parse(message.getString("time")).atZoneSameInstant(java.time.ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"));}catch(Exception ignored){}
-            TextView time=text(stamp+(own?" · "+delivery(message.optString("status")):"")+(message.optInt("disappearAfterSeconds")>0?" · ◷":""),10,MUTED);time.setGravity(Gravity.RIGHT);bubble.addView(time);
+            boolean attention=message.has("localRequest")||java.util.Arrays.asList("queued","sending","retry","error","receiving").contains(message.optString("status"));
+            boolean timer=message.optInt("disappearAfterSeconds")>0;
+            String metadata=joinsNext?attention?delivery(message.optString("status")):"":stamp+(own?" · "+delivery(message.optString("status")):"");
+            TextView time=text(metadata+(timer?(metadata.isEmpty()?"◷":" · ◷"):""),10,MUTED);time.setPadding(0,dp(3),0,0);if(!joinsNext||attention||timer)bubble.addView(time);
             JSONObject reactions=message.optJSONObject("reactions");if(reactions!=null){StringBuilder emojis=new StringBuilder();java.util.Iterator<String> keys=reactions.keys();while(keys.hasNext()){String e=reactions.optString(keys.next());if(!e.isEmpty())emojis.append(e);}if(emojis.length()>0)bubble.addView(text(emojis.toString(),15,TEXT));}
             if(message.has("localRequest")){time.setTextColor("retry".equals(message.optString("status"))?Color.rgb(241,176,88):MUTED);time.setOnClickListener(v->{ConnectionService service=ConnectionService.current;if(service!=null)service.retrySend(message.optString("id"));});}
             else {bubble.setOnLongClickListener(v->{messageMenu(message);return true;});time.setOnClickListener(v->messageMenu(message));}

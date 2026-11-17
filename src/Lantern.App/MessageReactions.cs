@@ -22,6 +22,13 @@ internal sealed class MessageReactions : StackPanel
         var choices = new StackPanel { Orientation = Orientation.Horizontal };
         var surface = new Border { Child = choices, Padding = new Thickness(5), CornerRadius = new CornerRadius(15), BorderThickness = new Thickness(1) };
         surface.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush"); surface.SetResourceReference(Border.BorderBrushProperty, "LineBrush"); palette.Child = surface;
+        var closeDelay = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        void OpenPalette() { closeDelay.Stop(); palette.IsOpen = true; }
+        void CloseLater() { closeDelay.Stop(); closeDelay.Start(); }
+        closeDelay.Tick += (_, _) => { closeDelay.Stop(); if (!trigger.IsMouseOver && !surface.IsMouseOver && !surface.IsKeyboardFocusWithin) palette.IsOpen = false; };
+        trigger.MouseEnter += (_, _) => OpenPalette(); trigger.MouseLeave += (_, _) => CloseLater();
+        surface.MouseEnter += (_, _) => closeDelay.Stop(); surface.MouseLeave += (_, _) => CloseLater();
+        surface.PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) { palette.IsOpen = false; trigger.Focus(); e.Handled = true; } };
         foreach (var emoji in PeerNode.ReactionEmoji)
         {
             var button = MessageActions.RoundButton(EmojiAssets.Icon(emoji, 28), EmojiAssets.Find(emoji)!.Name); button.Width = button.Height = 36; button.BorderThickness = new Thickness(0);
@@ -39,10 +46,10 @@ internal sealed class MessageReactions : StackPanel
             Children.Add(summary);
         }
         Children.Add(trigger);
-        trigger.Click += (_, _) => palette.IsOpen = !palette.IsOpen;
+        trigger.Click += (_, _) => OpenPalette();
         void UpdateVisibility() => Visibility = hasReactions || host.IsMouseOver || host.IsKeyboardFocusWithin || palette.IsOpen ? Visibility.Visible : Visibility.Collapsed;
         host.MouseEnter += (_, _) => Visibility = Visibility.Visible; host.MouseLeave += (_, _) => UpdateVisibility(); host.IsKeyboardFocusWithinChanged += (_, _) => UpdateVisibility();
-        palette.Closed += (_, _) => UpdateVisibility(); host.Unloaded += (_, _) => palette.IsOpen = false;
+        palette.Closed += (_, _) => { closeDelay.Stop(); UpdateVisibility(); }; host.Unloaded += (_, _) => { closeDelay.Stop(); palette.IsOpen = false; };
         host.IsVisibleChanged += (_, _) => { if (!host.IsVisible) palette.IsOpen = false; };
     }
 }

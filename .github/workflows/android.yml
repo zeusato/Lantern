@@ -51,6 +51,10 @@ jobs:
             sleep 2
           done
           test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = '1'
+          adb shell settings put system screen_off_timeout 1800000
+          adb shell svc power stayon true
+          adb shell input keyevent KEYCODE_WAKEUP
+          adb shell wm dismiss-keyguard
           dotnet build tests/MobileInteropFixture -c Release --nologo
           dotnet tests/MobileInteropFixture/bin/Release/net10.0/MobileInteropFixture.dll > /tmp/lantern-interop.json 2> /tmp/lantern-interop.log &
           for n in $(seq 1 20); do
@@ -70,6 +74,7 @@ jobs:
         run: |
           cat /tmp/lantern-emulator.log || true
           cat /tmp/lantern-interop.log || true
+          timeout 10 "$ANDROID_HOME/platform-tools/adb" shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp|mAwake|mDreaming|Keyguard' || true
           timeout 10 "$ANDROID_HOME/platform-tools/adb" logcat -d -s TestRunner Conscrypt System.err AndroidRuntime || true
       - name: Collect Android screenshots
         if: always()

@@ -17,6 +17,12 @@ var root = args.FirstOrDefault() ?? Path.Combine(Path.GetTempPath(), "Lantern-te
 Directory.CreateDirectory(root);
 int passed = 0;
 void Check(bool condition, string name) { if (!condition) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); passed++; }
+var groupingTime = new DateTimeOffset(DateTime.Today.AddHours(10));
+ChatMessage GroupSample(int seconds, string sender = "alice", string conversation = "chat", bool outgoing = false) => new() { SenderId = sender, ConversationId = conversation, Time = groupingTime.AddSeconds(seconds), Outgoing = outgoing };
+Check(MessageGrouping.CanJoin(GroupSample(0), GroupSample(300)) && !MessageGrouping.CanJoin(GroupSample(0), GroupSample(301)), "Message groups include the five-minute boundary and split after it");
+Check(!MessageGrouping.CanJoin(GroupSample(1), GroupSample(0)) && !MessageGrouping.CanJoin(GroupSample(0), GroupSample(1, "bob")) && !MessageGrouping.CanJoin(GroupSample(0), GroupSample(1, conversation: "other")) && !MessageGrouping.CanJoin(GroupSample(0), GroupSample(1, outgoing: true)), "Message groups never join different authors, conversations, directions or reversed timestamps");
+var beforeMidnight = GroupSample(0); beforeMidnight.Time = new DateTimeOffset(DateTime.Today.AddSeconds(-30)); var afterMidnight = GroupSample(0); afterMidnight.Time = new DateTimeOffset(DateTime.Today.AddSeconds(30));
+Check(!MessageGrouping.CanJoin(beforeMidnight, afterMidnight) && !MessageGrouping.CanJoin(null, afterMidnight), "Date dividers and missing neighbors break message groups");
 async Task Until(Func<bool> condition, string name, int milliseconds = 10000)
 {
     var end = DateTime.UtcNow.AddMilliseconds(milliseconds);

@@ -262,14 +262,17 @@ public partial class MainWindow : Window
             more.Click += (_, _) => { messageLimit += 150; renderKey = ""; RefreshConversation(); }; MessagesPanel.Children.Add(more);
         }
         DateOnly? date = null;
-        foreach (var msg in messages)
+        for (int index = 0; index < messages.Count; index++)
         {
+            var msg = messages[index];
             var day = DateOnly.FromDateTime(msg.Time.LocalDateTime);
             if (date != day)
             {
                 date = day; var divider = Paragraph(day == DateOnly.FromDateTime(DateTime.Now) ? "HÔM NAY" : day.ToString("dd / MM / yyyy"), 10, true, true); divider.HorizontalAlignment = HorizontalAlignment.Center; divider.Margin = new Thickness(0, 10, 0, 22); MessagesPanel.Children.Add(divider);
             }
-            MessagesPanel.Children.Add(MessageBubble(msg));
+            var joinsPrevious = index > 0 && MessageGrouping.CanJoin(messages[index - 1], msg);
+            var joinsNext = index + 1 < messages.Count && MessageGrouping.CanJoin(msg, messages[index + 1]);
+            MessagesPanel.Children.Add(MessageBubble(msg, joinsPrevious, joinsNext));
         }
         var history = store.Messages(selectedId, limit: int.MaxValue);
         var shared = history.Where(m => m.Kind is "file" or "image" or "video").TakeLast(100).Reverse().ToList();
@@ -295,14 +298,15 @@ public partial class MainWindow : Window
         }
         if (shouldScroll) Dispatcher.BeginInvoke(() => ChatScroll.ScrollToEnd(), DispatcherPriority.Loaded);
     }
-    private FrameworkElement MessageBubble(ChatMessage msg)
+    private FrameworkElement MessageBubble(ChatMessage msg, bool joinsPrevious = false, bool joinsNext = false)
     {
         var alignment = msg.Outgoing ? HorizontalAlignment.Right : HorizontalAlignment.Left;
-        var outer = new StackPanel { HorizontalAlignment = alignment, Margin = new Thickness(msg.Outgoing ? 30 : 0, 0, msg.Outgoing ? 0 : 30, 18), MaxWidth = 560 };
-        if (!msg.Outgoing && msg.GroupId.Length > 0) { var author = Paragraph(node.FindPeer(msg.SenderId)?.DisplayName ?? msg.SenderName, 11, true, true); author.Margin = new Thickness(4, 0, 0, 5); outer.Children.Add(author); }
-        var bubble = new Border { CornerRadius = new CornerRadius(14, 14, msg.Outgoing ? 4 : 14, msg.Outgoing ? 14 : 4), Padding = new Thickness(15, 11, 15, 11), BorderThickness = new Thickness(msg.Outgoing ? 0 : 1) };
+        var hasReactions = msg.Reactions.Values.Any(value => value.Length > 0);
+        var outer = new StackPanel { HorizontalAlignment = alignment, Margin = new Thickness(msg.Outgoing ? 30 : 0, 0, msg.Outgoing ? 0 : 30, joinsNext ? hasReactions ? 16 : 5 : 16), MaxWidth = 560 };
+        var bubble = new Border { Name = "MessageSurface", CornerRadius = new CornerRadius(12, 12, msg.Outgoing ? 4 : 12, msg.Outgoing ? 12 : 4), Padding = new Thickness(12, 9, 12, 9), BorderThickness = new Thickness(msg.Outgoing ? 0 : 1) };
         bubble.SetResourceReference(Border.BackgroundProperty, msg.Outgoing ? "OwnBrush" : "SurfaceBrush"); bubble.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
         var content = new StackPanel(); bubble.Child = content;
+        if (!joinsPrevious && !msg.Outgoing && msg.GroupId.Length > 0) { var author = Paragraph(node.FindPeer(msg.SenderId)?.DisplayName ?? msg.SenderName, 11, true, true); author.Margin = new Thickness(0, 0, 0, 5); content.Children.Add(author); }
         var bubbleLayer = new Grid { HorizontalAlignment = alignment }; bubbleLayer.Children.Add(bubble); outer.Children.Add(bubbleLayer);
         var overlay = new Canvas { ClipToBounds = false }; Panel.SetZIndex(overlay, 2); bubbleLayer.Children.Add(overlay);
         var toolbar = new MessageActions(outer, () => BeginReply(msg));
@@ -367,11 +371,17 @@ public partial class MainWindow : Window
             }
             if (!string.IsNullOrEmpty(msg.Error)) content.Children.Add(Paragraph(msg.Error, 11, muted: true));
         }
-        var footer = Paragraph(msg.Time.LocalDateTime.ToString("HH:mm") + "  ·  " + StatusText(msg), 10, muted: true); footer.HorizontalAlignment = alignment; footer.Margin = new Thickness(4, 15, 4, 0); outer.Children.Add(footer);
+        // Keep timestamps/read receipts only on the last bubble. Pending/error state stays actionable.
+        var needsAttention = msg.Status is "queued" or "sending" or "error" or "receiving" || msg.Error.Length > 0;
+        if (!joinsNext || needsAttention)
+        {
+            var footer = Paragraph((joinsNext ? "" : msg.Time.LocalDateTime.ToString("HH:mm") + "  ·  ") + StatusText(msg), 10, muted: true);
+            footer.Name = joinsNext ? "MessagePendingStatus" : "MessageFooter"; footer.HorizontalAlignment = HorizontalAlignment.Left; footer.Margin = new Thickness(0, 4, 16, 0); content.Children.Add(footer);
+        }
         if (msg.DisappearAfterSeconds > 0)
         {
             var expiry = Paragraph(msg.ExpiresAt is { } deadline ? "Tự hủy sau " + Duration(Math.Max(0, (int)Math.Ceiling((deadline - DateTimeOffset.UtcNow).TotalSeconds))) : "Tự hủy sau " + Duration(msg.DisappearAfterSeconds) + " kể từ lúc đọc", 10, muted: true);
-            expiry.Margin = new Thickness(4, 5, 0, 0); outer.Children.Add(expiry);
+            expiry.Margin = new Thickness(0, 3, 0, 0); content.Children.Add(expiry);
             if (msg.ExpiresAt.HasValue) expiryLabels[msg.Id] = (expiry, msg.ExpiresAt.Value);
         }
         return outer;
