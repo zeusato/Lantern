@@ -47,9 +47,13 @@ public class ComposerTest {
             }catch(Exception e){throw new AssertionError(e);}});
             for(int n=0;n<6;n++){
                 final int index=n;scenario.onActivity(a->{try{
+                    EditText editor=field(a,"composer");
+                    // The IME may update its composing range between UI turns. A chat render
+                    // must preserve the current range, not force an obsolete range back onto it.
+                    int compositionStart=BaseInputConnection.getComposingSpanStart(editor.getText()),compositionEnd=BaseInputConnection.getComposingSpanEnd(editor.getText());
                     ConnectionService.status="Đang đồng bộ "+index;
                     JSONArray next=new JSONArray(ConnectionService.messages.toString());next.put(message("incoming-"+index,"Incoming "+index));ConnectionService.messages=next;call(a,"refresh");
-                    EditText editor=field(a,"composer");assertSame(buffer.get(),editor.getText());assertTrue(editor.hasFocus());assertEquals(5,editor.getSelectionStart());assertEquals(0,BaseInputConnection.getComposingSpanStart(editor.getText()));
+                    assertSame(buffer.get(),editor.getText());assertTrue(editor.hasFocus());assertEquals(5,editor.getSelectionStart());assertEquals(compositionStart,BaseInputConnection.getComposingSpanStart(editor.getText()));assertEquals(compositionEnd,BaseInputConnection.getComposingSpanEnd(editor.getText()));
                     assertSame(retainedRow.get(),((LinearLayout)field(a,"messagesBox")).getChildAt(0));
                 }catch(Exception e){throw new AssertionError(e);}});Thread.sleep(450);
             }
