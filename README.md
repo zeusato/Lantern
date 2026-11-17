@@ -139,4 +139,3 @@ Thiết kế tham khảo [WinUI App skill](https://github.com/openai/skills/tree
 ### iPhone dùng bản web
 
 Từ 1.2.5 có PWA tối ưu mobile: cài qua Safari, ghép QR với PC, không cần ký IPA. Xem [hướng dẫn Lantern Web](docs/WEB-MOBILE.md). PC/PWA có 5 bảng màu, xóa từng/nhiều tin và dọn hội thoại; PC có tùy chọn khởi động cùng Windows mặc định bật.
-
