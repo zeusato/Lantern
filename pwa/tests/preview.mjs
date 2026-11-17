@@ -119,7 +119,7 @@ const server = http.createServer(async (req, res) => {
         "sw.js",
         "manifest.webmanifest",
         "icon.svg",
-        "icon-192.png",
+        "icon-180.png", "icon-192.png",
         "icon-512.png",
       ];
     if (path === "vendor/jsQR.js")

@@ -1,3 +1,10 @@
+# Lantern Web 1.2.8 r2
+
+- Máy tính theo mẫu iPhone: nền đen, phím tròn, cột phép tính cam chữ trắng, dấu phẩy thập phân và bố cục phím mới.
+- Lịch sử phép tính trong phiên; có thể chọn lại kết quả để tính tiếp. Không ghi phép tính mở Lantern vào lịch sử.
+- Dùng icon do người dùng cung cấp, xuất PNG 180/192/512 px và cập nhật biểu tượng PWA/Safari.
+- Giữ phép tính mở Lantern và chế độ im lặng. Bản vá chỉ cập nhật web; PC/APK giữ 1.2.8.
+
 # Lantern 1.2.8
 
 - **PC:** bảng nội dung chia sẻ giữ nguyên thumbnail khi có tin chữ, reaction hoặc trạng thái đọc; chỉ cập nhật ô ảnh/tệp thay đổi. Có nút **Làm mới** để tải lại thủ công.

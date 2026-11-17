@@ -1,4 +1,4 @@
-const VERSION = "lantern-web-1.2.8";
+const VERSION = "lantern-web-1.2.8-r2";
 const ASSETS = [
   "/",
   "/index.html",
@@ -14,7 +14,7 @@ const ASSETS = [
   "/calculator.css",
   "/vendor/jsQR.js",
   "/icon.svg",
-  "/icon-192.png",
+  "/icon-180.png", "/icon-192.png",
   "/icon-512.png",
   "/manifest.webmanifest",
 ];
