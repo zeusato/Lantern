@@ -4,7 +4,9 @@ Companion native SwiftUI cho iOS 16+, dùng PC và relay của Lantern hiện c�
 
 ## Cài và ghép đôi
 
-1. Tải artifact `Lantern-iOS-unsigned` từ workflow **iOS IPA**, giải nén lấy `Lantern-iOS-unsigned.ipa` và `IOS-SHA256SUMS.txt`.
+Từ 1.2.4 có **Cài đặt → Cập nhật ứng dụng** để kiểm tra/tải IPA và chia sẻ sang Scarlet. Xem [hướng dẫn cập nhật mobile](../docs/MOBILE-UPDATES.md). Lần đầu lên bản này vẫn cần cài IPA thủ công.
+
+1. Tải `Lantern-iOS-unsigned.ipa` và `IOS-SHA256SUMS.txt` từ [GitHub Releases](https://github.com/zeusato/Lantern/releases/latest). Các build thử còn có artifact `Lantern-iOS-unsigned` trong workflow **iOS IPA**.
 2. Chuyển IPA sang iPhone, nhập vào Scarlet và thực hiện ký/cài theo chứng chỉ đang sử dụng. Việc cài thành công phụ thuộc chứng chỉ/profile của Scarlet; file IPA không chứa chứng chỉ Apple, tài khoản hay credential relay.
 3. Mở Lantern. Cho phép Camera và Mạng cục bộ khi iOS hỏi.
 4. Trên PC: mở khóa Lantern → Cài đặt → Điện thoại → Ghép đôi QR. Quét mã bằng iPhone, đối chiếu đủ sáu nhóm mã rồi chấp nhận trên PC.

@@ -18,6 +18,7 @@ if strings ios/build/package/Payload/Lantern.app/Lantern | grep -F 'LANTERN_UI_F
   exit 1
 fi
 mkdir -p ios/output
+rm -f ios/output/Lantern-iOS-unsigned.ipa
 (cd ios/build/package && /usr/bin/zip -qry ../../output/Lantern-iOS-unsigned.ipa Payload)
 (cd ios/output && shasum -a 256 Lantern-iOS-unsigned.ipa > IOS-SHA256SUMS.txt)
 unzip -t ios/output/Lantern-iOS-unsigned.ipa

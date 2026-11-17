@@ -1,6 +1,22 @@
 import XCTest
 
 final class ChatFlowTests: XCTestCase {
+    func testUpdateSettingsAndPreferences() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["LANTERN_UI_FIXTURE_PIN"] = try XCTUnwrap(ProcessInfo.processInfo.environment["LANTERN_FIXTURE_PIN"])
+        app.launch()
+        app.buttons["Cài đặt"].tap()
+        XCTAssertTrue(app.staticTexts["Cập nhật ứng dụng"].waitForExistence(timeout: 5))
+        let auto = app.switches["Tự tải bản cập nhật"]
+        XCTAssertTrue(auto.exists)
+        let before = auto.value as? String
+        auto.tap()
+        XCTAssertNotEqual(auto.value as? String, before)
+        app.buttons["Xong"].tap(); app.buttons["Cài đặt"].tap()
+        XCTAssertNotEqual(auto.value as? String, before)
+        let screenshot = XCTAttachment(screenshot: app.screenshot()); screenshot.name = "Lantern-iOS-updates"; screenshot.lifetime = .keepAlways; add(screenshot)
+        app.terminate()
+    }
     func testUnlockComposePushAndRelock() throws {
         continueAfterFailure = false
         let pin = try XCTUnwrap(ProcessInfo.processInfo.environment["LANTERN_FIXTURE_PIN"])

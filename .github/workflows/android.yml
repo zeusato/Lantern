@@ -29,6 +29,9 @@ jobs:
         working-directory: android
         run: |
           chmod +x gradlew
+          ./gradlew assembleDebug -PreleaseVersion=9.9.9 --console=plain
+          mkdir -p app/build/update-fixture
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/update-fixture/candidate.apk
           ./gradlew assembleDebug assembleDebugAndroidTest lintDebug --console=plain
       - name: Test on Android API ${{ matrix.api }} emulator
         timeout-minutes: 15

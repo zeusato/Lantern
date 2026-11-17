@@ -5,19 +5,21 @@ import PhotosUI
 
 @main struct LanternApp: App {
     @StateObject private var store = ChatStore()
+    @StateObject private var updater = AppUpdater()
     @Environment(\.scenePhase) private var phase
     var body: some Scene {
         WindowGroup {
-            RootView().environmentObject(store)
+            RootView().environmentObject(store).environmentObject(updater)
                 .tint(Color(red: 0.12, green: 0.63, blue: 0.55))
-                .onChange(of: phase) { store.setVisible($0 == .active) }
-                .task { store.start() }
+                .onChange(of: phase) { store.setVisible($0 == .active); if $0 == .active { updater.automatic() } }
+                .task { store.start(); updater.automatic() }
         }
     }
 }
 
 struct RootView: View {
     @EnvironmentObject private var store: ChatStore
+    @EnvironmentObject private var updater: AppUpdater
     @State private var scanner = false
     @State private var settings = false
     @State private var qr = ""
@@ -31,6 +33,14 @@ struct RootView: View {
                 }
                 .navigationTitle("Lantern")
                 .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button { settings = true } label: { Image(systemName: "gearshape") }.accessibilityLabel("Cài đặt") } }
+            }
+            .safeAreaInset(edge: .top) {
+                if let release = updater.release {
+                    Button { settings = true } label: {
+                        Label(updater.file == nil ? "Có bản \(release.version) · Xem cập nhật" : "IPA \(release.version) đã tải · Cập nhật", systemImage: "arrow.down.circle.fill")
+                            .font(.footnote).frame(maxWidth: .infinity).padding(8)
+                    }.background(.regularMaterial)
+                }
             }
             if !store.visible { Color(.systemBackground).ignoresSafeArea().overlay { Label("Lantern", systemImage: "lock.fill").font(.title2) }.zIndex(10) }
         }
@@ -262,11 +272,13 @@ struct MessageRow: View {
 
 struct SettingsView: View {
     @EnvironmentObject private var store: ChatStore
+    @EnvironmentObject private var updater: AppUpdater
     @Environment(\.dismiss) private var dismiss
     @State private var confirm = false
     var body: some View {
         NavigationStack {
             Form {
+                UpdatesSection()
                 Section("Kết nối") { Text(store.pcName.isEmpty ? "Chưa ghép đôi" : store.pcName); Text(store.status).foregroundStyle(.secondary) }
                 Section("Bản IPA cá nhân") {
                     Text("Nhận tin khi mở app. Chuyển nền hoặc khóa màn hình sẽ ngắt kết nối; mở lại để đồng bộ. Bản này không có thông báo đẩy APNs.")
@@ -276,6 +288,7 @@ struct SettingsView: View {
                 if store.paired { Section { Button("Quên PC và xóa cache", role: .destructive) { confirm = true } } }
             }
             .navigationTitle("Cài đặt").navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $updater.shareFile) { item in ShareIPAView(url: item.url) }
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Xong") { dismiss() } } }
             .confirmationDialog("Quên PC này?", isPresented: $confirm, titleVisibility: .visible) { Button("Quên PC", role: .destructive) { store.forget(); dismiss() } } message: { Text("Xóa ghép đôi, lịch sử cache và tin chờ trên iPhone. Dữ liệu PC được giữ. Muốn thu hồi thiết bị, dùng Gỡ thiết bị trên PC.") }
         }

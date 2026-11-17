@@ -1,4 +1,14 @@
-# Lantern 1.2.3
+# Lantern 1.2.4
+
+- Android: mục **⋯ → Cập nhật ứng dụng**, tự kiểm tra khi mở/quay lại app (giãn cách 6 giờ), tùy chọn tự tải và báo bản mới ngay trong app. Bấm **Cài đặt bản đã tải**, cấp quyền cài từ Lantern lần đầu và xác nhận với Android. Cài đè giữ ghép đôi/lịch sử.
+- APK được đối chiếu SHA-256, mã ứng dụng, phiên bản và khóa ký của bản đang cài. Gói lỗi, gói cũ hoặc khác khóa ký bị từ chối. Tải cập nhật có tiến trình riêng, không xếp hàng cùng gửi/nhận tin nhắn.
+- iOS: bổ sung IPA arm64 cho iOS 16+, ghép QR cùng PC, chat và lưu cache mã hóa. **Cài đặt → Cập nhật ứng dụng** tự kiểm tra/tải IPA, xác minh SHA-256 rồi chia sẻ sang Scarlet hoặc lưu vào Tệp để nhập trong Scarlet.
+- IPA **chưa ký**; người dùng ký/cài bằng Scarlet với chứng chỉ hợp lệ. Lantern không tự ký hoặc cài âm thầm trên iOS. Giữ nguyên bundle ID `vn.lantern.companion` và danh tính ký; thay danh tính ký có thể cần ghép đôi lại. Không gỡ app trước khi cập nhật.
+- Release tự động chỉ được công khai sau khi Windows, Android và IPA cùng checksum đã tải lên và kiểm tra đủ. Build IPA và kiểm thử Simulator là một bước bắt buộc của release.
+
+Lần đầu lên 1.2.4 cần tải APK/IPA thủ công vì bản mobile cũ chưa có trình cập nhật. Hai tùy chọn tự kiểm tra và tự tải mặc định bật; có thể tắt riêng. Tải dùng kết nối hiện tại, gồm dữ liệu di động. iOS hiện nhận tin khi mở app, chưa có APNs; cài/ký bằng Scarlet trên iPhone thật cần chứng chỉ của người dùng.
+
+## Sửa lỗi từ 1.2.3
 
 - Sửa ô soạn tin Android mất focus sau khi gửi hoặc nhận cập nhật. Tự cuộn lịch sử giữ focus ở ô nhập; xóa nội dung vừa gửi ngay trong bộ đệm đang soạn, tiếp tục gõ tin kế tiếp bằng bàn phím đang mở.
 - Kiểm thử gửi liên tiếp không chạm lại ô nhập, sau khi PC xác nhận và đẩy tin đến; kiểm tra focus, kết nối bàn phím và chữ đã được bố trí hiển thị.
