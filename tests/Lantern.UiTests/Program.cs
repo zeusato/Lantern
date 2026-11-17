@@ -228,8 +228,14 @@ internal sealed class UiHarness : Application
                     var enable = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Hiện thông báo Windows khi có tin nhắn mới"); enable.IsChecked = true; enable.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); mode.SelectedIndex = 1;
                     var closeToTray = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Đóng cửa sổ xuống khay hệ thống"); Check(closeToTray.IsChecked == false, "Close-to-tray setting defaults to off"); closeToTray.IsChecked = true;
                     var startup = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Khởi động cùng Windows"); Check(startup.IsChecked == true, "Windows startup option defaults on"); startup.IsChecked = false;
-                    var color = Visuals<ComboBox>(dialog).Single(combo => combo.Items.Count == 5); color.SelectedIndex = 2;
-                    Check(color.Items.Cast<ColorTheme>().Select(t => t.Accent).Distinct().Count() == 5, "Settings expose five distinct color palettes");
+                    var colors = Visuals<RadioButton>(dialog).Where(button => button.GroupName == "ColorPalette").ToArray();
+                    Check(colors.Length == 5 && colors.Select(button => (string)button.Tag).Distinct().Count() == 5, "Settings show all five named color blocks without a dropdown");
+                    colors.Single(button => (string)button.Tag == "violet").IsChecked = true;
+                    Check(Settings.ColorTheme == "violet" && Codec.Decode<AppSettings>(File.ReadAllText(Path.Combine(workspace, "settings.json"))).ColorTheme == "violet", "Choosing a color applies and persists immediately before saving the profile");
+                    Check(colors.Count(button => button.IsChecked == true) == 1, "Exactly one color block remains selected");
+                    var darkMode = Visuals<RadioButton>(dialog).Single(button => button.GroupName == "AppearanceMode" && (string)button.Tag == "dark"); darkMode.IsChecked = true;
+                    Check(Settings.Theme == "dark" && ((SolidColorBrush)Current.Resources["AccentBrush"]).Color == (Color)ColorConverter.ConvertFromString(ColorThemes.Get("violet").DarkAccent), "Appearance mode changes the whole app immediately");
+                    colors[0].BringIntoView(); window.UpdateLayout(); Snapshot(dialog, Path.Combine(root, "theme-blocks.png"));
                     Snapshot(dialog, Path.Combine(root, "toast-settings.png"));
                     ApplyTheme("dark"); Snapshot(dialog, Path.Combine(root, "settings-dark.png"));
                     var settingsScroll = Visuals<ScrollViewer>(dialog).First(); settingsScroll.ScrollToBottom(); Snapshot(dialog, Path.Combine(root, "settings-bottom.png"));

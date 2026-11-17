@@ -664,9 +664,7 @@ public partial class MainWindow : Window
         var closeToTray = new CheckBox { Content = "Đóng cửa sổ xuống khay hệ thống", IsChecked = App.Settings.CloseToTray, Margin = new Thickness(0, 0, 0, 6) }; closeToTray.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(closeToTray);
         panel.Children.Add(Paragraph("Khi bật, nút X chỉ ẩn cửa sổ; Lantern vẫn nhận tin nhắn. Nhấp đúp icon tray để mở lại. Chọn Thoát Lantern ở tray để thoát hẳn.", 12, muted: true));
         var startup = new CheckBox { Content = "Khởi động cùng Windows", IsChecked = App.Settings.StartWithWindows, Margin = new Thickness(0, 0, 0, 18) }; startup.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(startup);
-        panel.Children.Add(Paragraph("Giao diện", bold: true)); var theme = new ComboBox { ItemsSource = new[] { "Theo Windows", "Sáng", "Tối" }, SelectedIndex = App.Settings.Theme == "dark" ? 2 : App.Settings.Theme == "light" ? 1 : 0, Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 18) }; panel.Children.Add(theme);
-        panel.Children.Add(Paragraph("Bảng màu", bold: true));
-        var colorTheme = new ComboBox { ItemsSource = ColorThemes.All, DisplayMemberPath = "Name", SelectedItem = ColorThemes.Get(App.Settings.ColorTheme), Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 18) }; panel.Children.Add(colorTheme);
+        panel.Children.Add(AppearancePicker());
         panel.Children.Add(Paragraph("Danh tính cố định", bold: true)); panel.Children.Add(new TextBox { Text = identity.Fingerprint, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas"), FontSize = 12, Margin = new Thickness(0, 0, 0, 18) });
         var actions = new WrapPanel(); AddButton(actions, "Sao lưu danh tính", ExportIdentity); AddButton(actions, "Khôi phục danh tính", ImportIdentity); panel.Children.Add(actions);
         panel.Children.Add(Paragraph("Nội dung lịch sử được mã hóa bằng khóa của mật khẩu ứng dụng. Tệp ảnh/video đã lưu chưa mã hóa riêng trên ổ đĩa. Mật khẩu hội thoại là lớp khóa xem cục bộ, không đặt mật khẩu ở máy người khác.", 12, muted: true));
@@ -684,8 +682,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                App.Settings.Name = PeerNode.ValidateDisplayName(name.Text); App.Settings.MessageToasts = toasts.IsChecked == true; App.Settings.MessageToastMode = toastMode.SelectedIndex == 1 ? "private" : "full"; App.Settings.CloseToTray = closeToTray.IsChecked == true; App.Settings.Theme = theme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "system" }; App.SaveSettings();
-                App.Settings.ColorTheme = ((ColorTheme)colorTheme.SelectedItem).Id; App.SaveSettings();
+                App.Settings.Name = PeerNode.ValidateDisplayName(name.Text); App.Settings.MessageToasts = toasts.IsChecked == true; App.Settings.MessageToastMode = toastMode.SelectedIndex == 1 ? "private" : "full"; App.Settings.CloseToTray = closeToTray.IsChecked == true; App.SaveSettings();
                 WindowsStartup.Apply(startup.IsChecked == true); App.Settings.StartWithWindows = startup.IsChecked == true; App.SaveSettings();
                 await node.UpdateDisplayNameAsync(App.Settings.Name);
                 App.ApplyTheme(App.Settings.Theme); MyInitials.Text = Initials(identity.Name); Title = "Lantern · " + identity.Name; renderKey = ""; Refresh(); ShowToast("Đã lưu hồ sơ và cập nhật tên hiển thị.");

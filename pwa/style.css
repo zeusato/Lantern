@@ -765,13 +765,18 @@ dialog::backdrop {
 .palette button:active {
   background: var(--tint);
 }
-.scan-video {
-  width: 100%;
-  border-radius: 18px;
-  background: #132925;
-  min-height: 240px;
-  object-fit: cover;
-}
+[hidden] { display: none !important; }
+.scan-area { position: relative; width: 100%; height: clamp(210px, 37dvh, 350px); border-radius: 20px; overflow: hidden; background: #102823; border: 1px solid var(--line); }
+.scan-video { width: 100%; height: 100%; object-fit: contain; display: block; }
+.scan-placeholder { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: #b8d8cf; font-size: 13px; }
+.scan-placeholder > svg { width: 48px; height: 48px; color: #62cdb9; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.scan-placeholder .primary { width: auto; min-width: 180px; padding: 14px 24px; }
+.scan-guide { position: absolute; inset: 12%; border: 2px solid #8fe4d1; border-radius: 18px; pointer-events: none; opacity: .75; }
+.sheet-body .scan-status { margin: 0; min-height: 38px; font-size: 13px; line-height: 1.5; text-align: center; }
+.scan-actions { display: flex; gap: 10px; align-items: center; }
+.scan-actions button { flex: 1; min-height: 46px; }
+#pair-error { margin: 0; color: #d46d71; }
+#pair-error:empty { display: none; }
 .code {
   font:
     700 17px ui-monospace,

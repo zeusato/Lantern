@@ -11,6 +11,7 @@ const names = [
   "channel.js",
   "vault.js",
   "model.js",
+  "qr-scanner.js",
   "sw.js",
   "manifest.webmanifest",
   "icon.svg",

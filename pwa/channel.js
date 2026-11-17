@@ -1,7 +1,12 @@
 import { ByteReader, b64, un64, uid, secureChannel } from "./crypto.js";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export function validatePairing(value, origin) {
-  const p = typeof value === "string" ? JSON.parse(value) : value;
+  let p;
+  try { p = typeof value === "string" ? JSON.parse(value) : value; }
+  catch { throw Error("Đã đọc được QR nhưng đây không phải mã Lantern. Trên PC chọn Ghép đôi iPhone · Bản web."); }
+  if (p?.v === 1) throw Error("Đây là mã cho app Android/iOS. Trên PC chọn Ghép đôi iPhone · Bản web để tạo đúng mã.");
+  if (p?.v === 2 && typeof p.expires === "number" && p.expires * 1000 < Date.now())
+    throw Error("Đã đọc được QR nhưng mã đã hết hạn. Tạo mã mới trên PC rồi quét lại.");
   if (
     p?.v !== 2 ||
     !/^[A-F0-9]{64}$/.test(p.pc) ||

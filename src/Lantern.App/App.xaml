@@ -5,6 +5,20 @@
    <SolidColorBrush x:Key="CanvasBrush" Color="#F6F8FA"/><SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF"/><SolidColorBrush x:Key="SoftBrush" Color="#EDF2F5"/><SolidColorBrush x:Key="TextBrush" Color="#17242E"/><SolidColorBrush x:Key="MutedBrush" Color="#647580"/><SolidColorBrush x:Key="LineBrush" Color="#E2E8EC"/><SolidColorBrush x:Key="AccentBrush" Color="#087F78"/><SolidColorBrush x:Key="AccentSoftBrush" Color="#DFF3ED"/><SolidColorBrush x:Key="OwnBrush" Color="#DFF3ED"/>
    <Style TargetType="Window"><Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI"/><Setter Property="FontSize" Value="14"/><Setter Property="Foreground" Value="{DynamicResource TextBrush}"/><Setter Property="Background" Value="{DynamicResource CanvasBrush}"/></Style>
    <Style x:Key="Muted" TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/><Setter Property="FontSize" Value="12"/></Style>
+   <Style x:Key="AppearanceChoice" TargetType="RadioButton">
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/><Setter Property="Cursor" Value="Hand"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
+     <Grid>
+      <Border x:Name="ChoiceFrame" CornerRadius="12" Padding="8" BorderThickness="2" BorderBrush="{DynamicResource LineBrush}" Background="{DynamicResource SurfaceBrush}"><ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/></Border>
+      <Border x:Name="CheckMark" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4" Width="18" Height="18" CornerRadius="9" Background="{DynamicResource AccentBrush}"><TextBlock Text="✓" FontSize="11" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+     </Grid>
+     <ControlTemplate.Triggers>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ChoiceFrame" Property="BorderBrush" Value="{DynamicResource MutedBrush}"/></Trigger>
+      <Trigger Property="IsChecked" Value="True"><Setter TargetName="ChoiceFrame" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="ChoiceFrame" Property="Background" Value="{DynamicResource AccentSoftBrush}"/><Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/></Trigger>
+      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ChoiceFrame" Property="BorderBrush" Value="{DynamicResource AccentBrush}"/><Setter TargetName="ChoiceFrame" Property="BorderThickness" Value="3"/></Trigger>
+     </ControlTemplate.Triggers>
+    </ControlTemplate></Setter.Value></Setter>
+   </Style>
    <Style x:Key="Icon" TargetType="TextBlock"><Setter Property="FontFamily" Value="Segoe Fluent Icons"/><Setter Property="FontSize" Value="19"/><Setter Property="VerticalAlignment" Value="Center"/></Style>
    <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
     <Setter Property="Padding" Value="14,9"/><Setter Property="MinHeight" Value="38"/><Setter Property="Cursor" Value="Hand"/>

@@ -20,6 +20,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      - run: npm ci --prefix pwa --ignore-scripts
       - run: ./scripts/Test-Web.ps1
   relay:
     runs-on: ubuntu-latest
@@ -28,4 +29,5 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - run: node --test relay/tests/relay.test.mjs pwa/tests/model.test.mjs
+      - run: npm ci --prefix pwa --ignore-scripts
+      - run: node --test relay/tests/relay.test.mjs pwa/tests/model.test.mjs pwa/tests/qr-scanner.test.mjs

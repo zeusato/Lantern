@@ -2,12 +2,14 @@
 
 ## Cài và ghép đôi
 
-1. Cập nhật Lantern PC lên **1.2.5** và mở khóa workspace.
+1. Cập nhật Lantern PC lên **1.2.6** và mở khóa workspace.
 2. Trên iPhone, dùng Safari mở [Lantern Web](https://lantern-private-relay-zeusato.tranquymtcn.chatgpt.site). Trang được mở công khai; không cần tài khoản ChatGPT hoặc ký IPA.
 3. Chọn **Chia sẻ → Thêm vào Màn hình chính**, rồi mở biểu tượng Lantern mới.
 4. Tạo mật khẩu bảo vệ bản lưu trên điện thoại. Đây là mật khẩu cục bộ, không phải tài khoản cloud mới.
-5. Trên PC: **Cài đặt → Điện thoại → Ghép đôi iPhone · Bản web**. Trên điện thoại chọn **Quét mã QR** và cho phép camera.
+5. Trên PC: **Cài đặt → Điện thoại → Ghép đôi iPhone · Bản web**. Trên điện thoại chọn **Mở camera** và cho phép camera.
 6. So sánh mã xác minh trên hai máy, chọn **Cho phép thiết bị** trên PC. QR dùng một lần, hết hạn sau 2 phút.
+
+Nếu camera khó nhận, dùng **Chọn ảnh QR** với ảnh chụp trọn mã. Bộ quét hiển thị riêng lỗi hết hạn và lỗi dùng mã Android/iOS; hãy tạo đúng mã Bản web.
 
 PC giữ danh tính LAN. Điện thoại cần PC đang chạy, đã mở khóa Lantern và không sleep. Internet dùng cùng relay HTTPS, không cần mở cổng router hay VPN toàn máy. PC mới vẫn cần cấu hình relay riêng; khóa vận hành relay không nằm trong bản phát hành công khai.
 

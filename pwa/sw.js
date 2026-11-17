@@ -8,6 +8,7 @@ const ASSETS = [
   "/channel.js",
   "/vault.js",
   "/model.js",
+  "/qr-scanner.js",
   "/vendor/jsQR.js",
   "/icon.svg",
   "/icon-192.png",

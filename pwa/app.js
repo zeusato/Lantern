@@ -12,6 +12,7 @@ import {
 } from "./crypto.js";
 import { Client, validatePairing } from "./channel.js";
 import { Vault, passwordKey, seal, unseal } from "./vault.js";
+import { CameraScanner, readQrPhoto } from "./qr-scanner.js";
 import {
   joins,
   alive,
@@ -320,19 +321,47 @@ async function flushOutbox() {
 function pairSheet() {
   showSheet(
     "Ghép đôi với PC",
-    `<p>Trên PC: Cài đặt → Điện thoại → <strong>Ghép đôi iPhone · Bản web</strong>. PC cần chạy bản hỗ trợ web và đang mở khóa.</p><button id="scan" class="primary">Quét mã QR</button><div id="scan-area"></div><details><summary>Dán nội dung mã QR</summary><form id="pair-form"><textarea id="pair-text" rows="4" placeholder="Nội dung QR bản web" aria-label="Nội dung QR"></textarea><button class="secondary">Kết nối PC</button></form></details><p class="error" id="pair-error"></p>`,
+    `<p class="pair-help">Trên PC: Cài đặt → Điện thoại → <strong>Ghép đôi iPhone · Bản web</strong>.</p><div id="scan-area" class="scan-area"><div class="scan-placeholder">${icon("scan")}<span>Quét mã trên màn hình PC</span><button id="scan" class="primary">Mở camera</button></div><video class="scan-video" autoplay playsinline webkit-playsinline muted aria-label="Camera quét QR" hidden></video><div class="scan-guide" aria-hidden="true" hidden></div></div><p id="scan-status" class="scan-status" role="status">PC cần mở khóa Lantern. Mã QR có hiệu lực 2 phút.</p><div class="scan-actions"><button id="scan-stop" class="text-action" hidden>Dừng camera</button><button id="qr-photo-button" class="secondary">Chọn ảnh QR</button><input id="qr-photo" type="file" accept="image/*" hidden></div><p class="error" id="pair-error" role="alert"></p><details><summary>Dán nội dung mã QR</summary><form id="pair-form"><textarea id="pair-text" rows="4" placeholder="Nội dung QR bản web" aria-label="Nội dung QR"></textarea><button class="secondary">Kết nối PC</button></form></details>`,
   );
   $("#scan").onclick = startScan;
+  const photo = $("#qr-photo"), photoButton = $("#qr-photo-button");
+  photoButton.onclick = () => photo.click();
+  photo.onchange = async () => {
+    const file = photo.files[0];
+    if (!file || !photo.isConnected) return;
+    sheetCleanup?.(); sheetCleanup = null;
+    photoButton.disabled = true;
+    $("#scan-status").textContent = "Đang đọc ảnh QR…";
+    $("#pair-error").textContent = "";
+    try {
+      const value = await readQrPhoto(file);
+      if (photo.isConnected) await pairValue(value);
+    } catch (error) {
+      if (photo.isConnected) $("#pair-error").textContent = error.message;
+    } finally {
+      if (photo.isConnected) {
+        photoButton.disabled = false; photo.value = "";
+        $("#scan-status").textContent = "Chọn ảnh khác hoặc mở camera để thử lại.";
+      }
+    }
+  };
   $("#pair-form").onsubmit = (e) => {
     e.preventDefault();
     pairValue($("#pair-text").value);
   };
 }
 async function pairValue(value) {
+  const owner = state, pairingForm = $("#pair-form");
+  if (!pairingForm?.isConnected || pairingForm.dataset.busy) return false;
+  pairingForm.dataset.busy = "true";
   try {
     const pairing = validatePairing(value, location.origin);
+    if (!pairingForm?.isConnected) return false;
+    $("#scan-status").textContent = "Đã nhận mã QR · Đang chuẩn bị kết nối…";
+    const previousPairing = state.pairing;
     state.pairing = pairing;
-    await save();
+    try { await save(); } catch (error) { if (state === owner) state.pairing = previousPairing; throw error; }
+    if (state !== owner || !pairingForm.isConnected) return false;
     sheetCleanup?.();
     sheetCleanup = null;
     const code = await verificationCode(pairing.pc, state.identity.id);
@@ -348,58 +377,40 @@ async function pairValue(value) {
       closeSheet();
     };
     connect();
+    return true;
   } catch (e) {
     if ($("#pair-error")) $("#pair-error").textContent = e.message;
     else toast(e.message);
+    return false;
+  } finally {
+    delete pairingForm.dataset.busy;
   }
 }
 async function startScan() {
+  sheetCleanup?.();
+  const area = $("#scan-area");
+  if (!area) return;
+  const video = area.querySelector("video"), placeholder = area.querySelector(".scan-placeholder"), guide = area.querySelector(".scan-guide"), stopButton = $("#scan-stop"), status = $("#scan-status"), error = $("#pair-error");
+  let scanner;
+  const cleanup = () => {
+    scanner?.stop();
+    if (!area.isConnected) return;
+    placeholder.hidden = false; video.hidden = true; guide.hidden = true; stopButton.hidden = true;
+  };
+  sheetCleanup = cleanup;
+  placeholder.hidden = true; video.hidden = false; guide.hidden = false; stopButton.hidden = false;
+  error.textContent = "";
+  stopButton.onclick = () => { cleanup(); status.textContent = "Camera đã dừng. Mở camera hoặc chọn ảnh QR để tiếp tục."; };
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: { ideal: 1280 } },
-      audio: false,
+    scanner = new CameraScanner(video, {
+      onCode: value => area.isConnected && sheet.open ? pairValue(value) : false,
+      onStatus: message => { if (area.isConnected) status.textContent = message; },
+      onError: message => { if (area.isConnected) { cleanup(); error.textContent = message; status.textContent = "Camera đã dừng."; } },
     });
-    if (!sheet.open) {
-      stream.getTracks().forEach((t) => t.stop());
-      return;
-    }
-    $("#scan-area").innerHTML =
-      '<video class="scan-video" playsinline muted></video>';
-    const video = sheet.querySelector("video");
-    video.srcObject = stream;
-    await video.play();
-    const canvas = document.createElement("canvas"),
-      ctx = canvas.getContext("2d", { willReadFrequently: true });
-    let stopped = false;
-    sheetCleanup = () => {
-      stopped = true;
-      stream.getTracks().forEach((t) => t.stop());
-    };
-    const scan = () => {
-      if (stopped || !sheet.open) return;
-      if (video.readyState >= 2) {
-        canvas.width = Math.min(video.videoWidth, 960);
-        canvas.height = Math.round(
-          (video.videoHeight * canvas.width) / video.videoWidth,
-        );
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const data = ctx.getImageData(0, 0, canvas.width, canvas.height),
-          qr = window.jsQR?.(data.data, canvas.width, canvas.height, {
-            inversionAttempts: "dontInvert",
-          });
-        if (qr) {
-          sheetCleanup();
-          pairValue(qr.data);
-          return;
-        }
-      }
-      setTimeout(scan, 140);
-    };
-    scan();
-  } catch {
-    if ($("#pair-error"))
-      $("#pair-error").textContent =
-        "Chưa mở được camera. Cho phép camera trong Safari hoặc dán nội dung QR.";
+    await scanner.start();
+  } catch (e) {
+    cleanup();
+    if (area.isConnected) { error.textContent = e.message; status.textContent = "Chưa bắt đầu quét."; }
   }
 }
 function deviceSheet() {
@@ -521,7 +532,7 @@ async function lockApp() {
 function settingsSheet() {
   showSheet(
     "Cài đặt",
-    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.5</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
+    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.6</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
   );
   for (const b of sheet.querySelectorAll("[data-theme]"))
     b.onclick = () => {

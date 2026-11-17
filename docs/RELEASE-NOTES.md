@@ -1,3 +1,12 @@
+# Lantern 1.2.6
+
+- PC: chọn bảng màu bằng 5 ô có màu mẫu, tên và dấu chọn. Bấm là áp dụng và lưu ngay toàn giao diện, không cần đóng cài đặt. Chế độ sáng/tối/theo Windows cũng đổi trực tiếp bằng nút.
+- Web: sửa quét QR dày từ màn hình PC bằng cách giữ chi tiết vùng giữa ảnh, thử nhiều độ phân giải và đọc cả mã đảo màu. Dùng bộ đọc QR của trình duyệt khi hỗ trợ, có bộ đọc JavaScript dự phòng.
+- Web: nút mở camera ẩn khi đang quét; có trạng thái, nút dừng và chọn ảnh QR. Báo rõ mã hết hạn hoặc mã dành cho app Android/iOS; tiếp tục quét để nhận mã đúng.
+- Web: đóng màn hình quét sẽ tắt camera, kể cả khi yêu cầu cấp quyền hoặc giải mã còn đang chờ. Bản vá không thay đổi dữ liệu ghép đôi/lịch sử.
+
+Trên iPhone: Cài đặt → Kiểm tra cập nhật → Cài bản web mới. Tạo mã bằng nút **Ghép đôi iPhone · Bản web** trên PC. Đã kiểm thử giải mã QR tạo bằng thư viện PC và camera giả lập trong trình duyệt; chưa xác nhận trên iPhone vật lý.
+
 # Lantern 1.2.5
 
 - **Lantern Web cho iPhone**: giao diện tối ưu mobile, thêm vào Màn hình chính bằng Safari, ghép QR và xác nhận trên PC. Không cần ký IPA hoặc đăng nhập ChatGPT để mở trang.
