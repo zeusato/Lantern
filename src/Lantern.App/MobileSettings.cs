@@ -18,6 +18,7 @@ public partial class MainWindow
     private void InitializeMobile()
     {
         mobile = new MobileServer(node, App.Vault);
+        mobile.PcControl = new PcControl(mobile.Registry, new PcDesktop(), () => !Volatile.Read(ref appLocking) && !Volatile.Read(ref closing));
         // Provisioned locally for this Windows user; never included in the published binary.
         var bootstrap = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LanternRelay", "relay-bootstrap.bin");
         if (!App.TestMode && !mobile.Registry.Snapshot().Relay.Enabled && File.Exists(bootstrap))
@@ -110,6 +111,9 @@ public partial class MainWindow
         foreach (var device in mobile.Registry.Snapshot().Devices)
         {
             panel.Children.Add(Paragraph(device.Name, 15, true)); panel.Children.Add(Paragraph("Đã ghép đôi " + device.Added.ToLocalTime().ToString("dd/MM/yyyy HH:mm"), 12, muted: true));
+            var permissions = new Button { Content = "Quyền ra lệnh và lấy tệp…", Margin = new Thickness(0, 4, 0, 6) };
+            permissions.Click += (_, _) => EditPcAccess(device.Id);
+            panel.Children.Add(permissions);
             var revoke = new Button { Content = "Gỡ thiết bị", Margin = new Thickness(0, 0, 0, 12) };
             revoke.Click += async (_, _) => { try { await mobile.RevokeAsync(device.Id); revoke.IsEnabled = false; revoke.Content = "Đã thu hồi quyền truy cập"; } catch (Exception ex) { ShowError(ex); } }; panel.Children.Add(revoke);
         }
@@ -126,5 +130,46 @@ public partial class MainWindow
         }; panel.Children.Add(new Expander { Header = "Nâng cao", Content = advanced, Margin = new Thickness(0, 8, 0, 0) });
         ShowDialog("Thiết bị di động", panel, "Xong");
         active = false; pending.Cancel(); mobile.CancelInvitation();
+    }
+    private void EditPcAccess(string deviceId)
+    {
+        var device = mobile.Registry.Snapshot().Devices.Find(d => d.Id == deviceId);
+        if (device is null || appLocking || closing) return;
+        var panel = new StackPanel();
+        panel.Children.Add(Paragraph(device.Name + " · Quyền PC", 23, true));
+        panel.Children.Add(Paragraph("Mỗi quyền chỉ áp dụng cho điện thoại này. Lantern phải đang mở khóa. Tệp chỉ được đọc và tải về.", 13, muted: true));
+        var power = new CheckBox { Content = "Cho phép khóa Windows và tắt máy", IsChecked = device.Access.Power, Margin = new Thickness(0, 12, 0, 12) };
+        var ai = new CheckBox { Content = "Cho phép hiện cửa sổ AI và gửi prompt (thử nghiệm)", IsChecked = device.Access.Ai, Margin = new Thickness(0, 0, 0, 12) };
+        panel.Children.Add(power); panel.Children.Add(ai);
+        panel.Children.Add(Paragraph("AI dùng cuộc trò chuyện đang mở, không tự duyệt xác nhận hoặc ghi đè bản nháp. Windows cần mở khóa; cửa sổ có thể được đưa lên trước.", 12, muted: true));
+        var roots = device.Access.Roots.ToList(); var list = new StackPanel(); panel.Children.Add(list);
+        void Render()
+        {
+            list.Children.Clear();
+            foreach (var root in roots.ToArray())
+            {
+                list.Children.Add(Paragraph(root.Name + " · " + root.Path, 12));
+                var remove = new Button { Content = "Bỏ quyền thư mục này", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 8) };
+                remove.Click += (_, _) => { roots.Remove(root); Render(); }; list.Children.Add(remove);
+            }
+        }
+        Render();
+        var add = new Button { Content = "＋ Cấp một thư mục / ổ dữ liệu", Margin = new Thickness(0, 10, 0, 10) };
+        add.Click += (_, _) =>
+        {
+            if (roots.Count >= 16) { ShowToast("Tối đa 16 thư mục."); return; }
+            var picker = new Microsoft.Win32.OpenFolderDialog { Title = "Chọn thư mục điện thoại được đọc" };
+            if (picker.ShowDialog(this) != true) return;
+            if (roots.Any(r => r.Path.Equals(picker.FolderName, StringComparison.OrdinalIgnoreCase))) return;
+            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(picker.FolderName));
+            roots.Add(new(Guid.NewGuid().ToString("N"), name.Length == 0 ? picker.FolderName : name, picker.FolderName)); Render();
+        };
+        panel.Children.Add(add);
+        panel.Children.Add(Paragraph("Không cấp thư mục chứa mật khẩu/khóa bí mật. Liên kết thư mục và tệp hệ thống không được duyệt; mỗi tệp tối đa 100 MB.", 12, muted: true));
+        if (ShowDialog("Quyền PC", panel, "Lưu quyền"))
+        {
+            try { mobile.Registry.SetAccess(deviceId, new() { Power = power.IsChecked == true, Ai = ai.IsChecked == true, Roots = roots }); ShowToast("Đã lưu quyền điện thoại."); }
+            catch (Exception ex) { ShowError(ex); }
+        }
     }
 }

@@ -40,6 +40,11 @@ public final class ConnectionService extends Service {
     private String phoneId="";
     private final Handler ui=new Handler(Looper.getMainLooper());
     interface Job { void run(PcConnection connection) throws Exception; }
+    PcConnection controlConnection() { return connected && pc!=null && pc.pcCommands ? pc : null; }
+    JSONObject controlRequest(PcConnection expected,JSONObject command)throws Exception{
+        if(stopping||!connected||expected==null||pc!=expected)throw new IOException("Kết nối PC đã thay đổi. Mở lại mục Máy tính.");
+        return checked(expected.request(new JSONObject().put("type","pc").put("pc",command))).getJSONObject("pc");
+    }
     private record Work(Job job,Consumer<String> done,boolean transfer){}
     static JSONObject packet(String type,String conversation) throws JSONException {return new JSONObject().put("type",type).put("conversation",conversation);}
     private void notifyUi(){ui.post(()->{if(changed!=null)changed.run();});}

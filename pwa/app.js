@@ -11,6 +11,7 @@ import {
   random,
 } from "./crypto.js";
 import { Client, validatePairing } from "./channel.js";
+import { openPcPanel } from "./pc.js";
 import { Vault, passwordKey, seal, unseal } from "./vault.js";
 import { CameraScanner, readQrPhoto } from "./qr-scanner.js";
 import { isCalculator, showCalculator, showNotice as toast } from "./camouflage.js";
@@ -1201,6 +1202,10 @@ function shell() {
   applyColorTheme();
   app.innerHTML = `<main class="shell"><section id="inbox"><header class="topbar"><div class="brand"><img src="/icon.svg" alt="">Lantern</div><button id="top-settings" class="icon" aria-label="Cài đặt">${icon("settings")}</button></header><div id="status" class="statusline"></div></section><section id="list" class="list-view"><div class="section-title"><h2>Tin nhắn</h2><span id="list-count"></span></div><input id="search" class="search" type="search" placeholder="Tìm cuộc trò chuyện" aria-label="Tìm cuộc trò chuyện"><div id="conversations"></div></section><section id="chat" class="chat-view" hidden><header class="chat-head"><button id="back" class="icon" aria-label="Quay lại">${icon("back")}</button><div id="chat-avatar" class="avatar"></div><div class="chat-title"><strong id="chat-name"></strong><div id="chat-status" class="chat-status"></div></div><button id="info" class="icon" aria-label="Thông tin hội thoại">${icon("more")}</button></header><div id="selection-bar" class="selection-bar" hidden><span id="selection-count"></span><button id="delete-selected">Xóa đã chọn</button><button id="cancel-selection">Hủy</button></div><div id="timeline" class="timeline" role="log" aria-label="Tin nhắn"></div><div id="transfer" class="transfer" hidden></div><div id="composer-area" class="composer-area"><div id="reply-banner" class="reply-banner" hidden></div><form id="composer" class="composer"><button id="attach" class="icon" type="button" aria-label="Đính kèm">${icon("plus")}</button><textarea id="draft" rows="1" placeholder="Tin nhắn…" aria-label="Nhập tin nhắn"></textarea><button id="send" class="icon send" type="submit" aria-label="Gửi tin nhắn" disabled>${icon("send")}</button></form><div id="draft-note" class="draft-note" hidden></div></div></section><nav id="nav" class="nav"><button class="active" id="nav-chat">${icon("chat")}Tin nhắn</button><button id="nav-pair">${icon("phone")}Thiết bị</button><button id="nav-settings">${icon("settings")}Cài đặt</button></nav><input id="file" type="file" hidden></main>`;
   $("#top-settings").onclick = $("#nav-settings").onclick = settingsSheet;
+  const pcButton = document.createElement("button");
+  pcButton.id = "nav-pc"; pcButton.innerHTML = `${icon("phone")}Máy tính`;
+  $("#nav").insertBefore(pcButton, $("#nav-settings"));
+  pcButton.onclick = () => openPcPanel({ getClient: () => client, available: () => !!state && !document.hidden && !isCalculator(), showSheet, cleanup: fn => { sheetCleanup = fn; }, esc });
   $("#nav-pair").onclick = deviceSheet;
   $("#nav-chat").onclick = back;
   $("#back").onclick = back;

@@ -95,6 +95,22 @@ try {
     await pair.c.write({ ...packet, id: packet.id || uid() });
     return pair.c.read();
   };
+  const pc = async p => rpc({ type: "pc", pc: p });
+  check((await pc({ action: "prepare", command: "power.shutdown" })).type === "error", "Web pairing does not implicitly grant PC commands");
+  await command("fixture-pc-grant");
+  const rights = (await pc({ action: "status" })).pc;
+  check(rights.power && rights.ai && rights.roots[0].path === "", "Encrypted PWA channel exposes permissions and hides physical paths");
+  const preparedPc = (await pc({ action: "prepare", command: "power.lock" })).pc;
+  const executedPc = (await pc({ action: "execute", ticket: preparedPc.ticket })).pc;
+  const retriedPc = (await pc({ action: "execute", ticket: preparedPc.ticket })).pc;
+  check(executedPc.state === "done" && retriedPc.message === "fixture call 1", "Web command retries return the original result without another effect");
+  const listedPc = (await pc({ action: "files.list", root: rights.roots[0].id })).pc;
+  check(listedPc.entries[0].name === "document.txt", "PWA browses a granted PC directory over WebCrypto");
+  const filePc = (await pc({ action: "files.open", root: rights.roots[0].id, path: "document.txt" })).pc;
+  const dataPc = (await pc({ action: "files.read", ticket: filePc.ticket, offset: 0 })).pc;
+  check(Buffer.from(dataPc.data, "base64").toString() === "Lantern PC file fixture", "PWA retrieves selected filesystem bytes independently of chat history");
+  await pc({ action: "files.close", ticket: filePc.ticket });
+  check((await pc({ action: "ai.inspect" })).pc.targets[0].state === "idle", "PWA receives structured AI status over the authenticated channel");
   let snapshot = await rpc({
     type: "sync",
     conversation: metadata.conversation,

@@ -15,6 +15,8 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 
 ## Chức năng
 
+- Ra lệnh từ Android/PWA đã ghép đôi: khóa/tắt Windows, duyệt và tải tệp trong thư mục được cấp, gửi prompt vào AI đang mở (thử nghiệm). Cần cấp quyền riêng trên PC; xem [hướng dẫn và giới hạn](docs/PC-COMMANDS.md).
+
 - Danh tính cố định từ SHA-256 của public key; IP được cập nhật khi kết nối lại.
 - TLS 1.2/1.3 hai chiều, chứng thư tự ký được ghép đôi và kiểm tra public key.
 - Tự tìm máy bằng UDP multicast/broadcast; nhập IPv4 và cổng thủ công.

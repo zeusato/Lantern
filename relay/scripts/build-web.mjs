@@ -7,6 +7,7 @@ const names = [
   "index.html",
   "style.css",
   "app.js",
+  "pc.js",
   "crypto.js",
   "channel.js",
   "vault.js",

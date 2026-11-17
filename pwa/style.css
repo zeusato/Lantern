@@ -374,7 +374,7 @@ small,
   align-items: center;
   gap: 4px;
   font-size: 10px;
-  padding: 5px 12px;
+  padding: 5px 6px;
   color: var(--muted);
 }
 .nav .active {
@@ -1019,3 +1019,9 @@ dialog::backdrop {
   background: var(--bg);
   color: var(--ink);
 }
+
+.pc-action { display: block; width: 100%; margin: 8px 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.pc-target { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
+.pc-path { overflow-wrap: anywhere; }
+#pc-body progress { width: 100%; }
+#pc-status { white-space: pre-wrap; }

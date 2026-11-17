@@ -1,9 +1,10 @@
-const VERSION = "lantern-web-1.2.8-r2";
+const VERSION = "lantern-web-pc-v1";
 const ASSETS = [
   "/",
   "/index.html",
   "/style.css",
   "/app.js",
+  "/pc.js",
   "/crypto.js",
   "/channel.js",
   "/vault.js",
