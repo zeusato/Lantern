@@ -13,6 +13,7 @@ import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.action.ViewActions.*;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
 import static androidx.test.espresso.matcher.ViewMatchers.*;
+import static androidx.test.espresso.matcher.RootMatchers.isDialog;
 import static org.hamcrest.Matchers.startsWith;
 import static org.hamcrest.Matchers.containsString;
 
@@ -38,11 +39,13 @@ public class ConversationSettingsTest {
             scenario.onActivity(a->{try{snapshotSettings(a);}catch(Exception e){throw new AssertionError(e);}});
             onView(withText("Chọn tin nhắn để xóa")).perform(click());
             onView(withText("Bạn: Earlier chat 0")).perform(click());onView(withText("QA contact: Earlier chat 1")).perform(click());onView(withText("Xóa (2)")).perform(click());
-            onView(withText("Xóa 2 tin nhắn?")).check(matches(isDisplayed()));onView(withId(android.R.id.button1)).perform(click());
+            // The picker is replaced by a confirmation dialog. Match that root
+            // explicitly so Espresso cannot wait on the activity losing focus.
+            onView(withText("Xóa 2 tin nhắn?")).inRoot(isDialog()).check(matches(isDisplayed()));onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click());
             until(()->ConnectionService.messages.length()==28);assertTrue(ConversationSettings.contact(id).optLong("historyVersion")>0);
-            openSettings();onView(withText("Xóa lịch sử hội thoại")).perform(click());onView(withId(android.R.id.button1)).perform(click());
+            openSettings();onView(withText("Xóa lịch sử hội thoại")).perform(click());onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click());
             onView(withText("Nhập đúng XÓA để xác nhận.")).check(matches(isDisplayed()));assertEquals(28,ConnectionService.messages.length());
-            onView(withContentDescription("Nhập XÓA để xác nhận")).perform(replaceText("XÓA"),closeSoftKeyboard());onView(withId(android.R.id.button1)).perform(click());until(()->ConnectionService.messages.length()==0);
+            onView(withContentDescription("Nhập XÓA để xác nhận")).inRoot(isDialog()).perform(replaceText("XÓA"),closeSoftKeyboard());onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click());until(()->ConnectionService.messages.length()==0);
             HistoryCache cache=new HistoryCache(context,pin);until(()->cache.messages(id).length()==0);
             openSettings();onView(withText("Đặt tên riêng")).perform(click());
             ConnectionService.current.submit(ConnectionService.packet("lock",id),error->{});
