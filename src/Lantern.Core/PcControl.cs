@@ -22,7 +22,7 @@ public sealed class PcAccess
 }
 public sealed record PcRoot(string Id, string Name, string Path);
 public sealed record PcEntry(string Name, bool Directory, long Size, DateTimeOffset Modified);
-public sealed record PcTarget(string Id, string App, string Conversation, string State, string Version, string Detail);
+public sealed record PcTarget(string Id, string App, string Conversation, string State, string Version, string Detail, string Answer = "");
 public sealed class PcPacket
 {
     public string Action { get; set; } = "";
@@ -58,6 +58,7 @@ public sealed class PcPacket
 public interface IPcDesktop
 {
     Task<List<PcTarget>> InspectAsync(CancellationToken ct);
+    Task<PcTarget> ReadAsync(PcPacket request, CancellationToken ct) => throw new NotSupportedException("Cập nhật PC để đọc câu trả lời.");
     Task<string> ExecuteAsync(PcPacket request, Action authorize, CancellationToken ct);
 }
 
@@ -108,6 +109,16 @@ public sealed class PcControl : IDisposable
             case "ai.inspect":
                 if (!access.Ai) throw new UnauthorizedAccessException("PC chưa cấp quyền gửi yêu cầu AI.");
                 return new() { Targets = await desktop.InspectAsync(ct) };
+            case "ai.read":
+            {
+                if (!access.Ai) throw new UnauthorizedAccessException("PC chưa cấp quyền AI.");
+                if (request.Target.Length == 0 || request.Version.Length == 0) throw new ArgumentException("Kiểm tra AI trước khi đọc câu trả lời.");
+                using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                readTimeout.CancelAfter(TimeSpan.FromSeconds(10));
+                var answer = await desktop.ReadAsync(request, readTimeout.Token);
+                if (!Access(device).Ai) throw new UnauthorizedAccessException("Quyền AI đã bị thu hồi.");
+                return new() { Targets = [answer] };
+            }
             case "files.list": case "files.open": case "files.read": case "files.close":
                 return await files.HandleAsync(device, request, () => Access(device), ct);
             case "prepare":

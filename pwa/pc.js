@@ -69,6 +69,7 @@ export function openPcPanel({ getClient, available, showSheet, cleanup, esc }) {
       try { const result = await pc.execute(token); note(result.message || result.state); }
       catch { note("Chưa xác định kết quả. Không tự gửi lại; dùng nút kiểm tra bên dưới."); }
       button("Kiểm tra kết quả lệnh", async () => { const r = await pc.call({ action: "result", ticket: token }); note(r.message || r.state); });
+      if (command.command === "ai.send") button("Xem câu trả lời AI", inspect);
       button("Về mục PC", home);
     });
     button("Hủy", home);
@@ -82,6 +83,8 @@ export function openPcPanel({ getClient, available, showSheet, cleanup, esc }) {
       const box = document.createElement("section"); box.className = "pc-target";
       box.innerHTML = `<h3>${esc(target.app)}</h3><p>${esc(target.conversation || "Chưa đọc được cuộc trò chuyện")}</p><strong>${esc(aiLabel(target.state))}</strong><p>${esc(target.detail)}</p>`;
       body.append(box);
+      const answer = document.createElement("p"); answer.style.whiteSpace = "pre-wrap"; answer.textContent = target.answer || "Chưa đọc được câu trả lời trong giao diện hiện tại."; box.append(answer);
+      if (target.version) button("Theo dõi câu trả lời · " + target.app, () => watch(target));
       if (target.state === "idle") button("Gửi yêu cầu vào " + target.app, async () => {
         body.innerHTML = `<p>${esc(target.app)} · ${esc(target.conversation)}</p><textarea id="pc-prompt" maxlength="16000" rows="5" placeholder="Yêu cầu tiếp theo…" aria-label="Yêu cầu cho AI"></textarea>`;
         button("Gửi yêu cầu", async () => {
@@ -93,6 +96,22 @@ export function openPcPanel({ getClient, available, showSheet, cleanup, esc }) {
     }
     button("Kiểm tra lại", inspect);
     note(result.targets?.length ? "Không tự vượt bước xác nhận của AI." : "Không tìm thấy Claude hoặc ChatGPT/Codex đang chạy.");
+  }
+  async function watch(target) {
+    body.innerHTML = ""; button("‹ Kiểm tra AI", inspect);
+    const output = document.createElement("p"); output.style.whiteSpace = "pre-wrap"; body.append(output);
+    output.textContent = target.answer || "Đang chờ câu trả lời…";
+    const poll = async () => {
+      if (!active() || !output.isConnected) return;
+      try {
+        const result = await pc.call({ action: "ai.read", target: target.id, version: target.version });
+        if (!active() || !output.isConnected) return;
+        const next = result.targets?.[0]; if (!next) throw Error("PC chưa hỗ trợ đọc câu trả lời.");
+        output.textContent = next.answer || "Chưa có câu trả lời đọc được.";
+        note(aiLabel(next.state) + " · Tự cập nhật mỗi 5 giây");
+        setTimeout(poll, 5000);
+      } catch(e) { note(e.message); }
+    }; await poll();
   }
   async function browse() {
     note("Đang mở thư mục…"); const listing = await pc.call({ action: "files.list", root: root.id, path, page });

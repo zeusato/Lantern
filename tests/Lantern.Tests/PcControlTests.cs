@@ -9,6 +9,7 @@ internal static class PcControlTests
         public int Calls;
         public Func<Action, CancellationToken, Task<string>>? Work;
         public Task<List<PcTarget>> InspectAsync(CancellationToken ct) => Task.FromResult(new List<PcTarget> { new("test", "Fake AI", "Chat", "idle", "version", "Ready") });
+        public Task<PcTarget> ReadAsync(PcPacket request, CancellationToken ct) => Task.FromResult(new PcTarget("test", "Fake AI", "Chat", "idle", request.Version, "Ready", "Latest assistant reply"));
         public async Task<string> ExecuteAsync(PcPacket request, Action authorize, CancellationToken ct)
         { if (Work is not null) return await Work(authorize, ct); authorize(); Interlocked.Increment(ref Calls); return "accepted"; }
     }
@@ -44,7 +45,11 @@ internal static class PcControlTests
         check(!initial.Power && !initial.Ai && initial.Roots.Count == 0, "Existing pairing grants no PC authority by default");
         await Denied(() => Call(new() { Action = "prepare", Command = "power.shutdown" }), "Pairing alone cannot shut down the PC");
         await Denied(() => Call(new() { Action = "ai.inspect" }), "AI inspection requires separate permission");
+        await Denied(() => Call(new() { Action = "ai.read", Target = "test", Version = "version" }), "Reading AI replies requires explicit AI permission");
         registry.SetAccess("phone", new() { Power = true, Ai = true });
+        var reply = await Call(new() { Action = "ai.read", Target = "test", Version = "version" });
+        check(reply.Targets.Single().Answer == "Latest assistant reply", "AI answer is returned over the authorized PC channel");
+        await Denied(() => Call(new() { Action = "ai.read", Target = "test" }), "Reading replies requires a pinned conversation version");
         var first = await Call(new() { Action = "prepare", Command = "power.lock" });
         await Denied(() => Call(new() { Action = "execute", Ticket = first.Ticket }, "other"), "Command ticket is bound to the paired device");
         var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Call(new() { Action = "execute", Ticket = first.Ticket })));
@@ -109,6 +114,7 @@ internal static class PcControlTests
         check(paged.Entries.Count == 100 && paged.More && (await Call(new() { Action = "files.list", Root = sharedRoot.Id, Page = 1 })).Entries.Count == 5, "Large folders are paginated without recursively scanning the tree");
         check(PcAiState.Classify(true, false, false, true) == "busy" && PcAiState.Classify(false, true, false, true) == "attention", "AI busy and waiting-for-approval are separate states");
         check(PcAiState.Classify(false, false, true, true) == "draft" && PcAiState.Classify(false, false, false, false) == "unknown", "Drafts and unrecognized chats are never treated as idle");
+        check(PcAiState.IsEmptyComposerControl("ChatGPT / Codex", "Dictate") && !PcAiState.IsEmptyComposerControl("ChatGPT / Codex", "Copy"), "GPT voice control recognizes an empty composer, unrelated controls do not");
         check(PcAiState.Classify(false, false, false, true) == "idle", "Recognized empty idle composer can accept a prompt");
     }
 

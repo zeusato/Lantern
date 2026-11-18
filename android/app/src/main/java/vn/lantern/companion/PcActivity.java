@@ -77,7 +77,7 @@ public final class PcActivity extends Activity {
     private void execute(String ticket){try{
         body.removeAllViews();note("Đang gửi lệnh…");
         button("Kiểm tra kết quả",()->{try{request(command("result").put("ticket",ticket),r->note(r.optString("message",r.optString("state"))));}catch(Exception e){note(e.getMessage());}});
-        button("Về mục PC",this::home);
+        button("Xem câu trả lời AI",this::inspect);button("Về mục PC",this::home);
         run(()->{try{JSONObject result=call(command("execute").put("ticket",ticket));ui.post(()->note(result.optString("message",result.optString("state"))));}
             catch(Exception e){ui.post(()->note("Chưa xác định kết quả. Không tự gửi lại; bấm Kiểm tra kết quả."));}});
     }catch(Exception e){note(e.getMessage());}}
@@ -85,10 +85,26 @@ public final class PcActivity extends Activity {
         if(targets==null||targets.length()==0)body.addView(text("Không tìm thấy Claude hoặc ChatGPT/Codex đang chạy.",15));
         else for(int i=0;i<targets.length();i++){JSONObject target=targets.getJSONObject(i);String state=target.optString("state");String label=switch(state){case "idle"->"Sẵn sàng";case "busy"->"Đang làm việc";case "attention"->"Cần phản hồi trên PC";case "draft"->"Có bản nháp";default->"Chưa xác định";};
             body.addView(text(target.optString("app")+" · "+label,18));body.addView(text(target.optString("conversation")+"\n"+target.optString("detail"),14));
+            TextView answer=text(target.optString("answer", "Chưa đọc được câu trả lời trong giao diện hiện tại."),15);answer.setTextIsSelectable(true);body.addView(answer);
+            if(!target.optString("version").isEmpty())button("Theo dõi câu trả lời",()->watch(target));
             if(state.equals("idle"))button("Gửi yêu cầu",()->prompt(target));
         }button("Kiểm tra lại",this::inspect);note("Không tự vượt xác nhận của AI hoặc ghi đè bản nháp.");});}catch(Exception e){note(e.getMessage());}}
     private void prompt(JSONObject target){body.removeAllViews();body.addView(text(target.optString("app")+" · "+target.optString("conversation"),18));EditText input=new EditText(this);input.setMinLines(4);input.setTextColor(Color.WHITE);input.setHintTextColor(Color.LTGRAY);input.setHint("Yêu cầu tiếp theo…");input.setContentDescription("Yêu cầu cho AI");input.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(16000)});body.addView(input);
         button("Gửi yêu cầu",()->{String prompt=input.getText().toString().trim();if(prompt.isEmpty()){note("Nhập yêu cầu trước khi gửi.");return;}try{prepare("ai.send",new JSONObject().put("target",target.getString("id")).put("version",target.getString("version")).put("prompt",prompt),"Gửi vào "+target.optString("conversation")+":\n\n"+prompt);}catch(Exception e){note(e.getMessage());}});button("Kiểm tra lại",this::inspect);}
+    private void watch(JSONObject target){
+        body.removeAllViews();button("‹ Kiểm tra AI",this::inspect);
+        TextView answer=text(target.optString("answer","Đang chờ câu trả lời…"),16);answer.setTextIsSelectable(true);body.addView(answer);
+        Runnable poll=new Runnable(){public void run(){
+            if(!active||answer.getParent()!=body)return;
+            if(busy){ui.postDelayed(this,500);return;}
+            try{request(command("ai.read").put("target",target.getString("id")).put("version",target.getString("version")),result->{
+                if(answer.getParent()!=body)return;
+                JSONObject next=result.getJSONArray("targets").getJSONObject(0);
+                answer.setText(next.optString("answer", "Chưa có câu trả lời đọc được."));
+                note("Câu trả lời gần nhất · Tự cập nhật mỗi 5 giây");ui.postDelayed(this,5000);
+            });}catch(Exception e){note(e.getMessage());}
+        }};poll.run();
+    }
     private void browse(){try{note("Đang mở thư mục…");request(command("files.list").put("root",root).put("path",path).put("page",page),listing->{body.removeAllViews();body.addView(text(rootName+(path.isEmpty()?"":" / "+path),18));
         button("‹ "+(path.isEmpty()?"Về mục PC":"Thư mục cha"),()->{if(path.isEmpty())home();else{int index=path.lastIndexOf('/');path=index<0?"":path.substring(0,index);page=0;browse();}});
         JSONArray entries=listing.getJSONArray("entries");for(int i=0;i<entries.length();i++){JSONObject entry=entries.getJSONObject(i);String name=entry.getString("name");button((entry.getBoolean("directory")?"📁 ":"📄 ")+name+(entry.getBoolean("directory")?"":" · "+entry.optLong("size")/1024+" KB"),()->{if(name.contains("/")||name.contains("\\")||name.equals("..")||name.equals(".")){note("Tên tệp không hợp lệ.");return;}String next=path.isEmpty()?name:path+"/"+name;if(entry.optBoolean("directory")){path=next;page=0;browse();}else download(next);});}

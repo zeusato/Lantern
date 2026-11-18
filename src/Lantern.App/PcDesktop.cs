@@ -25,7 +25,7 @@ internal sealed class PcDesktop : IPcDesktop
                 try
                 {
                     Restore(target, token);
-                    var first = Read(target, token); Pause(token, 180); var second = Read(target, token);
+                    var first = Read(target, token); Pause(token, 180); var second = Read(target, token, includeAnswer: true);
                     inspection.Report(first.Public.Version == second.Public.Version && first.Public.State == second.Public.State
                         ? second.Public : second.Public with { State = "unknown", Version = "", Detail = "Giao diện AI vừa thay đổi. Kiểm tra lại trạng thái." });
                 }
@@ -35,6 +35,14 @@ internal sealed class PcDesktop : IPcDesktop
             return true;
         }, token), ct);
     }
+    public Task<PcTarget> ReadAsync(PcPacket request, CancellationToken ct) => Run(() =>
+    {
+        var target = Discover().SingleOrDefault(t => t.Id == request.Target) ?? throw new InvalidOperationException("Cửa sổ AI đã đóng.");
+        EnsureDesktop();
+        var snapshot = Read(target, ct, includeAnswer: true);
+        if (snapshot.Public.Version != request.Version || Read(target, ct).Public.Version != request.Version) throw new InvalidOperationException("Hội thoại đã thay đổi. Kiểm tra AI lại trước khi xem câu trả lời.");
+        return snapshot.Public;
+    }, ct);
     public Task<string> ExecuteAsync(PcPacket request, Action authorize, CancellationToken ct) => Run(() =>
     {
         authorize();
@@ -66,7 +74,7 @@ internal sealed class PcDesktop : IPcDesktop
         if (!IsWindowVisible(target.Window) || IsIconic(target.Window)) throw new InvalidOperationException("Cửa sổ AI chưa sẵn sàng.");
         var editor = current.Editor!;
         if (!editor.TryGetCurrentPattern(ValuePattern.Pattern, out var valueObject)) throw new InvalidOperationException("Ứng dụng không hỗ trợ nhập prompt bằng UI Automation.");
-        if (!string.IsNullOrWhiteSpace(((ValuePattern)valueObject).Current.Value)) throw new InvalidOperationException("Ô nhập vừa có bản nháp. Kiểm tra lại trên PC.");
+        if (!string.IsNullOrWhiteSpace(EditorValue(editor, (ValuePattern)valueObject))) throw new InvalidOperationException("Ô nhập vừa có bản nháp. Kiểm tra lại trên PC.");
         authorize();
         ((ValuePattern)valueObject).SetValue(request.Prompt);
         Pause(ct, 250);
@@ -147,17 +155,21 @@ internal sealed class PcDesktop : IPcDesktop
     private static void Restore(Target target, CancellationToken ct)
     {
         if (target.Window == IntPtr.Zero) throw new InvalidOperationException("App đang chạy ở nền nhưng chưa có cửa sổ. Mở app từ tray trên PC rồi kiểm tra lại.");
-        using var input = new DesktopHandle(OpenInputDesktop(0, false, 1));
-        if (input.IsInvalid) throw new InvalidOperationException("Windows đang khóa hoặc không có desktop tương tác.");
-        var name = new StringBuilder(256);
-        if (!GetUserObjectInformation(input.DangerousGetHandle(), 2, name, name.Capacity * 2, out _) || name.ToString() != "Default") throw new InvalidOperationException("Cần mở khóa Windows để gửi prompt.");
+        EnsureDesktop();
         ct.ThrowIfCancellationRequested();
         ShowWindowAsync(target.Window, 9); SetForegroundWindow(target.Window);
         for (int i = 0; i < 10; i++)
         { if (IsWindowVisible(target.Window) && !IsIconic(target.Window)) { Pause(ct, 200); return; } Pause(ct, 100); }
         throw new InvalidOperationException("Windows chưa hiện được cửa sổ. Mở ứng dụng từ tray rồi kiểm tra lại.");
     }
-    private static Snapshot Read(Target target, CancellationToken ct, string? sentPrompt = null)
+    private static void EnsureDesktop()
+    {
+        using var input = new DesktopHandle(OpenInputDesktop(0, false, 1));
+        if (input.IsInvalid) throw new InvalidOperationException("Windows đang khóa hoặc không có desktop tương tác.");
+        var name = new StringBuilder(256);
+        if (!GetUserObjectInformation(input.DangerousGetHandle(), 2, name, name.Capacity * 2, out _) || name.ToString() != "Default") throw new InvalidOperationException("Cần mở khóa Windows để gửi prompt.");
+    }
+    private static Snapshot Read(Target target, CancellationToken ct, string? sentPrompt = null, bool includeAnswer = false)
     {
         ct.ThrowIfCancellationRequested();
         // Fetch relevant controls and their properties in batches. Per-node TreeWalker/Current calls
@@ -195,7 +207,7 @@ internal sealed class PcDesktop : IPcDesktop
         bool busy = controls.Any(e => e.Cached.IsEnabled && e.Cached.Name is "Stop" or "Stop generating" or "Steer" or "Interrupt");
         bool awaiting = buttons.Any(e => e.Cached.IsEnabled && e.Cached.Name is "Allow once" or "Allow this conversation" or "Always allow" or "Deny" or "Approve" or "Reject");
         if (!editor.TryGetCurrentPattern(ValuePattern.Pattern, out var valueObject) || ((ValuePattern)valueObject).Current.IsReadOnly) throw new InvalidOperationException("Ô nhập không hỗ trợ đọc/đặt giá trị.");
-        var value = ((ValuePattern)valueObject).Current.Value;
+        var value = EditorValue(editor, (ValuePattern)valueObject);
         var title = document?.Cached.Name ?? "";
         var route = document?.TryGetCurrentPattern(ValuePattern.Pattern, out var documentValue) == true ? ((ValuePattern)documentValue).Current.Value : "";
         var documentId = document is null ? "" : string.Join('.', document.GetRuntimeId());
@@ -219,13 +231,40 @@ internal sealed class PcDesktop : IPcDesktop
         bool newConversation = PcAiState.IsUntitled(title);
         // Pin to the actual document route when available, so named/unnamed tabs cannot
         // collide and an auto-generated title does not invalidate the same conversation.
-        var identity = target.Id + "|" + documentId + "|" + (route.Length > 0 ? route : title + "|" + (heading is null ? "" : string.Join('.', heading.GetRuntimeId()))) + "|" + string.Join('.', editor.GetRuntimeId());
+        var identity = target.Id + "|" + documentId + "|" + (route.Length > 0 && target.App == "Claude" ? route : title + "|" + (heading is null ? "" : string.Join('.', heading.GetRuntimeId()))) + "|" + string.Join('.', editor.GetRuntimeId());
         string version = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
         ct.ThrowIfCancellationRequested();
-        bool recognized = busy || controls.Any(e => IsSend(target, e.Cached.Name) || target.App == "Claude" && e.Cached.Name == "Press and hold to record");
+        bool recognized = busy || controls.Any(e => IsSend(target, e.Cached.Name) || PcAiState.IsEmptyComposerControl(target.App, e.Cached.Name));
+        string answer = includeAnswer ? ReadAnswer(document, cache, ct) : "";
         string state = PcAiState.Classify(busy, awaiting, !string.IsNullOrWhiteSpace(value), recognized);
-        return new(new(target.Id, target.App, newConversation ? "Hội thoại mới" : title, state, version, state switch { "busy" => "AI đang xử lý.", "attention" => "AI đang chờ phản hồi/xác nhận trên PC.", "draft" => "Ô nhập có bản nháp; Lantern sẽ không ghi đè.", "idle" => "Sẵn sàng nhận yêu cầu.", _ => "Chưa nhận diện được nút gửi/dừng của AI." }), editor,
+        return new(new(target.Id, target.App, newConversation ? "Hội thoại mới" : title, state, version, state switch { "busy" => "AI đang xử lý.", "attention" => "AI đang chờ phản hồi/xác nhận trên PC.", "draft" => "Ô nhập có bản nháp; Lantern sẽ không ghi đè.", "idle" => "Sẵn sàng nhận yêu cầu.", _ => "Chưa nhận diện được nút gửi/dừng của AI." }, answer), editor,
             controls.SingleOrDefault(e => IsSend(target, e.Cached.Name) && e.Cached.IsEnabled), value, busy, awaiting, nodes, documentId, newConversation);
+    }
+    private static string EditorValue(AutomationElement editor, ValuePattern value)
+    {
+        // Chromium may expose the placeholder through ValuePattern on an empty contenteditable.
+        // TextPattern distinguishes it from a real draft containing that same text.
+        if (editor.TryGetCurrentPattern(TextPattern.Pattern, out var text))
+            return ((TextPattern)text).DocumentRange.GetText(-1).TrimEnd('\r', '\n');
+        return value.Current.Value;
+    }
+    private static string ReadAnswer(AutomationElement? document, CacheRequest cache, CancellationToken ct)
+    {
+        if (document is null) return "";
+        var containers = document.FindAll(TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Group),
+            new OrCondition(new PropertyCondition(AutomationElement.NameProperty, "Conversation"),
+                new PropertyCondition(AutomationElement.NameProperty, "Chat messages")))).Cast<AutomationElement>().ToArray();
+        if (containers.Length != 1) return "";
+        var texts = containers[0].FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)).Cast<AutomationElement>().ToArray();
+        var marker = texts.LastOrDefault(e => e.Cached.Name == "ChatGPT said:" || e.Cached.Name.StartsWith("Claude responded:", StringComparison.Ordinal));
+        if (marker is null) return "";
+        var block = TreeWalker.ControlViewWalker.GetParent(marker, cache);
+        if (block is null || block == containers[0]) return "";
+        ct.ThrowIfCancellationRequested();
+        var parts = block.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)).Cast<AutomationElement>()
+            .Where(e => !e.Equals(marker)).Select(e => e.Cached.Name).Where(t => !string.IsNullOrWhiteSpace(t));
+        return string.Join(" ", parts).Trim() is var answer && answer.Length > 16000 ? answer[..16000] + "…" : answer;
     }
     private sealed class DesktopHandle : Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid
     { public DesktopHandle(IntPtr value) : base(true) => SetHandle(value); protected override bool ReleaseHandle() => CloseDesktop(handle); }
