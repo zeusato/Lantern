@@ -14,23 +14,32 @@ import static androidx.test.espresso.action.ViewActions.*;
 import static androidx.test.espresso.assertion.ViewAssertions.matches;
 import static androidx.test.espresso.matcher.ViewMatchers.*;
 import static androidx.test.espresso.matcher.RootMatchers.isDialog;
+import static androidx.test.espresso.matcher.RootMatchers.withDecorView;
+import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.startsWith;
 import static org.hamcrest.Matchers.containsString;
 
 @RunWith(AndroidJUnit4.class)
 public class ConversationSettingsTest {
     private static void until(BooleanSupplier test)throws Exception{long end=System.currentTimeMillis()+25000;while(!test.getAsBoolean()){if(System.currentTimeMillis()>end)throw new AssertionError("Conversation state did not arrive");Thread.sleep(50);}}
-    private static void openSettings(){onView(withContentDescription("Tùy chọn")).perform(click());onView(withText("Cài đặt hội thoại")).inRoot(isDialog()).perform(click());}
+    private static void openSettings(android.view.View decor){
+        // The response can update shared data before the previous dialog is dismissed.
+        // Target the activity so Espresso waits for its focus instead of searching
+        // for the toolbar inside the outgoing confirmation dialog.
+        onView(withContentDescription("Tùy chọn")).inRoot(withDecorView(is(decor))).perform(click());
+        onView(withText("Cài đặt hội thoại")).inRoot(isDialog()).perform(click());
+    }
     @Test public void settingsReachPcAndDeletedHistoryDoesNotReturn()throws Exception{
         String pin=InstrumentationRegistry.getArguments().getString("pcPin");org.junit.Assume.assumeNotNull(pin);
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);DeviceKeys.forget(context);
         DeviceKeys.save(context,new JSONObject().put("pc",pin).put("name","QA PC").put("port",45854).put("addresses",new JSONArray().put("10.0.2.2")).put("nonce","q".repeat(43)));
         String id="a".repeat(64);ConnectionService.selected="";
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+            android.view.View[] decor={null};scenario.onActivity(a->decor[0]=a.getWindow().getDecorView());
             until(()->ConnectionService.connected&&ConnectionService.conversations.length()>0);
             onView(withText("QA contact")).perform(click());onView(withText("Mở khóa hội thoại")).perform(click());
             onView(withContentDescription("Mật khẩu hội thoại")).inRoot(isDialog()).perform(replaceText("qa-password"),closeSoftKeyboard());onView(withText("Mở khóa")).inRoot(isDialog()).perform(click());
-            until(()->ConnectionService.messages.length()>=30);openSettings();
+            until(()->ConnectionService.messages.length()>=30);openSettings(decor[0]);
             onView(withText("Đặt tên riêng")).inRoot(isDialog()).perform(click());onView(withContentDescription("Tên riêng")).inRoot(isDialog()).perform(replaceText("QA private name"),closeSoftKeyboard());onView(withText("Lưu")).inRoot(isDialog()).perform(click());
             until(()->"QA private name".equals(ConversationSettings.contact(id).optString("name")));
             onView(withText(startsWith("Tin nhắn tự hủy ·"))).inRoot(isDialog()).perform(click());onView(withText("5 phút")).inRoot(isDialog()).perform(scrollTo(),click());onView(withText("Lưu")).inRoot(isDialog()).perform(click());
@@ -43,14 +52,14 @@ public class ConversationSettingsTest {
             // explicitly so Espresso cannot wait on the activity losing focus.
             onView(withText("Xóa 2 tin nhắn?")).inRoot(isDialog()).check(matches(isDisplayed()));onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click());
             until(()->ConnectionService.messages.length()==28);assertTrue(ConversationSettings.contact(id).optLong("historyVersion")>0);
-            openSettings();onView(withText("Xóa lịch sử hội thoại")).inRoot(isDialog()).perform(click());onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click());
+            openSettings(decor[0]);onView(withText("Xóa lịch sử hội thoại")).inRoot(isDialog()).perform(click());onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click());
             onView(withText("Nhập đúng XÓA để xác nhận.")).inRoot(isDialog()).check(matches(isDisplayed()));assertEquals(28,ConnectionService.messages.length());
             onView(withContentDescription("Nhập XÓA để xác nhận")).inRoot(isDialog()).perform(replaceText("XÓA"),closeSoftKeyboard());onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click());until(()->ConnectionService.messages.length()==0);
             HistoryCache cache=new HistoryCache(context,pin);until(()->cache.messages(id).length()==0);
-            openSettings();onView(withText("Đặt tên riêng")).inRoot(isDialog()).perform(click());
+            openSettings(decor[0]);onView(withText("Đặt tên riêng")).inRoot(isDialog()).perform(click());
             ConnectionService.current.submit(ConnectionService.packet("lock",id),error->{});
             until(()->ConversationSettings.contact(id).optBoolean("locked"));
-            onView(withText(containsString("Hội thoại được bảo vệ"))).check(matches(isDisplayed()));
+            onView(withText(containsString("Hội thoại được bảo vệ"))).inRoot(withDecorView(is(decor[0]))).check(matches(isDisplayed()));
             scenario.onActivity(a->{try{CompanionTest.snapshotCurrent(a,"android-conversation-locked.png");}catch(Exception e){throw new AssertionError(e);}});
             context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);assertEquals(0,cache.messages(id).length());
         }finally{context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);DeviceKeys.forget(context);ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}
