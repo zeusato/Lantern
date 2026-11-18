@@ -21,7 +21,7 @@ import java.util.concurrent.*;
 public final class PcActivity extends Activity {
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
     private final Handler ui=new Handler(Looper.getMainLooper());
-    private LinearLayout body; private TextView status;
+    private LinearLayout body; private TextView status; private ProgressBar progress;
     private ConnectionService service; private PcConnection connection;
     private volatile boolean active,cancelled; private boolean busy;
     private String root="",path="",rootName=""; private int page;
@@ -33,13 +33,14 @@ public final class PcActivity extends Activity {
         super.onCreate(state);getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);WindowCompat.setDecorFitsSystemWindows(getWindow(),false);
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(dp(18),dp(16),dp(18),dp(16));layout.setBackgroundColor(Color.rgb(16,24,29));
         TextView heading=text("Máy tính",24);layout.addView(heading);
+        progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setIndeterminate(true);progress.setContentDescription("Đang xử lý yêu cầu PC");progress.setVisibility(View.GONE);layout.addView(progress,new LinearLayout.LayoutParams(-1,dp(4)));
         ScrollView scroll=new ScrollView(this);body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);scroll.addView(body);layout.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        status=text("",14);layout.addView(status);setContentView(layout);
+        status=text("",14);status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);layout.addView(status);setContentView(layout);
         ViewCompat.setOnApplyWindowInsetsListener(layout,(v,insets)->{androidx.core.graphics.Insets bars=insets.getInsets(WindowInsetsCompat.Type.systemBars()|WindowInsetsCompat.Type.displayCutout());v.setPadding(bars.left+dp(18),bars.top+dp(16),bars.right+dp(18),Math.max(bars.bottom,insets.getInsets(WindowInsetsCompat.Type.ime()).bottom)+dp(16));return insets;});ViewCompat.requestApplyInsets(layout);
         service=ConnectionService.current;connection=service==null?null:service.controlConnection();
         if(state!=null&&state.containsKey("download")){File file=new File(state.getString("download",""));try{if(file.getCanonicalPath().startsWith(new File(getCacheDir(),"attachments").getCanonicalPath()+File.separator)&&file.isFile()){savedFile=file;savedName=state.getString("name","tep");}}catch(IOException ignored){}}
     }
-    @Override protected void onResume(){super.onResume();active=true;if(body.getChildCount()==0)home();}
+    @Override protected void onResume(){super.onResume();active=true;if(cancelled)note("Thao tác đã dừng khi rời màn hình. Bấm kiểm tra lại để lấy trạng thái mới.");if(body.getChildCount()==0&&!busy)home();}
     @Override protected void onPause(){active=false;cancelled=true;super.onPause();}
     @Override protected void onDestroy(){active=false;cancelled=true;worker.shutdownNow();super.onDestroy();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);if(savedFile!=null){state.putString("download",savedFile.getAbsolutePath());state.putString("name",savedName);}}
@@ -51,7 +52,9 @@ public final class PcActivity extends Activity {
     private JSONObject command(String action)throws JSONException{return new JSONObject().put("action",action);}
     private void run(Job job){
         if(busy||!active)return;busy=true;cancelled=false;
-        worker.execute(()->{try{job.run();}catch(Exception e){ui.post(()->note(e.getMessage()==null?"Thao tác chưa hoàn tất.":e.getMessage()));}finally{ui.post(()->busy=false);}});
+        progress.setVisibility(View.VISIBLE);List<View> disabled=new ArrayList<>();
+        for(int i=0;i<body.getChildCount();i++){View view=body.getChildAt(i);if(view instanceof Button&&view.isEnabled()&&!"cancel-download".equals(view.getTag())){disabled.add(view);view.setEnabled(false);}}
+        worker.execute(()->{try{job.run();}catch(Exception e){ui.post(()->note(e instanceof TimeoutException||e instanceof java.net.SocketTimeoutException?"PC chưa trả kết quả. Kiểm tra kết nối rồi thử kiểm tra lại.":e.getMessage()==null?"Kết nối PC bị gián đoạn. Mở lại mục Máy tính.":e.getMessage()));}finally{ui.post(()->{busy=false;progress.setVisibility(View.GONE);for(View view:disabled)if(view.getParent()==body)view.setEnabled(true);if(active&&cancelled)note("Thao tác đã dừng khi rời màn hình. Bấm kiểm tra lại để lấy trạng thái mới.");});}});
     }
     private void request(JSONObject command,Reply done){run(()->{JSONObject result=call(command);ui.post(()->{if(active&&!cancelled)try{done.accept(result);}catch(Exception e){note(e.getMessage());}});});}
     private void home(){try{
@@ -91,7 +94,7 @@ public final class PcActivity extends Activity {
         JSONArray entries=listing.getJSONArray("entries");for(int i=0;i<entries.length();i++){JSONObject entry=entries.getJSONObject(i);String name=entry.getString("name");button((entry.getBoolean("directory")?"📁 ":"📄 ")+name+(entry.getBoolean("directory")?"":" · "+entry.optLong("size")/1024+" KB"),()->{if(name.contains("/")||name.contains("\\")||name.equals("..")||name.equals(".")){note("Tên tệp không hợp lệ.");return;}String next=path.isEmpty()?name:path+"/"+name;if(entry.optBoolean("directory")){path=next;page=0;browse();}else download(next);});}
         if(page>0)button("Trang trước",()->{page--;browse();});if(listing.optBoolean("more"))button("Trang tiếp",()->{page++;browse();});note(entries.length()==0?"Thư mục trống hoặc không có mục được phép đọc.":"Chọn tệp để tải. Tối đa 100 MB mỗi tệp.");});}catch(Exception e){note(e.getMessage());}}
     private void download(String filePath){
-        body.removeAllViews();body.addView(text(filePath,18));Button cancel=button("Hủy tải",()->{});cancel.setOnClickListener(v->{cancelled=true;note("Đang hủy tải…");});button("Về thư mục",this::browse);note("Đang chuẩn bị tệp…");
+        body.removeAllViews();body.addView(text(filePath,18));Button cancel=button("Hủy tải",()->{});cancel.setTag("cancel-download");cancel.setOnClickListener(v->{cancelled=true;note("Đang hủy tải…");});button("Về thư mục",this::browse);note("Đang chuẩn bị tệp…");
         run(()->{
             JSONObject meta=call(command("files.open").put("root",root).put("path",filePath));String ticket=meta.getString("ticket");File temp=null;
             try{

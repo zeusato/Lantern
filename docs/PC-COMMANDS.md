@@ -21,6 +21,7 @@ Không hỗ trợ UNC, ổ mạng, junction/symlink, tệp hệ thống, ADS ho�
 - Tìm Claude hoặc ChatGPT/Codex đang chạy, khôi phục cửa sổ thu nhỏ/ẩn bằng Windows, rồi đọc UI Automation. Không chụp màn hình và không phát sinh phiên screen capture.
 - Nếu app chỉ còn tiến trình tray và không có cửa sổ hợp lệ, trả trạng thái chưa xác định; cần mở từ tray trên PC. Windows đang khóa cũng không cho thao tác AI.
 - Phân biệt sẵn sàng, đang làm việc, chờ xác nhận, có bản nháp và chưa xác định. Chỉ trạng thái sẵn sàng mới cho gửi. Không tự bấm duyệt quyền hoặc xóa bản nháp.
+- Lượt kiểm tra có giới hạn 8 giây trên PC, giữ kết quả đã đọc được nếu ứng dụng khác phản hồi chậm. Android hiện tiến trình, chặn bấm lặp và cho kiểm tra lại sau lỗi hoặc khi quay lại màn hình.
 - Đọc trạng thái hai lần và kiểm tra lại cửa sổ/cuộc trò chuyện ngay trước khi gửi. Đặt prompt bằng ValuePattern và gọi nút Send bằng InvokePattern, không dùng tọa độ chuột hay gõ phím toàn cục. Windows có thể không cho giành focus; adapter vẫn nhắm trực tiếp đúng control trong cửa sổ đã hiện.
 - Mã nhận diện gồm tiến trình, thời điểm khởi động, HWND, tên cuộc trò chuyện và runtime ID của ô nhập/tiêu đề. Đây không phải API thread ID chính thức: hai cuộc trò chuyện trùng tên mà ứng dụng tái sử dụng control có thể không phân biệt được. Tránh đổi cuộc trò chuyện trên PC trong lúc xác nhận/gửi từ điện thoại.
 - UI và nhãn điều khiển của ứng dụng AI có thể thay đổi. Phiên bản không nhận diện được sẽ từ chối. Không hỗ trợ tab AI trong trình duyệt.
@@ -47,6 +48,7 @@ Ticket lệnh ngẫu nhiên, gắn với thiết bị và tham số lưu trên P
 ## Kiểm chứng
 
 - `dotnet run --project tests/Lantern.Tests -c Release`: kiểm thử quyền, ticket một lần, hết hạn/thu hồi, chống thoát cây, checksum, tải phân khối và dọn handle. Lệnh khóa/tắt máy dùng adapter giả, không tắt máy thật.
+- `dotnet run --project tests/PcDesktopProbe -c Release -- --fixture`: kiểm thử bộ đọc UI Automation với cửa sổ và hội thoại giả lập riêng; không tác động ứng dụng AI thật.
 - `npm test --prefix pwa`: unit tests, gồm client PC không phát lại lệnh.
 - `pwsh scripts/Test-Web.ps1`: relay và WebCrypto/.NET interop, gồm lệnh PC/tải tệp trên phiên ghép đôi thử.
 - `cd android; ./gradlew.bat assembleDebug lintDebug`: APK debug và Android lint.

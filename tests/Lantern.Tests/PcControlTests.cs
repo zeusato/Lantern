@@ -31,6 +31,7 @@ internal static class PcControlTests
     }
     public static async Task Run(string root, Action<bool, string> check)
     {
+        await Inspection(check);
         var folder = Path.Combine(root, "pc-commands"); Directory.CreateDirectory(folder);
         using var vault = WorkspaceVault.Create(Path.Combine(folder, "vault"), "PC-command-test-password!");
         var registry = new MobileRegistry(folder, vault); registry.Add(new() { Id = "phone", Name = "Phone" }); registry.Add(new() { Id = "other", Name = "Other" });
@@ -109,5 +110,40 @@ internal static class PcControlTests
         check(PcAiState.Classify(true, false, false, true) == "busy" && PcAiState.Classify(false, true, false, true) == "attention", "AI busy and waiting-for-approval are separate states");
         check(PcAiState.Classify(false, false, true, true) == "draft" && PcAiState.Classify(false, false, false, false) == "unknown", "Drafts and unrecognized chats are never treated as idle");
         check(PcAiState.Classify(false, false, false, true) == "idle", "Recognized empty idle composer can accept a prompt");
+    }
+
+    private static async Task Inspection(Action<bool, string> check)
+    {
+        var ready = new PcTarget("ready", "Fake AI", "Chat", "idle", "version", "Ready");
+        var slow = ready with { Id = "slow", App = "Slow AI" };
+        var inspection = new PcInspection();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken providerToken = default;
+        var watch = Stopwatch.StartNew();
+        var result = await inspection.RunAsync(async ct =>
+        {
+            providerToken = ct; inspection.Discover([ready, slow]); inspection.Report(ready);
+            await release.Task; // An external UIA provider can ignore cancellation.
+            inspection.Report(slow);
+        }, CancellationToken.None, TimeSpan.FromMilliseconds(100));
+        check(watch.Elapsed < TimeSpan.FromSeconds(3) && providerToken.IsCancellationRequested,
+            "AI inspection returns within its budget even when a provider ignores cancellation");
+        check(result[0] == ready && result[1].State == "unknown" && result[1].Version == "" && result[1].Conversation == "" && result[1].Detail.Length > 0,
+            "Slow AI keeps completed statuses and returns a clear non-sendable status for unfinished targets");
+        release.SetResult();
+        inspection.Report(slow);
+        check(result[1].State == "unknown", "A late provider cannot mutate a returned AI status");
+        var complete = new PcInspection();
+        var normal = await complete.RunAsync(_ => { complete.Discover([ready]); complete.Report(ready); return Task.CompletedTask; }, CancellationToken.None);
+        check(normal.Single() == ready, "Successful AI inspection preserves the current conversation and state");
+        using var caller = new CancellationTokenSource();
+        bool cancelled = false;
+        try { await new PcInspection().RunAsync(ct => { caller.Cancel(); return Task.Delay(Timeout.Infinite, ct); }, caller.Token); }
+        catch (OperationCanceledException) { cancelled = true; }
+        check(cancelled, "Caller cancellation is not disguised as an AI timeout result");
+        bool noTargets = false;
+        try { await new PcInspection().RunAsync(ct => Task.Delay(Timeout.Infinite, ct), CancellationToken.None, TimeSpan.FromMilliseconds(30)); }
+        catch (TimeoutException) { noTargets = true; }
+        check(noTargets, "Discovery timeout reports failure instead of claiming no AI apps are running");
     }
 }

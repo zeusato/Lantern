@@ -2,6 +2,7 @@
 // reports status, and NEVER calls ExecuteAsync or captures a screenshot.
 using System.Text.Json;
 using Lantern.Core;
+if (args.Contains("--fixture")) { await PcDesktopFixture.Run(); return; }
 var type = typeof(Lantern.App.MainWindow).Assembly.GetType("Lantern.App.PcDesktop", true)!;
 var desktop = (IPcDesktop)Activator.CreateInstance(type, true)!;
 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
@@ -31,7 +32,7 @@ if (args.Contains("--diagnostics"))
     {
         try
         {
-            var snapshot = type.GetMethod("Read", flags)!.Invoke(null, [target])!;
+            var snapshot = type.GetMethod("Read", flags)!.Invoke(null, [target, CancellationToken.None, null])!;
             var nodes = (List<System.Windows.Automation.AutomationElement>)snapshot.GetType().GetProperty("Nodes")!.GetValue(snapshot)!;
             var editor = (System.Windows.Automation.AutomationElement)snapshot.GetType().GetProperty("Editor")!.GetValue(snapshot)!;
             var bounds = editor.Current.BoundingRectangle;

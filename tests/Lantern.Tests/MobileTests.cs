@@ -53,7 +53,11 @@ internal static class MobileTests
             check(server.Registry.Contains(phone.Id), "Only approved phone certificate is persisted");
             check(welcome.Capabilities.Contains("pc-v1"), "Paired mobile connection negotiates PC command capability");
             check((await Call(new() { Type = "pc", Pc = new() { Action = "prepare", Command = "power.lock" } })).Type == "error", "TLS PC requests enforce default-deny authority");
-            server.Registry.SetAccess(phone.Id, new() { Power = true });
+            server.Registry.SetAccess(phone.Id, new() { Power = true, Ai = true });
+            var inspectionId = Guid.NewGuid().ToString("N");
+            var inspected = await Call(new() { Type = "pc", Id = inspectionId, Pc = new() { Action = "ai.inspect" } });
+            check(inspected.Type == "pc" && inspected.Id == inspectionId && inspected.Pc?.Targets.Single().State == "idle",
+                "AI status returns over authenticated TLS with the Android request correlation ID");
             var prepared = await Call(new() { Type = "pc", Pc = new() { Action = "prepare", Command = "power.lock" } });
             var executed = await Call(new() { Type = "pc", Pc = new() { Action = "execute", Ticket = prepared.Pc!.Ticket } });
             await Call(new() { Type = "pc", Pc = new() { Action = "execute", Ticket = prepared.Pc!.Ticket } });

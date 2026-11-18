@@ -12,23 +12,29 @@ namespace Lantern.App;
 internal sealed class PcDesktop : IPcDesktop
 {
     private readonly SemaphoreSlim worker = new(1, 1);
-    public Task<List<PcTarget>> InspectAsync(CancellationToken ct) => Run(() =>
+    public Task<List<PcTarget>> InspectAsync(CancellationToken ct)
     {
-        var targets = Discover(); var result = new List<PcTarget>();
-        foreach (var target in targets)
+        var inspection = new PcInspection();
+        return inspection.RunAsync(token => Run(() =>
         {
-            ct.ThrowIfCancellationRequested();
-            try
+            var targets = Discover();
+            inspection.Discover(targets.Select(t => new PcTarget(t.Id, t.App, "", "unknown", "", "")));
+            foreach (var target in targets)
             {
-                Restore(target, ct);
-                var first = Read(target); Pause(ct, 180); var second = Read(target);
-                result.Add(second.Public with { State = first.Public.Version == second.Public.Version && first.Public.State == second.Public.State ? second.Public.State : "unknown" });
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    Restore(target, token);
+                    var first = Read(target, token); Pause(token, 180); var second = Read(target, token);
+                    inspection.Report(first.Public.Version == second.Public.Version && first.Public.State == second.Public.State
+                        ? second.Public : second.Public with { State = "unknown", Version = "", Detail = "Giao diện AI vừa thay đổi. Kiểm tra lại trạng thái." });
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException && ex is not OperationCanceledException)
+                { inspection.Report(new(target.Id, target.App, "", "unknown", "", ex.Message)); }
             }
-            catch (Exception ex) when (ex is not OutOfMemoryException && ex is not OperationCanceledException)
-            { result.Add(new(target.Id, target.App, "", "unknown", "", ex.Message)); }
-        }
-        return result;
-    }, ct);
+            return true;
+        }, token), ct);
+    }
     public Task<string> ExecuteAsync(PcPacket request, Action authorize, CancellationToken ct) => Run(() =>
     {
         authorize();
@@ -48,7 +54,7 @@ internal sealed class PcDesktop : IPcDesktop
         if (request.Command != "ai.send") throw new ArgumentException("Lệnh không được hỗ trợ.");
         var target = Discover().SingleOrDefault(t => t.Id == request.Target) ?? throw new InvalidOperationException("Cửa sổ AI đã đóng hoặc thay đổi. Kiểm tra lại.");
         Restore(target, ct);
-        var first = Read(target); Pause(ct, 200); var current = Read(target);
+        var first = Read(target, ct); Pause(ct, 200); var current = Read(target, ct);
         if (first.Public.Version != current.Public.Version || current.Public.Version != request.Version || first.Public.State != "idle" || current.Public.State != "idle")
             throw new InvalidOperationException("AI hoặc cuộc trò chuyện đã thay đổi, đang bận, có bản nháp hoặc chưa xác định trạng thái. Kiểm tra lại.");
         authorize();
@@ -59,7 +65,7 @@ internal sealed class PcDesktop : IPcDesktop
         authorize();
         ((ValuePattern)valueObject).SetValue(request.Prompt);
         Pause(ct, 250);
-        var filled = Read(target);
+        var filled = Read(target, ct);
         if (filled.Public.Version != request.Version || filled.Busy || filled.Awaiting || filled.Value.TrimEnd('\r', '\n') != request.Prompt)
             throw new InvalidOperationException("Chưa gửi: giao diện thay đổi trong lúc điền. Prompt có thể đang nằm trong ô nhập trên PC.");
         authorize();
@@ -75,9 +81,9 @@ internal sealed class PcDesktop : IPcDesktop
             for (int i = 0; i < 20; i++)
             {
                 Pause(ct, 150);
-                var after = Read(target);
+                var after = Read(target, ct, request.Prompt);
                 if (after.Public.Version != request.Version) throw new TimeoutException();
-                if (string.IsNullOrWhiteSpace(after.Value) && after.Nodes.Any(e => e.Current.ControlType == ControlType.Text && e.Current.Name == request.Prompt))
+                if (string.IsNullOrWhiteSpace(after.Value) && after.Nodes.Any(e => e.Cached.ControlType == ControlType.Text && e.Cached.Name == request.Prompt))
                     return "Đã gửi prompt vào " + current.Public.Conversation + ". AI tự xử lý trong phiên hiện tại.";
             }
             throw new TimeoutException();
@@ -92,7 +98,7 @@ internal sealed class PcDesktop : IPcDesktop
         if (!await worker.WaitAsync(0, ct)) throw new InvalidOperationException("PC đang kiểm tra một ứng dụng. Thử lại sau.");
         var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() => { try { ct.ThrowIfCancellationRequested(); result.TrySetResult(action()); } catch (Exception ex) { result.TrySetException(ex); } finally { worker.Release(); } }) { IsBackground = true, Name = "Lantern PC commands" };
-        thread.SetApartmentState(ApartmentState.STA); thread.Start();
+        thread.SetApartmentState(ApartmentState.MTA); thread.Start();
         return await result.Task.WaitAsync(ct);
     }
     private static void Pause(CancellationToken ct, int milliseconds) { if (ct.WaitHandle.WaitOne(milliseconds)) ct.ThrowIfCancellationRequested(); }
@@ -144,51 +150,57 @@ internal sealed class PcDesktop : IPcDesktop
         { if (IsWindowVisible(target.Window) && !IsIconic(target.Window)) { Pause(ct, 200); return; } Pause(ct, 100); }
         throw new InvalidOperationException("Windows chưa hiện được cửa sổ. Mở ứng dụng từ tray rồi kiểm tra lại.");
     }
-    private static Snapshot Read(Target target)
+    private static Snapshot Read(Target target, CancellationToken ct, string? sentPrompt = null)
     {
+        ct.ThrowIfCancellationRequested();
+        // Fetch relevant controls and their properties in batches. Per-node TreeWalker/Current calls
+        // cross the process boundary thousands of times on a long conversation.
+        var cache = new CacheRequest { TreeScope = TreeScope.Element };
+        foreach (var property in new[] { AutomationElement.NameProperty, AutomationElement.ControlTypeProperty,
+            AutomationElement.IsOffscreenProperty, AutomationElement.BoundingRectangleProperty, AutomationElement.IsEnabledProperty }) cache.Add(property);
+        using var cached = cache.Activate();
         var root = AutomationElement.FromHandle(target.Window) ?? throw new InvalidOperationException("Không đọc được cửa sổ AI.");
-        var nodes = new List<AutomationElement>(); var queue = new Queue<AutomationElement>(); queue.Enqueue(root);
-        var walker = TreeWalker.ControlViewWalker;
-        while (queue.Count > 0 && nodes.Count < 6000)
-        {
-            var node = queue.Dequeue(); nodes.Add(node);
-            for (var child = walker.GetFirstChild(node); child is not null && queue.Count + nodes.Count < 6000; child = walker.GetNextSibling(child)) queue.Enqueue(child);
-        }
-        if (queue.Count > 0 || nodes.Count >= 6000) throw new InvalidOperationException("Giao diện quá lớn để xác định chắc chắn trạng thái. Thu gọn các bảng phụ rồi kiểm tra lại.");
-        bool Visible(AutomationElement e) => !e.Current.IsOffscreen && !e.Current.BoundingRectangle.IsEmpty;
-        var editors = nodes.Where(e => e.Current.ControlType == ControlType.Edit && Visible(e) && e.Current.IsEnabled &&
-            (target.App == "Claude" ? e.Current.Name == "Prompt" : e.Current.Name is "Work with Codex" or "Ask anything" or "Do anything" or "Message ChatGPT" or "Ask ChatGPT")).ToArray();
+        var kinds = new List<Condition> { new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button), new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document),
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ToolBar) };
+        if (sentPrompt is not null) kinds.Add(new AndCondition(new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text), new PropertyCondition(AutomationElement.NameProperty, sentPrompt)));
+        var nodes = root.FindAll(TreeScope.Descendants, new OrCondition(kinds.ToArray())).Cast<AutomationElement>().ToList();
+        ct.ThrowIfCancellationRequested();
+        bool Visible(AutomationElement e) => !e.Cached.IsOffscreen && !e.Cached.BoundingRectangle.IsEmpty;
+        var editors = nodes.Where(e => e.Cached.ControlType == ControlType.Edit && Visible(e) && e.Cached.IsEnabled &&
+            (target.App == "Claude" ? e.Cached.Name == "Prompt" : e.Cached.Name is "Work with Codex" or "Ask anything" or "Do anything" or "Message ChatGPT" or "Ask ChatGPT")).ToArray();
         if (editors.Length != 1) throw new InvalidOperationException("Chưa nhận diện chắc chắn ô nhập của cuộc trò chuyện.");
-        var editor = editors[0]; var bounds = editor.Current.BoundingRectangle;
-        var buttons = nodes.Where(e => e.Current.ControlType == ControlType.Button && Visible(e)).ToArray();
-        bool Near(AutomationElement e) { var b = e.Current.BoundingRectangle; return b.Top >= bounds.Top - 80 && b.Bottom <= bounds.Bottom + 140 && b.Right >= bounds.Left && b.Left <= bounds.Right + 100; }
+        var editor = editors[0]; var bounds = editor.Cached.BoundingRectangle;
+        var buttons = nodes.Where(e => e.Cached.ControlType == ControlType.Button && Visible(e)).ToArray();
+        bool Near(AutomationElement e) { var b = e.Cached.BoundingRectangle; return b.Top >= bounds.Top - 80 && b.Bottom <= bounds.Bottom + 140 && b.Right >= bounds.Left && b.Left <= bounds.Right + 100; }
         var controls = buttons.Where(Near).ToArray();
-        bool busy = controls.Any(e => e.Current.Name is "Stop" or "Stop generating" or "Steer" or "Interrupt");
-        bool awaiting = buttons.Any(e => e.Current.Name is "Allow once" or "Allow this conversation" or "Always allow" or "Deny" or "Approve" or "Reject");
+        bool busy = controls.Any(e => e.Cached.Name is "Stop" or "Stop generating" or "Steer" or "Interrupt");
+        bool awaiting = buttons.Any(e => e.Cached.Name is "Allow once" or "Allow this conversation" or "Always allow" or "Deny" or "Approve" or "Reject");
         if (!editor.TryGetCurrentPattern(ValuePattern.Pattern, out var valueObject) || ((ValuePattern)valueObject).Current.IsReadOnly) throw new InvalidOperationException("Ô nhập không hỗ trợ đọc/đặt giá trị.");
         var value = ((ValuePattern)valueObject).Current.Value;
-        var document = nodes.FirstOrDefault(e => e.Current.ControlType == ControlType.Document && Visible(e));
-        var title = document?.Current.Name ?? "";
+        var document = nodes.FirstOrDefault(e => e.Cached.ControlType == ControlType.Document && Visible(e));
+        var title = document?.Cached.Name ?? "";
         AutomationElement? heading = null;
-        if (target.App == "Claude") heading = buttons.SingleOrDefault(e => e.Current.Name.EndsWith(", rename session", StringComparison.Ordinal));
+        if (target.App == "Claude") heading = buttons.SingleOrDefault(e => e.Cached.Name.EndsWith(", rename session", StringComparison.Ordinal));
         else
         {
             // Scope to the actual chat toolbar, never to a screen coordinate heuristic:
             // sidebars, scrolled message Copy buttons and multi-monitor DPI can share the same row.
-            var toolbar = nodes.SingleOrDefault(e => e.Current.ControlType == ControlType.ToolBar && e.Current.Name == "Chat toolbar" && Visible(e));
+            var toolbar = nodes.SingleOrDefault(e => e.Cached.ControlType == ControlType.ToolBar && e.Cached.Name == "Chat toolbar" && Visible(e));
             if (toolbar is null) throw new InvalidOperationException("Chưa nhận diện được thanh tiêu đề cuộc trò chuyện ChatGPT.");
             var titles = toolbar.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>().Where(Visible).ToArray();
-            heading = titles.FirstOrDefault(e => e.Current.Name == title && title != "ChatGPT") ?? titles.FirstOrDefault(e => e.Current.Name.Length > 0 && e.Current.Name is not ("Share" or "Show tabs" or "Toggle summary" or "Toggle pinned summary"));
-            if (heading is not null && title is not ("" or "ChatGPT") && heading.Current.Name != title) throw new InvalidOperationException("Tiêu đề cửa sổ và cuộc trò chuyện chưa đồng bộ. Kiểm tra lại.");
+            heading = titles.FirstOrDefault(e => title.Length > 0 && title != "ChatGPT" && e.Cached.Name == title) ?? titles.FirstOrDefault(e => e.Cached.Name.Length > 0 && e.Cached.Name is not ("Share" or "Show tabs" or "Toggle summary" or "Toggle pinned summary"));
+            if (heading is not null && title is not ("" or "ChatGPT") && heading.Cached.Name != title) throw new InvalidOperationException("Tiêu đề cửa sổ và cuộc trò chuyện chưa đồng bộ. Kiểm tra lại.");
         }
-        if (heading is not null) title = heading.Current.Name.Replace(", rename session", "", StringComparison.Ordinal);
+        if (heading is not null) title = heading.Cached.Name.Replace(", rename session", "", StringComparison.Ordinal);
         if (title.Length == 0 || title is "Claude" or "Claude Code" or "ChatGPT" or "New chat" || title.Length > 250) throw new InvalidOperationException("Mở sẵn một cuộc trò chuyện để gửi yêu cầu.");
         var identity = target.Id + "|" + title + "|" + string.Join('.', editor.GetRuntimeId()) + "|" + (heading is null ? "" : string.Join('.', heading.GetRuntimeId()));
         string version = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
-        bool recognized = busy || controls.Any(e => IsSend(target, e.Current.Name) || target.App == "Claude" && e.Current.Name == "Press and hold to record");
+        ct.ThrowIfCancellationRequested();
+        bool recognized = busy || controls.Any(e => IsSend(target, e.Cached.Name) || target.App == "Claude" && e.Cached.Name == "Press and hold to record");
         string state = PcAiState.Classify(busy, awaiting, !string.IsNullOrWhiteSpace(value), recognized);
         return new(new(target.Id, target.App, title, state, version, state switch { "busy" => "AI đang xử lý.", "attention" => "AI đang chờ phản hồi/xác nhận trên PC.", "draft" => "Ô nhập có bản nháp; Lantern sẽ không ghi đè.", "idle" => "Sẵn sàng nhận yêu cầu.", _ => "Chưa nhận diện được nút gửi/dừng của AI." }), editor,
-            controls.SingleOrDefault(e => IsSend(target, e.Current.Name) && e.Current.IsEnabled), value, busy, awaiting, nodes);
+            controls.SingleOrDefault(e => IsSend(target, e.Cached.Name) && e.Cached.IsEnabled), value, busy, awaiting, nodes);
     }
     private sealed class DesktopHandle : Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid
     { public DesktopHandle(IntPtr value) : base(true) => SetHandle(value); protected override bool ReleaseHandle() => CloseDesktop(handle); }

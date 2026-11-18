@@ -36,7 +36,7 @@ while (true)
         using var remote = X509CertificateLoader.LoadCertificate(ssl.RemoteCertificate!.GetRawCertData());
         using var remoteKey = remote.GetECDsaPublicKey() ?? throw new AuthenticationException();
         var phone = Convert.ToHexString(SHA256.HashData(remoteKey.ExportSubjectPublicKeyInfo()));
-        bool unlocked = false, pushEnabled = false; long serial = 0;
+        bool unlocked = false, pushEnabled = false; long serial = 0; int inspections = 0;
         while (true)
         {
             var header = new byte[4]; await ssl.ReadExactlyAsync(header, timeout.Token); var length = BinaryPrimitives.ReadInt32BigEndian(header);
@@ -46,9 +46,25 @@ while (true)
             if (type == "send") Console.Error.WriteLine("QA send: " + request.RootElement.GetProperty("text").GetString());
             // Match MobilePacket's serialized defaults, including empty contact arrays on non-list replies.
             var reply = new Dictionary<string, object?> { ["type"] = type == "hello" ? "welcome" : "ok", ["id"] = pc, ["text"] = phone, ["name"] = "QA PC", ["conversations"] = Array.Empty<object>() };
-            if (type == "hello") { reply["capabilities"] = new[] { "sync-v1", "push-v1" }; pushEnabled = request.RootElement.TryGetProperty("capabilities", out var caps) && caps.EnumerateArray().Any(c => c.GetString() == "push-v1"); }
+            if (type == "hello") { reply["capabilities"] = new[] { "sync-v1", "push-v1", "pc-v1" }; pushEnabled = request.RootElement.TryGetProperty("capabilities", out var caps) && caps.EnumerateArray().Any(c => c.GetString() == "push-v1"); }
             else if (request.RootElement.TryGetProperty("id", out var requestId)) reply["id"] = requestId.GetString();
             reply["serial"] = ++serial; reply["conversation"] = request.RootElement.TryGetProperty("conversation", out var selected) ? selected.GetString() : "";
+            if (type == "pc")
+            {
+                reply["type"] = "pc";
+                var action = request.RootElement.GetProperty("pc").GetProperty("action").GetString();
+                if (action == "status") reply["pc"] = new { ai = true, power = false, roots = Array.Empty<object>() };
+                else if (action == "ai.inspect")
+                {
+                    await Task.Delay(1200); inspections++;
+                    if (inspections == 3) { reply["type"] = "error"; reply["text"] = "QA inspection error"; }
+                    else reply["pc"] = new { targets = new[] {
+                        new { id = "claude", app = "Claude", conversation = "QA Claude", state = inspections == 2 ? "unknown" : "busy", version = "", detail = inspections == 2 ? "QA provider timeout" : "AI đang xử lý." },
+                        new { id = "codex", app = "ChatGPT / Codex", conversation = "QA Codex", state = "idle", version = "fixture", detail = "Sẵn sàng nhận yêu cầu." }
+                    } };
+                }
+                else { reply["type"] = "error"; reply["text"] = "Fixture only supports read-only AI status."; }
+            }
             if (type is "list" or "sync") { reply["conversations"] = new[] { new Dictionary<string, object?> { ["id"] = conversation, ["name"] = "QA contact", ["presence"] = "online", ["unread"] = 0, ["locked"] = !unlocked, ["protected"] = true } }; reply["locked"] = !unlocked; }
             if (type == "unlock") { await Task.Delay(1200); unlocked = request.RootElement.GetProperty("password").GetString() == "qa-password"; if (!unlocked) { reply["type"] = "error"; reply["text"] = "Mật khẩu chưa đúng"; } }
             if (type == "lock") unlocked = false;
