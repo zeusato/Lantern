@@ -251,7 +251,7 @@ internal sealed class PcDesktop : IPcDesktop
             var children = editor.FindAll(TreeScope.Children, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)).Cast<AutomationElement>().ToArray();
             // The observed empty composer has a placeholder text node followed by an empty edit node.
             // A real draft equal to the placeholder must still be protected.
-            if (children.Length == 2 && children[0].Cached.Name == content && children[1].Cached.Name.Length == 0) return "";
+            if (children.Length == 2 && children[0].Current.Name == content && children[1].Current.Name.Length == 0) return "";
         }
         return content;
     }
