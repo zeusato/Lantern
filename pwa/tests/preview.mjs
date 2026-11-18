@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 const root = resolve(import.meta.dirname, ".."),
   metadata = JSON.parse(await readFile(process.argv[2], "utf8"));
+const port = Number(process.argv[3] || 5180);
 let active;
 const routes = new Map();
 const write = (res, data, status = 200, type = "application/json") => {
@@ -148,6 +149,6 @@ const server = http.createServer(async (req, res) => {
     write(res, { error: e.message }, 500);
   }
 });
-server.listen(5180, "127.0.0.1", () =>
-  console.log("Local: http://localhost:5180 — synthetic PC fixture only"),
+server.listen(port, "127.0.0.1", () =>
+  console.log(`Local: http://localhost:${port} — synthetic PC fixture only`),
 );

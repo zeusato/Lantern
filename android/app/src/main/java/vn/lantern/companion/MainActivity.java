@@ -37,6 +37,7 @@ public final class MainActivity extends Activity {
     private String selectedName="",replyTo="",renderKey="";private boolean resumed,locked;
     private final Handler tick=new Handler(Looper.getMainLooper());
     private TextView updateBanner;
+    private ConversationSettings conversationSettings;
     private final Runnable updateChanged=this::renderUpdate;
     private final Runnable expiryTick=new Runnable(){public void run(){if(resumed){if(!ConnectionService.selected.isEmpty()&&nextExpiry<=System.currentTimeMillis())renderMessages();tick.postDelayed(this,1000);}}};
     private int dp(float n){return (int)(getResources().getDisplayMetrics().density*n+.5f);}
@@ -49,15 +50,16 @@ public final class MainActivity extends Activity {
     private void rememberDraft(){if(composer==null||composerConversation.isEmpty())return;WindowInsetsCompat insets=ViewCompat.getRootWindowInsets(root);drafts.put(composerConversation,new Draft(composer.getText().toString(),composer.getSelectionStart(),composer.getSelectionEnd(),replyTo,composer.hasFocus(),insets!=null&&insets.isVisible(WindowInsetsCompat.Type.ime())));}
     public Object onRetainNonConfigurationInstance(){if(resumed)rememberDraft();return new Retained(new java.util.HashMap<>(drafts),selectedName);}
     protected void onResume(){super.onResume();resumed=true;ConnectionService.visible=true;ConnectionService.changed=this::refresh;try{if(DeviceKeys.load(this)!=null&&ConnectionService.current==null)startConnection();else if(ConnectionService.current!=null&&!ConnectionService.selected.isEmpty())ConnectionService.current.select(ConnectionService.selected);}catch(Exception e){toast("Không đọc được ghép đôi. Hãy quét QR lại.");}refresh();tick.postDelayed(expiryTick,1000);MobileUpdater.get(this).listen(updateChanged);MobileUpdater.get(this).automatic();}
-    protected void onPause(){rememberDraft();resumed=false;ConnectionService.visible=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());ConnectionService.changed=null;tick.removeCallbacks(expiryTick);MobileUpdater.get(this).unlisten(updateChanged);super.onPause();}
+    protected void onPause(){rememberDraft();if(conversationSettings!=null)conversationSettings.dismiss();resumed=false;ConnectionService.visible=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());ConnectionService.changed=null;tick.removeCallbacks(expiryTick);MobileUpdater.get(this).unlisten(updateChanged);super.onPause();}
     private void build(){
+        if(conversationSettings!=null)conversationSettings.dismiss();
         rememberDraft();replyTo="";composer=null;composerConversation="";messageRows.clear();nextExpiry=Long.MAX_VALUE;renderGeneration++;
         renderKey="";sending=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());root=column();root.setBackgroundColor(BG);root.setPadding(dp(12),dp(12),dp(12),dp(8));setContentView(root);
         ViewCompat.setOnApplyWindowInsetsListener(root,(v,insets)->{androidx.core.graphics.Insets bars=insets.getInsets(WindowInsetsCompat.Type.systemBars()|WindowInsetsCompat.Type.displayCutout());int left=bars.left+dp(12),top=bars.top+dp(8),right=bars.right+dp(12),bottom=Math.max(bars.bottom,insets.getInsets(WindowInsetsCompat.Type.ime()).bottom)+dp(8);if(v.getPaddingLeft()!=left||v.getPaddingTop()!=top||v.getPaddingRight()!=right||v.getPaddingBottom()!=bottom)v.setPadding(left,top,right,bottom);return insets;});ViewCompat.requestApplyInsets(root);
         LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);root.addView(header);
         if(!ConnectionService.selected.isEmpty())header.addView(button("‹",()->openList()),new LinearLayout.LayoutParams(dp(44),dp(44)));
         LinearLayout headings=column();headings.setPadding(dp(8),0,0,0);title=text(ConnectionService.selected.isEmpty()?"Lantern":selectedName,25,TEXT);title.setTypeface(null,Typeface.BOLD);headings.addView(title);subtitle=text(ConnectionService.status,12,MUTED);headings.addView(subtitle);header.addView(headings,new LinearLayout.LayoutParams(0,-2,1));
-        header.addView(button("⋯",this::menu),new LinearLayout.LayoutParams(dp(44),dp(44)));
+        Button options=button("⋯",this::menu);options.setContentDescription("Tùy chọn");header.addView(options,new LinearLayout.LayoutParams(dp(44),dp(44)));
         updateBanner=text("",13,ACCENT);updateBanner.setPadding(dp(8),dp(10),dp(8),0);updateBanner.setOnClickListener(v->openUpdates());root.addView(updateBanner);renderUpdate();
         body=column();LinearLayout.LayoutParams b=new LinearLayout.LayoutParams(-1,0,1);b.topMargin=dp(20);root.addView(body,b);
         if(!ConnectionService.selected.isEmpty()){
@@ -77,6 +79,7 @@ public final class MainActivity extends Activity {
         if(!resumed||subtitle==null)return;subtitle.setText(ConnectionService.status);
         if(!ConnectionService.selected.isEmpty()&&sendButton!=null){sendButton.setEnabled(!sending&&ConnectionService.connected);sendButton.setAlpha(sendButton.isEnabled()?1f:.45f);if(!sending&&!ConnectionService.connected)showAction(ConnectionService.problem.isEmpty()?"Đang kết nối PC · Có thể xem lịch sử đã lưu và soạn tin.":ConnectionService.problem+" · Nội dung đang soạn vẫn được giữ.");}
         if(ConnectionService.selected.isEmpty())renderContacts();else renderMessages();
+        if(conversationSettings!=null)conversationSettings.refresh();
     }
     private void renderContacts(){
         String signature=ConnectionService.conversations.toString()+ConnectionService.status;if(signature.equals(renderKey))return;renderKey=signature;body.removeAllViews();
@@ -100,7 +103,7 @@ public final class MainActivity extends Activity {
         }catch(JSONException ignored){}
     }
     private void renderMessages(){
-        boolean nextLocked=true;for(int i=0;i<ConnectionService.conversations.length();i++){JSONObject c=ConnectionService.conversations.optJSONObject(i);if(c!=null&&ConnectionService.selected.equals(c.optString("id")))nextLocked=c.optBoolean("locked");}
+        boolean nextLocked=true;for(int i=0;i<ConnectionService.conversations.length();i++){JSONObject c=ConnectionService.conversations.optJSONObject(i);if(c!=null&&ConnectionService.selected.equals(c.optString("id"))){nextLocked=c.optBoolean("locked");selectedName=c.optString("name");title.setText(selectedName);}}
         locked=nextLocked;composerBar.setVisibility(locked?View.GONE:View.VISIBLE);if(locked){quote.setVisibility(View.GONE);ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());}
         nextExpiry=Long.MAX_VALUE;
         if(locked){if(!"locked".equals(renderKey)){renderKey="locked";messageRows.clear();messagesBox.removeAllViews();messagesBox.addView(text("🔒  Hội thoại được bảo vệ",21,TEXT));messagesBox.addView(text("Nhập mật khẩu để mở trong phiên kết nối này.",14,MUTED));messagesBox.addView(button("Mở khóa hội thoại",this::unlock));}return;}
@@ -161,14 +164,30 @@ public final class MainActivity extends Activity {
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Mở khóa hội thoại").setView(form).setNegativeButton("Hủy",null).setPositiveButton("Mở khóa",null).create();
         dialog.setOnShowListener(d->{password.requestFocus();dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE);Button confirm=dialog.getButton(AlertDialog.BUTTON_POSITIVE);confirm.setOnClickListener(v->{if(!ConnectionService.connected){state.setText("Đang kết nối lại PC. Đại ca đợi kết nối xong rồi mở khóa.");return;}confirm.setEnabled(false);password.setEnabled(false);progress.setVisibility(View.VISIBLE);state.setText("Đang xác thực mật khẩu với PC…");try{submit(ConnectionService.packet("unlock",conversation).put("password",password.getText().toString()),error->{progress.setVisibility(View.GONE);if(error==null){password.setText("");dialog.dismiss();showAction("Đã mở khóa · Đang đồng bộ tin mới…");}else{state.setText(error);confirm.setEnabled(true);password.setEnabled(true);password.requestFocus();}});}catch(Exception e){confirm.setEnabled(true);password.setEnabled(true);progress.setVisibility(View.GONE);state.setText("Không gửi được yêu cầu mở khóa.");}});});dialog.show();
     }
-    private void messageMenu(JSONObject message){String[] choices={"↳ Trả lời","👍","❤️","😂","😮","😢","😡","🎉","🙏","Gỡ biểu cảm"};new AlertDialog.Builder(this).setItems(choices,(d,i)->{if(i==0){replyTo=message.optString("id");quote.setText("↳ "+message.optString("text",message.optString("fileName"))+"   ×");quote.setMaxLines(2);quote.setVisibility(View.VISIBLE);composer.requestFocus();}else try{submit(ConnectionService.packet("react",ConnectionService.selected).put("messageId",message.getString("id")).put("emoji",i==9?"":choices[i]),this::result);}catch(Exception ignored){}}).show();}
+    private void messageMenu(JSONObject message){if(locked)return;String[] choices={"↳ Trả lời","👍","❤️","😂","😮","😢","😡","🎉","🙏","Gỡ biểu cảm","Xóa tin nhắn","Chọn nhiều tin nhắn"};new AlertDialog.Builder(this).setItems(choices,(d,i)->{if(locked)return;if(i==10){conversationActions().delete(java.util.Set.of(message.optString("id")));return;}if(i==11){conversationActions().selectMessages();return;}if(i==0){replyTo=message.optString("id");quote.setText("↳ "+message.optString("text",message.optString("fileName"))+"   ×");quote.setMaxLines(2);quote.setVisibility(View.VISIBLE);composer.requestFocus();}else try{submit(ConnectionService.packet("react",ConnectionService.selected).put("messageId",message.getString("id")).put("emoji",i==9?"":choices[i]),this::result);}catch(Exception ignored){}}).show();}
     private void attachment(JSONObject message,boolean ready){if(!ready){try{submit(ConnectionService.packet("accept",ConnectionService.selected).put("messageId",message.getString("id")),this::result);}catch(Exception ignored){}return;}ConnectionService service=ConnectionService.current;if(service==null)return;toast("Đang tải tệp từ PC…");service.download(message,file->{try{Uri uri=FileProvider.getUriForFile(this,getPackageName()+".files",file);String mime=getContentResolver().getType(uri);startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri,mime==null?"application/octet-stream":mime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));}catch(Exception e){toast("Điện thoại chưa có ứng dụng mở loại tệp này.");}},this::toast);}
     private void pickFile(){startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),40);}
     private void submit(JSONObject request,java.util.function.Consumer<String> done){ConnectionService service=ConnectionService.current;if(service==null)done.accept("Chưa kết nối PC");else service.submit(request,done);}
     private void result(String error){if(error!=null)toast(error);}
     private void openUpdates(){startActivity(new Intent(this,UpdateActivity.class));}
     private void renderUpdate(){if(updateBanner==null)return;MobileUpdater u=MobileUpdater.get(this);updateBanner.setVisibility(u.release==null?View.GONE:View.VISIBLE);updateBanner.setText(u.ready?"↑ Bản "+u.release.version+" đã tải · Chạm để cập nhật":u.release==null?"":"↑ Có bản "+u.release.version+" · Chạm để xem");}
-    private void menu(){String[] items=ConnectionService.selected.isEmpty()?new String[]{"Ghép đôi PC bằng QR","Ngắt kết nối","Quên PC này","Máy tính","Cập nhật ứng dụng"}:new String[]{"Khóa hội thoại","Danh sách hội thoại","Máy tính","Cập nhật ứng dụng"};new AlertDialog.Builder(this).setItems(items,(d,i)->{if("Máy tính".equals(items[i])){startActivity(new Intent(this,PcActivity.class));return;}if(i==items.length-1){openUpdates();return;}if(!ConnectionService.selected.isEmpty()){if(i==1)openList();else try{submit(ConnectionService.packet("lock",ConnectionService.selected),this::result);ConnectionService.messages=new JSONArray();ConnectionService.clearMedia();}catch(Exception ignored){}return;}if(i==0)scan();else if(i==1)stopService(new Intent(this,ConnectionService.class));else new AlertDialog.Builder(this).setMessage("Xóa ghép đôi trên điện thoại? Đại ca có thể quét QR lại từ PC.").setNegativeButton("Hủy",null).setPositiveButton("Quên PC",(a,b)->{stopService(new Intent(this,ConnectionService.class));DeviceKeys.forget(this);drafts.clear();composerConversation="";openList();}).show();}).show();}
+    private ConversationSettings conversationActions(){
+        if(conversationSettings!=null)conversationSettings.dismiss();String id=ConnectionService.selected;
+        conversationSettings=new ConversationSettings(this,id,ids->{if(!id.equals(ConnectionService.selected))return;if(ids==null){drafts.remove(id);composer.getText().clear();}if(ids==null||ids.contains(replyTo)){replyTo="";quote.setVisibility(View.GONE);}renderKey="";refresh();});return conversationSettings;
+    }
+    private void menu(){
+        String[] items=ConnectionService.selected.isEmpty()?new String[]{"Ghép đôi PC bằng QR","Ngắt kết nối","Quên PC này","Máy tính","Cập nhật ứng dụng"}:new String[]{locked?"Mở khóa hội thoại":"Cài đặt hội thoại","Danh sách hội thoại","Máy tính","Cập nhật ứng dụng"};
+        new AlertDialog.Builder(this).setItems(items,(d,i)->{switch(items[i]){
+            case "Máy tính":startActivity(new Intent(this,PcActivity.class));break;
+            case "Cập nhật ứng dụng":openUpdates();break;
+            case "Cài đặt hội thoại":conversationActions().show();break;
+            case "Mở khóa hội thoại":unlock();break;
+            case "Danh sách hội thoại":openList();break;
+            case "Ghép đôi PC bằng QR":scan();break;
+            case "Ngắt kết nối":stopService(new Intent(this,ConnectionService.class));break;
+            case "Quên PC này":new AlertDialog.Builder(this).setMessage("Xóa ghép đôi trên điện thoại? Đại ca có thể quét QR lại từ PC.").setNegativeButton("Hủy",null).setPositiveButton("Quên PC",(a,b)->{stopService(new Intent(this,ConnectionService.class));DeviceKeys.forget(this);drafts.clear();composerConversation="";openList();}).show();break;
+        }}).show();
+    }
     private void openList(){ConnectionService.selected="";ConnectionService.messages=new JSONArray();ConnectionService.clearMedia();build();}
     private void scan(){new IntentIntegrator(this).setDesiredBarcodeFormats(IntentIntegrator.QR_CODE).setPrompt("Quét QR trong Lantern trên PC").setBeepEnabled(false).setOrientationLocked(false).initiateScan();}
     private void startConnection(){if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},7);startForegroundService(new Intent(this,ConnectionService.class));}

@@ -536,7 +536,7 @@ async function lockApp() {
 function settingsSheet() {
   showSheet(
     "Cài đặt",
-    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.11 r1</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-expression" class="secondary">Đổi phép tính mở khóa</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
+    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.12</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-expression" class="secondary">Đổi phép tính mở khóa</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
   );
   for (const b of sheet.querySelectorAll("[data-theme]"))
     b.onclick = () => {
@@ -859,7 +859,9 @@ function infoSheet() {
       b.classList.toggle("active", b.dataset.tab === type);
     const area = $("#info-content");
     if (type === "settings") {
-      area.innerHTML = `<p><strong>${esc(contact(id)?.name)}</strong></p><p>${contact(id)?.disappearSeconds ? "Tin tự hủy sau " + contact(id).disappearSeconds + " giây kể từ lúc đọc." : "Tin tự hủy đang tắt."}</p>${contact(id)?.protected ? '<button class="secondary wide" id="lock-conversation">Khóa hội thoại ngay</button>' : "<p>Đặt mật khẩu và cấu hình tin tự hủy trong Lantern trên PC.</p>"}`;
+      area.innerHTML = `<p><strong>${esc(contact(id)?.name)}</strong></p>${contact(id)?.isGroup ? "" : '<button class="secondary wide" id="rename-conversation">Đặt tên riêng</button>'}<button class="secondary wide" id="timer-conversation">Tin nhắn tự hủy · ${esc(disappearDuration(contact(id)?.disappearSeconds || 0))}</button>${contact(id)?.protected ? '<button class="secondary wide" id="lock-conversation">Khóa hội thoại ngay</button>' : "<p>Đặt mật khẩu hội thoại trong Lantern trên PC.</p>"}`;
+      if ($("#rename-conversation")) $("#rename-conversation").onclick = () => editConversation("name");
+      $("#timer-conversation").onclick = () => editConversation("timer");
       area.insertAdjacentHTML(
         "beforeend",
         '<button class="text-action wide" id="select-many">Chọn nhiều tin nhắn</button><button class="text-action wide danger-text" id="clear-history">Dọn lịch sử hội thoại</button>',
@@ -938,6 +940,31 @@ function infoSheet() {
   for (const b of sheet.querySelectorAll("[data-tab]"))
     b.onclick = () => tab(b.dataset.tab);
   tab("settings");
+}
+function disappearDuration(seconds) {
+  return ({0:"Tắt",10:"10 giây",30:"30 giây",60:"1 phút",300:"5 phút",3600:"1 giờ",86400:"1 ngày",604800:"7 ngày"})[seconds] || seconds + " giây";
+}
+function editConversation(kind) {
+  const id = current, c = contact(id), owner = state, activeClient = client;
+  if (!c || isLocked(id)) return;
+  if (!activeClient?.ready) { toast("Kết nối PC để lưu tùy chỉnh hội thoại."); return; }
+  if (!activeClient.capabilities.includes("conversation-settings-v1")) { toast("Cập nhật Lantern trên PC để dùng tùy chỉnh hội thoại."); return; }
+  const seconds = c.disappearSeconds || 0, times = [...new Set([0,10,30,60,300,3600,86400,604800,seconds])];
+  showSheet(kind === "name" ? "Đặt tên riêng" : "Tin nhắn tự hủy", `<form id="conversation-settings-form">${kind === "name" ? `<p>Chỉ bạn thấy tên này trên PC và điện thoại. Để trống để dùng tên gốc: ${esc(c.originalName || c.name)}.</p><label>Tên riêng<input id="conversation-setting-value" value="${esc(c.alias || "")}" maxlength="80" autocomplete="off"></label>` : `<p>Áp dụng cho tin mới ở cả hai chiều. Đếm ngược từ khi người nhận đọc; trong nhóm là lượt đọc đầu tiên. Tin và tệp do Lantern lưu sẽ được xóa khi hết giờ.</p><label>Thời gian tự hủy<select id="conversation-setting-value">${times.map(t=>`<option value="${t}" ${t === seconds ? "selected" : ""}>${disappearDuration(t)}</option>`).join("")}</select></label>`}<div class="error" role="alert"></div><button class="primary wide">Lưu thay đổi</button></form>`);
+  const form = $("#conversation-settings-form"), field = $("#conversation-setting-value"), button = form.querySelector("button"), error = form.querySelector(".error");
+  if (kind === "name") field.focus();
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (button.disabled || state !== owner || current !== id || isLocked(id) || isCalculator()) return;
+    button.disabled = true; button.textContent = "Đang lưu trên PC…"; error.textContent = "";
+    try {
+      if (client !== activeClient || !activeClient.ready) throw Error("Kết nối PC đã thay đổi. Hãy thử lại.");
+      const packet = await activeClient.request({type:kind === "name" ? "conversation-rename" : "conversation-timer", conversation:id, ...(kind === "name" ? {name:field.value.trim()} : {disappearSeconds:Number(field.value)})});
+      if (state !== owner) return;
+      update(packet); await save();
+      if (current === id && !isCalculator() && !isLocked(id) && $("#conversation-settings-form") === form) { closeSheet(); toast("Đã lưu tùy chỉnh hội thoại."); infoSheet(); }
+    } catch (e) { error.textContent = e.message; button.disabled = false; button.textContent = "Lưu thay đổi"; }
+  };
 }
 function resizeViewport() {
   if (!$("#app .shell")) return;
@@ -1427,6 +1454,8 @@ function messages() {
 }
 function renderMessages(bottom = false) {
   if (!current || !$("#timeline")) return;
+  $("#chat-name").textContent = contact(current)?.name || "Hội thoại";
+  $("#chat-avatar").textContent = initials(contact(current)?.name);
   const locked = isLocked(current);
   $("#composer-area").hidden = locked;
   $("#info").disabled = locked;
@@ -1625,8 +1654,8 @@ function confirmDelete(ids) {
           m.conversationId !== conversation || (ids && !ids.includes(m.id)),
       );
       clearMedia(conversation);
-      state.histories[conversation] = [];
-      delete state.hashes?.[conversation];
+      // A newer push may already contain the post-delete snapshot. Do not wipe
+      // it before update() rejects an older command response by serial number.
       replyTo = null;
       $("#reply-banner").hidden = true;
       update(packet);

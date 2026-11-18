@@ -52,6 +52,7 @@ internal static class MobileTests
             check(welcome.Type == "welcome" && welcome.Id == identity.Id, relay is null ? "Mobile QR pairing uses mutually authenticated TLS" : "Public managed relay carries end-to-end mutual TLS successfully");
             check(server.Registry.Contains(phone.Id), "Only approved phone certificate is persisted");
             check(welcome.Capabilities.Contains("pc-v1"), "Paired mobile connection negotiates PC command capability");
+            check(welcome.Capabilities.Contains("conversation-settings-v1"), "Phone negotiates conversation settings without assuming an older PC supports them");
             check((await Call(new() { Type = "pc", Pc = new() { Action = "prepare", Command = "power.lock" } })).Type == "error", "TLS PC requests enforce default-deny authority");
             server.Registry.SetAccess(phone.Id, new() { Power = true, Ai = true });
             var inspectionId = Guid.NewGuid().ToString("N");
@@ -69,8 +70,16 @@ internal static class MobileTests
             check((await Call(new() { Type = "list" })).Conversations.Single(c => c.Id == otherId.Id).Protected, "Phone knows protected conversations must stay locked in offline cache");
             check((await Call(new() { Type = "history", Conversation = otherId.Id })).Type == "error", "Locked conversation denies mobile history");
             check((await Call(new() { Type = "send", Id = Guid.NewGuid().ToString("N"), Conversation = otherId.Id, Text = "blocked" })).Type == "error", "Locked conversation denies mobile sending");
+            foreach (var type in new[] { "conversation-rename", "conversation-timer", "clear-history", "delete-messages" })
+                check((await Call(new() { Type = type, Conversation = otherId.Id, Name = "Denied", DisappearSeconds = 60 })).Type == "error", "Locked conversation denies mobile " + type);
             check((await Call(new() { Type = "unlock", Conversation = otherId.Id, Password = "wrong" })).Type == "error", "Wrong conversation password is rejected");
             check((await Call(new() { Type = "unlock", Conversation = otherId.Id, Password = "conversation-secret" })).Type == "ok", "Phone unlock verifies the PC password");
+            var renamed = await Call(new() { Type = "conversation-rename", Conversation = otherId.Id, Name = "  Bạn thân  " });
+            check(renamed.Conversations.Single(c => c.Id == otherId.Id) is { Name: "Bạn thân", Alias: "Bạn thân", OriginalName: "Đối tác" }
+                && node.FindPeer(otherId.Id)?.Name == "Đối tác" && other.FindPeer(identity.Id)?.Name == "PC thử nghiệm", "Phone alias updates PC and companion metadata without changing the partner's identity");
+            check((await Call(new() { Type = "conversation-rename", Conversation = otherId.Id, Name = "Bad\nname" })).Type == "error", "Phone aliases reject control characters");
+            await Call(new() { Type = "conversation-rename", Conversation = otherId.Id, Name = "" });
+            check(node.FindPeer(otherId.Id)?.DisplayName == "Đối tác", "Clearing a phone alias restores the partner's original name");
             var requestId = Guid.NewGuid().ToString("N");
             var sent = await Call(new() { Type = "send", Id = requestId, Conversation = otherId.Id, Text = "Xin chào từ điện thoại 🙂" });
             var duplicate = await Call(new() { Type = "send", Id = requestId, Conversation = otherId.Id, Text = "Xin chào từ điện thoại 🙂" });
@@ -102,12 +111,29 @@ internal static class MobileTests
             check(store.Message(upload.MessageId)?.Hash == hash, "Mobile file upload checks length and SHA-256 before offering to LAN peer");
             var chunk = await Call(new() { Type = "download", Conversation = otherId.Id, MessageId = upload.MessageId });
             check(Convert.FromBase64String(chunk.Data).SequenceEqual(bytes[..32768]), "Mobile attachment download returns verified message-owned bytes");
+            foreach (var seconds in new[] { -1, 5, 604801 })
+                check((await Call(new() { Type = "conversation-timer", Conversation = otherId.Id, DisappearSeconds = seconds })).Type == "error", "Phone timer rejects invalid duration " + seconds);
+            var timer = await Call(new() { Type = "conversation-timer", Conversation = otherId.Id, DisappearSeconds = 60 });
+            check(timer.Conversations.Single(c => c.Id == otherId.Id).DisappearSeconds == 60 && store.Message(sent.MessageId)?.DisappearAfterSeconds == 0, "Phone timer applies to future messages and returns the saved value");
+            for (int i = 0; i < 100 && otherStore.Policies().All(p => p.Id != identity.Id || p.DisappearSeconds != 60); i++) await Task.Delay(20);
+            check(otherStore.Policies().Any(p => p.Id == identity.Id && p.DisappearSeconds == 60), "Phone timer policy synchronizes with the LAN partner");
+            var timed = await Call(new() { Type = "send", Id = Guid.NewGuid().ToString("N"), Conversation = otherId.Id, Text = "Mobile timer test" });
+            check(store.Message(timed.MessageId) is { DisappearAfterSeconds: 60, ExpiresAt: null }, "Phone timer does not start before the recipient reads");
+            var version = store.HistoryVersions().GetValueOrDefault(otherId.Id);
+            var deleted = await Call(new() { Type = "delete-messages", Conversation = otherId.Id, MessageIds = [timed.MessageId, reply.MessageId] });
+            check(store.Message(timed.MessageId) is null && store.Message(reply.MessageId) is null && store.Message(sent.MessageId) is not null
+                && deleted.Conversations.Single(c => c.Id == otherId.Id).HistoryVersion > version, "Mobile multi-delete retains other messages and returns cache invalidation metadata");
+            await Call(new() { Type = "conversation-timer", Conversation = otherId.Id, DisappearSeconds = 0 });
             server.LockConversation(otherId.Id);
             var expired = store.Message(sent.MessageId)!; expired.DisappearAfterSeconds = 10; expired.ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(-1); store.SaveMessage(expired); store.RemoveExpired(DateTimeOffset.UtcNow);
             await Call(new() { Type = "unlock", Conversation = otherId.Id, Password = "conversation-secret" });
             check((await Call(new() { Type = "send", Id = requestId, Conversation = otherId.Id, Text = "Xin chào từ điện thoại 🙂" })).Type == "gone" && store.Message(sent.MessageId) is null, "Retry after message expiry never resurrects deleted content");
             server.LockConversation(otherId.Id);
             check((await Call(new() { Type = "download", Conversation = otherId.Id, MessageId = upload.MessageId })).Type == "error", "PC manual lock also denies mobile attachment access");
+            await Call(new() { Type = "unlock", Conversation = otherId.Id, Password = "conversation-secret" });
+            var cleared = await Call(new() { Type = "clear-history", Conversation = otherId.Id });
+            check(cleared.Messages.Count == 0 && store.Messages(otherId.Id).Count == 0 && cleared.Conversations.Single(c => c.Id == otherId.Id).Protected
+                && otherStore.Messages(identity.Id).Count > 0, "Phone history clearing preserves the conversation password, contact and partner's copy");
             await server.RevokeAsync(phone.Id);
             bool denied = false; try { await Call(new() { Type = "list" }); } catch (Exception) { denied = true; }
             check(denied && !server.Registry.Contains(phone.Id), "Revocation closes an active phone connection");

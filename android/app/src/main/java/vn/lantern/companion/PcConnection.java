@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 
 final class PcConnection implements AutoCloseable {
     private SSLSocket socket; private RelayBridge relay; private DataInputStream input; private DataOutputStream output;
-    boolean fastSync,pushSync,pcCommands;
+    boolean fastSync,pushSync,pcCommands,conversationSettings;
     volatile java.util.function.Consumer<JSONObject> onPush=ignored->{};
     volatile Runnable onDisconnect=()->{};
     private final ConcurrentHashMap<String,CompletableFuture<JSONObject>> pending=new ConcurrentHashMap<>();
@@ -44,6 +44,7 @@ final class PcConnection implements AutoCloseable {
             JSONArray capabilities=welcome.optJSONArray("capabilities");if(capabilities!=null)for(int i=0;i<capabilities.length();i++){if("sync-v1".equals(capabilities.optString(i)))fastSync=true;if("push-v1".equals(capabilities.optString(i)))pushSync=true;}
             socket.setSoTimeout(30000);
             if(capabilities!=null)for(int i=0;i<capabilities.length();i++)if("pc-v1".equals(capabilities.optString(i)))pcCommands=true;
+            if(capabilities!=null)for(int i=0;i<capabilities.length();i++)if("conversation-settings-v1".equals(capabilities.optString(i)))conversationSettings=true;
             if(pushSync){Thread reader=new Thread(this::readLoop,"lantern-pc-events");reader.setDaemon(true);reader.start();}
         }catch(Exception e){close();throw e;}
     }

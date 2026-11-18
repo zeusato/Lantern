@@ -206,7 +206,7 @@ public sealed class MobileServer : IAsyncDisposable
             }
             else if (routeId is not null && known.Route?.Id != routeId) throw new AuthenticationException();
             if (clients.TryGetValue(deviceId, out var old)) old.Stop.Cancel(); clients[deviceId] = client;
-            await MobileProtocol.WriteAsync(ssl, new MobilePacket { Type = "welcome", Name = node.Identity.Name, Id = node.Identity.Id, Capabilities = PcControl is null ? ["sync-v1", "push-v1"] : ["sync-v1", "push-v1", "pc-v1"] }, stop.Token);
+            await MobileProtocol.WriteAsync(ssl, new MobilePacket { Type = "welcome", Name = node.Identity.Name, Id = node.Identity.Id, Capabilities = PcControl is null ? ["sync-v1", "push-v1", "conversation-settings-v1"] : ["sync-v1", "push-v1", "pc-v1", "conversation-settings-v1"] }, stop.Token);
             if (hello.Capabilities?.Contains("push-v1") == true)
             {
                 onChange = () => { try { if (updates.CurrentCount == 0) updates.Release(); } catch (SemaphoreFullException) { } catch (ObjectDisposedException) { } };
@@ -268,18 +268,31 @@ public sealed class MobileServer : IAsyncDisposable
     private async Task<MobilePacket> Handle(Client client, string deviceId, MobilePacket request, CancellationToken ct)
     {
         var reply = new MobilePacket { Type = "ok", Conversation = request.Conversation };
-        if (request.Type is "delete-messages" or "clear-history")
+        if (request.Type is "delete-messages" or "clear-history" or "conversation-rename" or "conversation-timer")
         {
             ValidateConversation(client, request.Conversation);
-            if (request.Type == "clear-history") await node.DeleteConversationHistoryAsync(request.Conversation);
-            else await node.DeleteMessagesAsync(request.Conversation, request.MessageIds.ToHashSet());
-            FillHistory(reply, ""); return reply;
+            await mutations.WaitAsync(ct);
+            try
+            {
+                ValidateConversation(client, request.Conversation);
+                switch (request.Type)
+                {
+                    case "clear-history": await node.DeleteConversationHistoryAsync(request.Conversation); break;
+                    case "delete-messages": await node.DeleteMessagesAsync(request.Conversation, request.MessageIds.ToHashSet()); break;
+                    case "conversation-rename": node.SetPeerAlias(request.Conversation, request.Name); break;
+                    case "conversation-timer": await node.SetDisappearTimerAsync(request.Conversation, request.DisappearSeconds, deliverInBackground: true); break;
+                }
+            }
+            finally { mutations.Release(); }
+            // Return the authoritative settings and history together, including the
+            // deletion version, so phones never render a stale cached conversation.
+            return await Handle(client, deviceId, new MobilePacket { Type = "sync", Conversation = request.Conversation }, ct);
         }
         if (request.Type is "list" or "sync")
         {
             if (request.Type == "sync") client.Selected = request.Conversation;
             var unread = node.Store.UnreadCounts();
-            reply.Conversations = node.Peers.Where(p => p.Trusted && !p.Blocked).Select(p => new MobileConversation(p.Id, p.DisplayName, p.Connected ? p.Presence : "offline", unread.GetValueOrDefault(p.Id), Locked(client, p.Id), false, vault.IsConversationLocked(p.Id)))
+            reply.Conversations = node.Peers.Where(p => p.Trusted && !p.Blocked).Select(p => new MobileConversation(p.Id, p.DisplayName, p.Connected ? p.Presence : "offline", unread.GetValueOrDefault(p.Id), Locked(client, p.Id), false, vault.IsConversationLocked(p.Id), Alias: p.LocalAlias, OriginalName: p.Name))
                 .Concat(node.Store.Groups().Where(g => g.Members.Contains(node.Identity.Id)).Select(g => new MobileConversation(g.Id, g.Name, "group", unread.GetValueOrDefault(g.Id), Locked(client, g.Id), true, vault.IsConversationLocked(g.Id)))).ToList();
             if (request.Type == "sync" && request.Conversation.Length > 0)
             {

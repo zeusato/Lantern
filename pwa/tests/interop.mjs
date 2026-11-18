@@ -119,6 +119,11 @@ try {
     snapshot.type === "ok" && snapshot.messages.length >= 30,
     "Load real PC history over encrypted web channel",
   );
+  const renamed = await rpc({type:"conversation-rename",conversation:metadata.conversation,name:"Web private alias"});
+  check(renamed.conversations.find(c=>c.id===metadata.conversation)?.alias === "Web private alias", "PWA changes its account's private conversation alias");
+  const timer = await rpc({type:"conversation-timer",conversation:metadata.conversation,disappearSeconds:300});
+  check(timer.conversations.find(c=>c.id===metadata.conversation)?.disappearSeconds === 300, "PWA receives saved self-destruct policy from PC");
+  await rpc({type:"conversation-timer",conversation:metadata.conversation,disappearSeconds:0});
   const request = {
     type: "send",
     conversation: metadata.conversation,
@@ -146,6 +151,8 @@ try {
     "Deleted send cannot be resurrected by retry",
   );
   await command("fixture-lock");
+  for (const type of ["conversation-rename","conversation-timer"])
+    check((await rpc({type,conversation:metadata.conversation,name:"Denied",disappearSeconds:60})).type === "error", "Locked PWA conversation denies " + type);
   check(
     (
       await rpc({

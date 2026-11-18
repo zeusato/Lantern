@@ -339,14 +339,15 @@ public sealed class PeerNode : IAsyncDisposable
     private bool ConversationHasPeer(ChatMessage message, string peerId) => message.GroupId.Length == 0
         ? message.ConversationId == peerId
         : Store.Groups().Any(g => g.Id == message.GroupId && g.Members.Contains(peerId) && g.Members.Contains(Identity.Id));
-    public async Task SetDisappearTimerAsync(string conversationId, int seconds)
+    public async Task SetDisappearTimerAsync(string conversationId, int seconds, bool deliverInBackground = false)
     {
         if (seconds != 0 && seconds is < 10 or > 604800) throw new ArgumentException("Thời gian tự hủy phải từ 10 giây đến 7 ngày.");
         var recipients = Recipients(conversationId);
         var policy = new ConversationPolicy { Id = conversationId, Actor = Identity.Id, DisappearSeconds = seconds, Revision = checked((Store.Policies().Find(p => p.Id == conversationId)?.Revision ?? 0) + 1) };
         if (seconds > 0 && recipients.Any(id => peers[id].ProtocolVersion < 2)) throw new InvalidOperationException("Tin tự hủy yêu cầu tất cả thành viên dùng Lantern 1.1 trở lên.");
         Store.SavePolicy(policy); Changed?.Invoke();
-        foreach (var peer in recipients) await SendPolicy(peer, policy);
+        async Task Deliver() { foreach (var peer in recipients) await SendPolicy(peer, policy); }
+        if (deliverInBackground) Track(Deliver()); else await Deliver();
     }
     private Task SendPolicy(string peerId, ConversationPolicy policy)
     {

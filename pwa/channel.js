@@ -167,6 +167,7 @@ export class Client {
     this.pending = new Map();
     this.stopped = false;
     this.ready = false;
+    this.capabilities = [];
     this.attempt = 0;
   }
   async connect() {
@@ -211,6 +212,7 @@ export class Client {
         return;
       }
       this.ready = true;
+      this.capabilities = hello.capabilities || [];
       this.onState("online", hello);
       this.heartbeat = setInterval(() => {
         if (this.pending.size === 0)
