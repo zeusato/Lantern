@@ -53,6 +53,11 @@ internal sealed class PcDesktop : IPcDesktop
         }
         if (request.Command != "ai.send") throw new ArgumentException("Lệnh không được hỗ trợ.");
         var target = Discover().SingleOrDefault(t => t.Id == request.Target) ?? throw new InvalidOperationException("Cửa sổ AI đã đóng hoặc thay đổi. Kiểm tra lại.");
+        return Send(target, request, authorize, ct);
+    }, ct);
+
+    private static string Send(Target target, PcPacket request, Action authorize, CancellationToken ct)
+    {
         Restore(target, ct);
         var first = Read(target, ct); Pause(ct, 200); var current = Read(target, ct);
         if (first.Public.Version != current.Public.Version || current.Public.Version != request.Version || first.Public.State != "idle" || current.Public.State != "idle")
@@ -82,14 +87,16 @@ internal sealed class PcDesktop : IPcDesktop
             {
                 Pause(ct, 150);
                 var after = Read(target, ct, request.Prompt);
-                if (after.Public.Version != request.Version) throw new TimeoutException();
+                // The first send can give a new conversation its title/URL. The document must
+                // still be the one whose composer we checked before invoking Send.
+                if (after.Public.Version != request.Version && !(current.NewConversation && after.DocumentId == current.DocumentId && current.DocumentId.Length > 0)) throw new TimeoutException();
                 if (string.IsNullOrWhiteSpace(after.Value) && after.Nodes.Any(e => e.Cached.ControlType == ControlType.Text && e.Cached.Name == request.Prompt))
                     return "Đã gửi prompt vào " + current.Public.Conversation + ". AI tự xử lý trong phiên hiện tại.";
             }
             throw new TimeoutException();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException) { throw new TimeoutException("Chưa xác nhận được việc gửi. Kiểm tra chat trên PC trước khi gửi lại.", ex); }
-    }, ct);
+    }
 
     // A hung third-party UIA provider cannot create an unbounded queue or execute late commands.
     // Keep the one worker occupied until its actual thread exits; all mutation checkpoints recheck cancellation.
@@ -104,7 +111,7 @@ internal sealed class PcDesktop : IPcDesktop
     private static void Pause(CancellationToken ct, int milliseconds) { if (ct.WaitHandle.WaitOne(milliseconds)) ct.ThrowIfCancellationRequested(); }
     private sealed record Target(string Id, string App, int ProcessId, IntPtr Window);
     private static bool IsSend(Target target, string name) => name == "Send" || target.App == "Claude" && name == "Send message";
-    private sealed record Snapshot(PcTarget Public, AutomationElement? Editor, AutomationElement? Send, string Value, bool Busy, bool Awaiting, List<AutomationElement> Nodes);
+    private sealed record Snapshot(PcTarget Public, AutomationElement? Editor, AutomationElement? Send, string Value, bool Busy, bool Awaiting, List<AutomationElement> Nodes, string DocumentId, bool NewConversation);
     private static List<Target> Discover()
     {
         var processes = new Dictionary<int, (string App, long Started)>();
@@ -164,22 +171,34 @@ internal sealed class PcDesktop : IPcDesktop
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button), new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document),
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ToolBar) };
         if (sentPrompt is not null) kinds.Add(new AndCondition(new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text), new PropertyCondition(AutomationElement.NameProperty, sentPrompt)));
-        var nodes = root.FindAll(TreeScope.Descendants, new OrCondition(kinds.ToArray())).Cast<AutomationElement>().ToList();
+        var editorNodes = root.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit)).Cast<AutomationElement>().ToList();
         ct.ThrowIfCancellationRequested();
         bool Visible(AutomationElement e) => !e.Cached.IsOffscreen && !e.Cached.BoundingRectangle.IsEmpty;
-        var editors = nodes.Where(e => e.Cached.ControlType == ControlType.Edit && Visible(e) && e.Cached.IsEnabled &&
+        var editors = editorNodes.Where(e => Visible(e) && e.Cached.IsEnabled &&
             (target.App == "Claude" ? e.Cached.Name == "Prompt" : e.Cached.Name is "Work with Codex" or "Ask anything" or "Do anything" or "Message ChatGPT" or "Ask ChatGPT")).ToArray();
         if (editors.Length != 1) throw new InvalidOperationException("Chưa nhận diện chắc chắn ô nhập của cuộc trò chuyện.");
         var editor = editors[0]; var bounds = editor.Cached.BoundingRectangle;
+        // Electron exposes an outer shell document as well as the active chat. Only the
+        // document containing this composer may supply its title, buttons and session URL.
+        AutomationElement? document = null;
+        for (var parent = TreeWalker.ControlViewWalker.GetParent(editor, cache); parent is not null; parent = TreeWalker.ControlViewWalker.GetParent(parent, cache))
+        {
+            ct.ThrowIfCancellationRequested();
+            if (parent.Cached.ControlType == ControlType.Document) { document = parent; break; }
+            if (parent == root) break;
+        }
+        var nodes = (document ?? root).FindAll(TreeScope.Descendants, new OrCondition(kinds.ToArray())).Cast<AutomationElement>().ToList();
+        ct.ThrowIfCancellationRequested();
         var buttons = nodes.Where(e => e.Cached.ControlType == ControlType.Button && Visible(e)).ToArray();
         bool Near(AutomationElement e) { var b = e.Cached.BoundingRectangle; return b.Top >= bounds.Top - 80 && b.Bottom <= bounds.Bottom + 140 && b.Right >= bounds.Left && b.Left <= bounds.Right + 100; }
         var controls = buttons.Where(Near).ToArray();
-        bool busy = controls.Any(e => e.Cached.Name is "Stop" or "Stop generating" or "Steer" or "Interrupt");
-        bool awaiting = buttons.Any(e => e.Cached.Name is "Allow once" or "Allow this conversation" or "Always allow" or "Deny" or "Approve" or "Reject");
+        bool busy = controls.Any(e => e.Cached.IsEnabled && e.Cached.Name is "Stop" or "Stop generating" or "Steer" or "Interrupt");
+        bool awaiting = buttons.Any(e => e.Cached.IsEnabled && e.Cached.Name is "Allow once" or "Allow this conversation" or "Always allow" or "Deny" or "Approve" or "Reject");
         if (!editor.TryGetCurrentPattern(ValuePattern.Pattern, out var valueObject) || ((ValuePattern)valueObject).Current.IsReadOnly) throw new InvalidOperationException("Ô nhập không hỗ trợ đọc/đặt giá trị.");
         var value = ((ValuePattern)valueObject).Current.Value;
-        var document = nodes.FirstOrDefault(e => e.Cached.ControlType == ControlType.Document && Visible(e));
         var title = document?.Cached.Name ?? "";
+        var route = document?.TryGetCurrentPattern(ValuePattern.Pattern, out var documentValue) == true ? ((ValuePattern)documentValue).Current.Value : "";
+        var documentId = document is null ? "" : string.Join('.', document.GetRuntimeId());
         AutomationElement? heading = null;
         if (target.App == "Claude") heading = buttons.SingleOrDefault(e => e.Cached.Name.EndsWith(", rename session", StringComparison.Ordinal));
         else
@@ -187,20 +206,26 @@ internal sealed class PcDesktop : IPcDesktop
             // Scope to the actual chat toolbar, never to a screen coordinate heuristic:
             // sidebars, scrolled message Copy buttons and multi-monitor DPI can share the same row.
             var toolbar = nodes.SingleOrDefault(e => e.Cached.ControlType == ControlType.ToolBar && e.Cached.Name == "Chat toolbar" && Visible(e));
-            if (toolbar is null) throw new InvalidOperationException("Chưa nhận diện được thanh tiêu đề cuộc trò chuyện ChatGPT.");
-            var titles = toolbar.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>().Where(Visible).ToArray();
-            heading = titles.FirstOrDefault(e => title.Length > 0 && title != "ChatGPT" && e.Cached.Name == title) ?? titles.FirstOrDefault(e => e.Cached.Name.Length > 0 && e.Cached.Name is not ("Share" or "Show tabs" or "Toggle summary" or "Toggle pinned summary"));
-            if (heading is not null && title is not ("" or "ChatGPT") && heading.Cached.Name != title) throw new InvalidOperationException("Tiêu đề cửa sổ và cuộc trò chuyện chưa đồng bộ. Kiểm tra lại.");
+            if (toolbar is not null)
+            {
+                var titles = toolbar.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>().Where(Visible).ToArray();
+                heading = titles.FirstOrDefault(e => title.Length > 0 && title != "ChatGPT" && e.Cached.Name == title) ?? titles.FirstOrDefault(e => e.Cached.Name.Length > 0 && e.Cached.Name is not ("Share" or "Show tabs" or "Toggle summary" or "Toggle pinned summary"));
+                if (heading is not null && !PcAiState.IsUntitled(title) && heading.Cached.Name != title) throw new InvalidOperationException("Tiêu đề cửa sổ và cuộc trò chuyện chưa đồng bộ. Kiểm tra lại.");
+            }
+            else if (document is null) throw new InvalidOperationException("Chưa nhận diện được cuộc trò chuyện đang mở.");
         }
         if (heading is not null) title = heading.Cached.Name.Replace(", rename session", "", StringComparison.Ordinal);
-        if (title.Length == 0 || title is "Claude" or "Claude Code" or "ChatGPT" or "New chat" || title.Length > 250) throw new InvalidOperationException("Mở sẵn một cuộc trò chuyện để gửi yêu cầu.");
-        var identity = target.Id + "|" + title + "|" + string.Join('.', editor.GetRuntimeId()) + "|" + (heading is null ? "" : string.Join('.', heading.GetRuntimeId()));
+        if (title.Length > 250) throw new InvalidOperationException("Chưa đọc được tên cuộc trò chuyện.");
+        bool newConversation = PcAiState.IsUntitled(title);
+        // Pin to the actual document route when available, so named/unnamed tabs cannot
+        // collide and an auto-generated title does not invalidate the same conversation.
+        var identity = target.Id + "|" + documentId + "|" + (route.Length > 0 ? route : title + "|" + (heading is null ? "" : string.Join('.', heading.GetRuntimeId()))) + "|" + string.Join('.', editor.GetRuntimeId());
         string version = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
         ct.ThrowIfCancellationRequested();
         bool recognized = busy || controls.Any(e => IsSend(target, e.Cached.Name) || target.App == "Claude" && e.Cached.Name == "Press and hold to record");
         string state = PcAiState.Classify(busy, awaiting, !string.IsNullOrWhiteSpace(value), recognized);
-        return new(new(target.Id, target.App, title, state, version, state switch { "busy" => "AI đang xử lý.", "attention" => "AI đang chờ phản hồi/xác nhận trên PC.", "draft" => "Ô nhập có bản nháp; Lantern sẽ không ghi đè.", "idle" => "Sẵn sàng nhận yêu cầu.", _ => "Chưa nhận diện được nút gửi/dừng của AI." }), editor,
-            controls.SingleOrDefault(e => IsSend(target, e.Cached.Name) && e.Cached.IsEnabled), value, busy, awaiting, nodes);
+        return new(new(target.Id, target.App, newConversation ? "Hội thoại mới" : title, state, version, state switch { "busy" => "AI đang xử lý.", "attention" => "AI đang chờ phản hồi/xác nhận trên PC.", "draft" => "Ô nhập có bản nháp; Lantern sẽ không ghi đè.", "idle" => "Sẵn sàng nhận yêu cầu.", _ => "Chưa nhận diện được nút gửi/dừng của AI." }), editor,
+            controls.SingleOrDefault(e => IsSend(target, e.Cached.Name) && e.Cached.IsEnabled), value, busy, awaiting, nodes, documentId, newConversation);
     }
     private sealed class DesktopHandle : Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid
     { public DesktopHandle(IntPtr value) : base(true) => SetHandle(value); protected override bool ReleaseHandle() => CloseDesktop(handle); }

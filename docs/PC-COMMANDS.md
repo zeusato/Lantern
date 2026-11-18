@@ -21,9 +21,11 @@ Không hỗ trợ UNC, ổ mạng, junction/symlink, tệp hệ thống, ADS ho�
 - Tìm Claude hoặc ChatGPT/Codex đang chạy, khôi phục cửa sổ thu nhỏ/ẩn bằng Windows, rồi đọc UI Automation. Không chụp màn hình và không phát sinh phiên screen capture.
 - Nếu app chỉ còn tiến trình tray và không có cửa sổ hợp lệ, trả trạng thái chưa xác định; cần mở từ tray trên PC. Windows đang khóa cũng không cho thao tác AI.
 - Phân biệt sẵn sàng, đang làm việc, chờ xác nhận, có bản nháp và chưa xác định. Chỉ trạng thái sẵn sàng mới cho gửi. Không tự bấm duyệt quyền hoặc xóa bản nháp.
+- Hội thoại mới chưa có tên vẫn có thể sẵn sàng. Lantern đọc đúng vùng chứa ô nhập hiện tại; tên lớp vỏ ứng dụng và nút dừng bị vô hiệu hóa không quyết định trạng thái chat.
 - Lượt kiểm tra có giới hạn 8 giây trên PC, giữ kết quả đã đọc được nếu ứng dụng khác phản hồi chậm. Android hiện tiến trình, chặn bấm lặp và cho kiểm tra lại sau lỗi hoặc khi quay lại màn hình.
 - Đọc trạng thái hai lần và kiểm tra lại cửa sổ/cuộc trò chuyện ngay trước khi gửi. Đặt prompt bằng ValuePattern và gọi nút Send bằng InvokePattern, không dùng tọa độ chuột hay gõ phím toàn cục. Windows có thể không cho giành focus; adapter vẫn nhắm trực tiếp đúng control trong cửa sổ đã hiện.
-- Mã nhận diện gồm tiến trình, thời điểm khởi động, HWND, tên cuộc trò chuyện và runtime ID của ô nhập/tiêu đề. Đây không phải API thread ID chính thức: hai cuộc trò chuyện trùng tên mà ứng dụng tái sử dụng control có thể không phân biệt được. Tránh đổi cuộc trò chuyện trên PC trong lúc xác nhận/gửi từ điện thoại.
+- Mã nhận diện gồm tiến trình, thời điểm khởi động, HWND, runtime ID của vùng chat/ô nhập và địa chỉ hội thoại khi ứng dụng cung cấp; địa chỉ chỉ được băm để so khớp, không trả về điện thoại. Nếu không có địa chỉ, dùng tên và runtime ID tiêu đề làm dự phòng. Đây không phải API thread ID chính thức: trong trường hợp dự phòng, hai cuộc trò chuyện trùng tên và dùng lại control có thể không phân biệt được. Tránh đổi cuộc trò chuyện trên PC trong lúc xác nhận/gửi từ điện thoại.
+- Sau lần gửi đầu tiên, app AI có thể tạo tên/địa chỉ mới. Lantern chỉ xác nhận khi vẫn ở cùng vùng chat, ô nhập đã trống và tìm thấy đúng nội dung vừa gửi; không tự gửi lại khi kết quả chưa rõ.
 - UI và nhãn điều khiển của ứng dụng AI có thể thay đổi. Phiên bản không nhận diện được sẽ từ chối. Không hỗ trợ tab AI trong trình duyệt.
 - Nếu giao diện đổi sau khi điền, prompt có thể còn trong ô nhập trên PC mà chưa gửi. Nếu không xác nhận được sau khi bấm Send, báo kết quả chưa rõ và không tự gửi lại.
 
