@@ -591,13 +591,20 @@ public partial class MainWindow : Window
         var popup = new System.Windows.Controls.Primitives.Popup { PlacementTarget = EmojiButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Top, StaysOpen = false, AllowsTransparency = true }; emojiPopup = popup;
         var border = new Border { Child = panel, Padding = new Thickness(18), CornerRadius = new CornerRadius(16), BorderThickness = new Thickness(1) };
         border.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush"); border.SetResourceReference(Border.BorderBrushProperty, "LineBrush"); popup.Child = border;
-        panel.Children.Add(new EmojiPalette(face => { var at = Composer.SelectionStart; var insertion = EmojiAssets.ForInsertion(Composer.Text, at, Composer.SelectionLength, face); Composer.SelectedText = insertion; Composer.CaretIndex = Math.Min(at + insertion.Length, Composer.Text.Length); popup.IsOpen = false; Composer.Focus(); }));
+        panel.Children.Add(new EmojiPalette(face => { InsertEmoji(face); popup.IsOpen = false; Composer.Focus(); }));
         var auto = new CheckBox { Content = "Tự đổi ký hiệu thành emoji", IsChecked = App.Settings.AutoEmoticons, Margin = new Thickness(0, 14, 0, 8) };
         auto.SetResourceReference(Control.ForegroundProperty, "TextBrush");
         auto.Click += (_, _) => { App.Settings.AutoEmoticons = auto.IsChecked == true; App.SaveSettings(); }; panel.Children.Add(auto);
         panel.Children.Add(EmojiAssets.MessageText(":) → 🙂   :D → 😃   ;) → 😉   <3 → ❤️"));
         popup.Opened += (_, _) => { if (!ScreenCaptureProtection.ProtectPopup(border, this)) popup.IsOpen = false; };
         popup.IsOpen = true;
+    }
+    private void InsertEmoji(string face)
+    {
+        var at = Composer.SelectionStart;
+        var insertion = EmojiAssets.ForInsertion(Composer.Text, at, Composer.SelectionLength, face);
+        if (App.Settings.AutoEmoticons) insertion = Emoticons.Replace(insertion, includeTrailing: false);
+        Composer.SelectedText = insertion; Composer.CaretIndex = Math.Min(at + insertion.Length, Composer.Text.Length);
     }
     private void WindowKeyDown(object sender, KeyEventArgs e)
     {

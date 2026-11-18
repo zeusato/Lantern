@@ -104,6 +104,8 @@ internal sealed partial class UiHarness
             Check(bar.Visibility == Visibility.Visible && !summary.Text.Contains(messages[80].Text), "Deleting the selected pin falls back to a remaining pin");
             store.PinMessage(messages[0].Id, false); store.PinMessage(messages[160].Id, false); Call(window, "RefreshConversation");
             Check(bar.Visibility == Visibility.Collapsed, "Removing the last pin hides the banner");
+            var composer = (TextBox)window.FindName("Composer"); composer.Text = "hello world"; composer.Select(5, 1); Call(window, "InsertEmoji", "/-heart");
+            Check(composer.Text == "hello ❤️ world" && composer.CaretIndex == "hello ❤️ ".Length, "Inserting an auto-converted emoji within text keeps the cursor immediately after the emoji"); composer.Clear();
             CheckGroupCreation(window, Preview);
             Console.WriteLine($"{passed} chat UI checks passed without opening or activating a desktop window. Artifacts: {root}");
         }
