@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Lantern.Core;
 
+if (args.FirstOrDefault() == "--verify-release-package") { UpdaterTests.VerifyReleasePackage(args[1], args[2]); return; }
 if (args.FirstOrDefault() == "--ui-peer") { await UiPeer.Run(args[1], args[2]); return; }
 if (args.FirstOrDefault() == "--groups-only")
 {

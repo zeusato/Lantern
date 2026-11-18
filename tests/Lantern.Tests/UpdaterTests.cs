@@ -7,6 +7,26 @@ using Lantern.Core;
 
 internal static class UpdaterTests
 {
+    public static void VerifyReleasePackage(string archive, string licensePath)
+    {
+        var destination = Path.Combine(Path.GetTempPath(), "Lantern-release-check-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // This is the immutable contract of already installed updaters.
+            string[] legacyNames = ["Lantern.exe", "HUONG-DAN.md", "THIRD-PARTY-NOTICES.md", "DOTNET-LICENSE.txt", "DOTNET-THIRD-PARTY-NOTICES.txt", "WPF-THIRD-PARTY-NOTICES.txt"];
+            using (var zip = ZipFile.OpenRead(archive))
+            {
+                if (zip.Entries.Count != legacyNames.Length || !legacyNames.ToHashSet(StringComparer.Ordinal).SetEquals(zip.Entries.Select(e => e.FullName)))
+                    throw new InvalidDataException("Release package is incompatible with installed updaters.");
+            }
+            ReleaseUpdater.ExtractPackage(archive, destination);
+            if (!File.ReadAllText(Path.Combine(destination, "THIRD-PARTY-NOTICES.md")).Contains(File.ReadAllText(licensePath), StringComparison.Ordinal))
+                throw new InvalidDataException("Release package is missing the full WebView2 SDK license.");
+            Console.WriteLine("PASS: Actual release archive extracts through the updater, retains legacy filenames and includes the full WebView2 SDK license.");
+        }
+        finally { if (Directory.Exists(destination)) Directory.Delete(destination, true); }
+    }
+
     public static async Task Run(string root, Action<bool, string> check)
     {
         var zipFile = Path.Combine(root, "update-fixture.zip");

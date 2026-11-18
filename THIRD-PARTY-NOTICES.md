@@ -10,7 +10,7 @@ Lantern is built with Microsoft's .NET 10 / WPF and uses the following NuGet com
 
 Exact transitive dependencies are recorded by NuGet restore in project.assets.json. The source project pins direct dependencies. NuGet's vulnerability audit is enabled and warnings are treated as errors.
 
-Microsoft.Web.WebView2 1.0.4314.35, copyright Microsoft Corporation, is used for the isolated HTML attachment viewer. Source/package: https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4314.35. The SDK license is included in `licenses/WEBVIEW2-LICENSE.txt` (portable distribution: `WEBVIEW2-LICENSE.txt`). The separately installed Microsoft Edge WebView2 Runtime retains its own terms.
+Microsoft.Web.WebView2 1.0.4314.35, copyright Microsoft Corporation, is used for the isolated HTML attachment viewer. Source/package: https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4314.35. The SDK license is included in `licenses/WEBVIEW2-LICENSE.txt`; the portable distribution includes its full text at the end of this notices file. The separately installed Microsoft Edge WebView2 Runtime retains its own terms.
 
 The UI uses Windows-provided Segoe typography and icon fonts; those fonts are not redistributed. The Lantern icon and UI composition were created for this project. QA media is not included in the release. The public W3C Sintel trailer was used only for playback verification in a temporary QA workspace.
 
