@@ -130,6 +130,7 @@ function update(packet) {
   if (packet.serial && packet.serial <= lastServerSerial) return;
   if (packet.serial) lastServerSerial = packet.serial;
   if (
+    packet.conversationSnapshot ||
     packet.conversations?.length ||
     (packet.type === "ok" && packet.conversation === "" && packet.conversations)
   ) {
@@ -140,6 +141,11 @@ function update(packet) {
     for (const id of invalidateDeletedHistory(state, packet.conversations))
       clearMedia(id);
     state.conversations = packet.conversations;
+    if (current && (!contact(current) || contact(current).captureProtected)) {
+      sessionKeys.delete(current); closeSheet(); selectedMessages.clear(); replyTo = "";
+      if ($("#draft")) $("#draft").value = "";
+      if (!contact(current)) back();
+    }
     if (
       state.settings.inAppNotice &&
       !document.hidden &&
@@ -434,6 +440,7 @@ function deviceSheet() {
 }
 async function unlockSheet(id) {
   if (current !== id) return;
+  if (contact(id)?.captureProtected) { toast("Hội thoại chống chụp chỉ mở trên ứng dụng hỗ trợ. Bản web giữ nội dung ẩn."); return; }
   showSheet(
     "Mở khóa hội thoại",
     `<p>${esc(contact(id)?.name || "Hội thoại")} được bảo vệ bằng mật khẩu.</p><form id="unlock-form"><input id="conversation-password" type="password" autocomplete="current-password" aria-label="Mật khẩu hội thoại" placeholder="Mật khẩu hội thoại" required><p id="unlock-error" class="error"></p><button class="primary">Mở khóa</button></form>`,
@@ -1108,7 +1115,7 @@ const sessionKeys = new Map(),
   autoMediaAttempted = new Map();
 const history = (id) => (state?.histories?.[id] || []).filter((x) => alive(x));
 const contact = (id) => state?.conversations?.find((c) => c.id === id);
-const isLocked = (id) => !!contact(id)?.protected && !sessionKeys.has(id);
+const isLocked = (id) => !contact(id) || !!contact(id)?.captureProtected || !!contact(id)?.protected && !sessionKeys.has(id);
 function closeSheet() {
   sheetCleanup?.();
   sheetCleanup = null;
@@ -1462,6 +1469,10 @@ function renderMessages(bottom = false) {
   $("#composer-area").hidden = locked;
   $("#info").disabled = locked;
   if (locked) {
+    if (contact(current)?.captureProtected) {
+      $("#timeline").innerHTML = `<div class="empty"><h2>Hội thoại chống chụp màn hình</h2><p>Mở bằng ứng dụng Lantern hỗ trợ chống chụp. Bản web giữ nội dung ẩn.</p></div>`;
+      return;
+    }
     $("#timeline").innerHTML =
       `<div class="empty"><div class="illustration">${icon("lock")}</div><h2>Hội thoại đang khóa</h2><p>Mở khóa để xem tin nhắn và nội dung chia sẻ.</p><button class="primary" id="unlock-now">Mở khóa hội thoại</button></div>`;
     $("#unlock-now").onclick = () => unlockSheet(current);

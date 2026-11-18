@@ -18,13 +18,20 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 - Ra lệnh từ Android/PWA đã ghép đôi: khóa/tắt Windows, duyệt và tải tệp trong thư mục được cấp, gửi prompt vào AI đang mở (thử nghiệm). Cần cấp quyền riêng trên PC; xem [hướng dẫn và giới hạn](docs/PC-COMMANDS.md).
 
 - Danh tính cố định từ SHA-256 của public key; IP được cập nhật khi kết nối lại.
+- Ảnh đại diện trong **Hồ sơ và cài đặt**: chọn ảnh, kéo vùng cắt vuông 1:1, phóng to hoặc xoay rồi lưu. Ảnh được thu nhỏ thành PNG 192 × 192 và đồng bộ riêng qua các kết nối đã ghép đôi; có thể gỡ ảnh để dùng chữ viết tắt.
 - TLS 1.2/1.3 hai chiều, chứng thư tự ký được ghép đôi và kiểm tra public key.
-- Tự tìm máy bằng UDP multicast/broadcast; nhập IPv4 và cổng thủ công.
-- Chat riêng, nhóm cố định 3–32 thành viên, trạng thái đã nhận/đã đọc.
+- Tự tìm máy bằng UDP multicast/broadcast; nút **Tìm máy trong LAN** dò thêm UDP trực tiếp và TCP khi mạng chặn broadcast. Có thể nhập IPv4 và cổng thủ công.
+- Chat riêng, tạo nhóm 3–32 thành viên, trạng thái đã nhận/đã đọc. Chủ nhóm hiện tại có thể thêm thành viên trong **Thông tin → Cài đặt → Thêm thành viên**, chọn cho người mới đọc lịch sử còn lưu hoặc chỉ nhận tin từ lúc tham gia.
+- Thành viên có thể rời nhóm và giữ lịch sử đã nhận ở chế độ chỉ đọc. Chủ nhóm rời sẽ chuyển quyền cho người được chỉ định hoặc chọn ngẫu nhiên người còn lại. Chủ nhóm có quyền xóa nhóm trên mọi máy; máy offline thực hiện khi kết nối lại. Thành viên cuối cùng rời sẽ xóa nhóm. Tệp đã lưu riêng bên ngoài Lantern không bị xóa.
+- Hội thoại online xếp trước offline; trong mỗi phần ưu tiên hội thoại đã ghim rồi tới tin mới nhất. Click phải hội thoại để ghim, phân loại, thêm người vào nhóm hoặc xóa lịch sử cục bộ và ẩn hội thoại tới khi có tin mới. Chọn hội thoại tự focus ô nhập.
+- Click phải tin nhắn để trả lời, chia sẻ sang log khác, copy, ghim trên máy mình, chọn nhiều hoặc xóa chỉ ở phía mình. Danh sách tin ghim nằm trong **Thông tin → Cài đặt**. Chuyển tiếp hỗ trợ chữ, liên hệ và tệp; tệp chưa nhận được tải trước khi chuyển tiếp.
+- **Thông tin → Cài đặt → Quyền hội thoại** đồng bộ quyền chuyển tiếp và chống chụp cho các bên; nhóm chỉ chủ nhóm được sửa. Chống chụp dùng API Windows cho toàn cửa sổ khi đang mở log đó, gồm cửa sổ xem ảnh/HTML; nếu API không bật được thì ẩn nội dung. Android dùng cửa sổ bảo vệ sẵn có, bản web và thiết bị chưa hỗ trợ không được lấy nội dung log này. Không bảo đảm chặn camera ngoài hoặc ứng dụng đã bị sửa đổi; quyền mới áp dụng sau khi máy offline kết nối lại.
 - Hàng đợi SQLite bền vững: gửi lại khi kết nối, chống tin trùng, định kỳ thử lại tin chưa ACK.
 - Gửi tệp tối đa 10 GB, chia khối 64 KB, tiếp tục từ `.part`, xác minh SHA-256 trước khi hoàn tất.
 - Tối đa 3 tệp nhận đồng thời; ảnh được tự động xếp hàng, tiếp tục tải khi kết nối lại và kiểm tra SHA-256. Tệp/video cần người dùng chủ động nhận.
 - Ảnh hiển thị trong log, mở lớn; video phát/tạm dừng/tua trong log bằng codec Windows.
+- Link HTTP/HTTPS và `www.` trong tin nhắn bấm mở bằng trình duyệt mặc định; vẫn chọn và sao chép được nguyên văn.
+- Bấm **Mở HTML** trên tệp `.html`/`.htm` để tự tải ngầm, kiểm tra toàn vẹn rồi chạy HTML/CSS/JavaScript ngay trong khung xem. Tối đa 16 MB, cần Microsoft Edge WebView2 Runtime. Khung xem dùng hồ sơ riêng, không cung cấp dữ liệu chat hoặc thư mục máy; tài nguyên ngoài chỉ tải khi bật **Tải tài nguyên Internet**. Tệp đi kèm ở thư mục khác không tự được chia sẻ.
 - Tìm người/nhóm và nội dung tin; tải thêm lịch sử; lưu nháp trong phiên theo cuộc trò chuyện.
 - Giao diện tiếng Việt, sáng/tối/theo Windows, thích ứng cửa sổ tối thiểu 780×580.
 - Sao lưu/khôi phục danh tính `.lanternkey` có mật khẩu, chặn và bỏ chặn máy.
@@ -34,9 +41,9 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 - Số tin chưa đọc trên từng hội thoại, icon tray và badge trên taskbar, hiển thị `99+` khi vượt 99. Nhấp đúp tray để mở app.
 - Tùy chọn **Đóng cửa sổ xuống khay hệ thống** trong Hồ sơ và cài đặt, mặc định tắt. Khi bật, nút X chỉ ẩn cửa sổ; app vẫn nhận tin và cập nhật badge. Nhấp đúp tray để mở lại, chọn **Thoát Lantern** trong menu tray để thoát hẳn. App đang khóa vẫn yêu cầu mật khẩu khi mở lại.
 - Emoji màu Microsoft Fluent 3D đóng gói sẵn trong picker, log chat và reaction; tự đổi `:)`, `:D`, `;)`, `<3` khi kết thúc ký hiệu hoặc gửi. Có thể tắt tự đổi trong bảng emoji; URL, đường dẫn và khối mã được giữ nguyên. Sao chép tin nhắn vẫn giữ Unicode emoji.
-- Bong bóng co theo nội dung, tin mình bên phải và tin người khác bên trái. Rê chuột để hiện nút trả lời và react; emoji/số lượt react nằm sát mép dưới bong bóng. Mỗi người một biểu cảm; bấm vào lượt react của mình để gỡ. Trả lời có trích dẫn và nhảy tới tin gốc.
+- Bong bóng co theo nội dung, tin mình bên phải và tin người khác bên trái. Rê chuột để hiện nút trả lời và react; vùng hover rộng và khoảng chờ một giây giúp di chuyển sang bảng cảm xúc. Tooltip dưới số react hiển thị tối đa năm tên; bấm mở danh sách đầy đủ, lọc theo emoji. Gỡ bằng nút **Gỡ cảm xúc của bạn** trong bảng chọn hoặc danh sách. Mỗi người một biểu cảm. Trả lời có trích dẫn và nhảy tới tin gốc.
 - Ctrl+V dán ảnh clipboard thành ảnh PNG, gửi theo luồng nhận tệp thông thường.
-- Toast Windows khi có tin mới: **mặc định tắt**, bật trong Hồ sơ và cài đặt. Chọn **Hiện người gửi và nội dung** hoặc **Chỉ báo có tin nhắn mới**. App/hội thoại bị khóa luôn dùng thông báo chung, không hiện tên hoặc nội dung; Windows có thể ẩn thông báo theo cấu hình hệ thống.
+- Toast Windows khi có tin mới: **mặc định bật, chỉ báo có tin nhắn mới**; giữ lựa chọn đã lưu của người dùng. Trong Hồ sơ và cài đặt có thể chọn hiện người gửi/nội dung hoặc tắt. App/hội thoại bị khóa hoặc bật chống chụp luôn dùng thông báo chung; Windows có thể ẩn thông báo theo cấu hình hệ thống.
 - Chấm trạng thái dưới tên: xanh online, xám offline, vàng khi máy không có thao tác 15 phút, đỏ Không làm phiền. Bấm chấm trạng thái ở thanh trái để đổi. Không làm phiền chặn toast tin nhắn, vẫn đếm tin chưa đọc.
 - Bảng thông tin có Chia sẻ, Tìm kiếm và Cài đặt; Chia sẻ chia thành Media, Tệp và Link. Media là lưới thumbnail vuông; video dùng thumbnail Windows nếu codec hỗ trợ. Link có ảnh Open Graph ở trên và tiêu đề nếu trang cung cấp. Không tải preview cho địa chỉ LAN/nội bộ.
 - Tin tự hủy: Cài đặt hội thoại → Tin nhắn tự hủy → chọn 10 giây đến 7 ngày. Chỉ áp dụng cho tin gửi sau khi đổi cài đặt; đếm từ lúc người nhận đọc (nhóm: lượt đọc đầu tiên), đồng bộ hạn xóa. Khi offline, hạn xóa được đồng bộ lại lúc kết nối; máy đang chạy kiểm tra hạn mỗi giây. Hai bên cần dùng bản 1.1 trở lên.
@@ -87,7 +94,8 @@ Các máy đã ghép đôi giữ tên liên hệ đã xác nhận. Đổi tên c
 
 ## Mạng
 
-- Discovery: UDP `45852`, multicast `239.255.42.99`, TTL 1, kèm broadcast trên các giao diện LAN.
+- Discovery: UDP `45852`, multicast `239.255.42.99`, TTL 1, kèm broadcast theo subnet trên từng giao diện LAN. Thành viên multicast được cập nhật khi địa chỉ mạng thay đổi; lỗi gửi multicast không ngăn broadcast.
+- Nút tìm máy dò UDP unicast để lấy cổng thực tế và thử TCP `45853` cho máy cũ hoặc mạng chặn UDP. Chỉ dò subnet đang kết nối; subnet lớn giới hạn ở vùng `/22` chứa IP hiện tại, tối đa 4096 địa chỉ, 32 kết nối TCP song song và 25 giây. Máy chạy bản cũ ở cổng tùy chỉnh có thể vẫn cần thêm IP/cổng thủ công.
 - Chat/file: TCP `45853` mặc định. Nếu cổng bận, app chọn cổng trống và hiển thị cổng thực tế trên thanh trạng thái.
 - Chỉ nhận/kết nối địa chỉ IPv4 private, link-local hoặc loopback. Chưa hỗ trợ IPv6 thuần, Internet hoặc NAT traversal.
 - LAN có VLAN, client isolation hoặc multicast bị chặn có thể không tự tìm được máy. Thêm IP giúp khi định tuyến trực tiếp vẫn được phép; nó không vượt qua firewall.
@@ -96,7 +104,7 @@ Các máy đã ghép đôi giữ tên liên hệ đã xác nhận. Đổi tên c
 ## Giới hạn
 
 - Người gửi và nhận phải có lúc cùng online để chuyển tin/tệp. Không có peer giữ hộ khi cả hai không đồng thời online.
-- Nhóm có danh sách thành viên cố định. Tạo nhóm mới nếu cần đổi danh sách. Tất cả thành viên cần ghép đôi trực tiếp với nhau. Chủ nhóm phải online để phân phối lời mời ban đầu cho từng người.
+- Chỉ chủ nhóm hiện tại được thêm thành viên; thành viên có thể tự rời nhóm, chưa hỗ trợ chủ nhóm loại riêng một thành viên. Tất cả thành viên cần phiên bản hỗ trợ thêm người và ghép đôi trực tiếp với nhau. Chủ nhóm phân phối danh sách mới khi online; lịch sử được đồng bộ từ từng người gửi khi họ kết nối lại. Tin đã xóa/hết hạn không được khôi phục. Quyền lịch sử của mỗi thành viên được giữ nguyên qua các lần thêm người sau.
 - Chưa có cuộc gọi thoại/video, đăng nhập tập trung, nhiều thiết bị cùng danh tính hoặc server chuyển tiếp.
 - Video tải xong mới phát. Codec phụ thuộc Windows; không phải mọi định dạng đều xem được trong app. Có nút **Mở** bằng ứng dụng hệ thống.
 - Ảnh GIF được hiển thị như ảnh tĩnh; định dạng ảnh không được Windows hỗ trợ có thể mở ngoài app.

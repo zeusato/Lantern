@@ -77,6 +77,7 @@ public final class MainActivity extends Activity {
     }
     private void refresh(){
         if(!resumed||subtitle==null)return;subtitle.setText(ConnectionService.status);
+        if(!ConnectionService.selected.isEmpty()&&ConversationSettings.contact(ConnectionService.selected)==null){drafts.remove(ConnectionService.selected);composerConversation="";openList();return;}
         if(!ConnectionService.selected.isEmpty()&&sendButton!=null){sendButton.setEnabled(!sending&&ConnectionService.connected);sendButton.setAlpha(sendButton.isEnabled()?1f:.45f);if(!sending&&!ConnectionService.connected)showAction(ConnectionService.problem.isEmpty()?"Đang kết nối PC · Có thể xem lịch sử đã lưu và soạn tin.":ConnectionService.problem+" · Nội dung đang soạn vẫn được giữ.");}
         if(ConnectionService.selected.isEmpty())renderContacts();else renderMessages();
         if(conversationSettings!=null)conversationSettings.refresh();

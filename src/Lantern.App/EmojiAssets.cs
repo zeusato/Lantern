@@ -35,29 +35,44 @@ internal static class EmojiAssets
         var icon = new Image { Source = bitmap, Width = size, Height = size, Stretch = Stretch.Uniform, Tag = emoji, ToolTip = asset.Name };
         AutomationProperties.SetName(icon, asset.Name); return icon;
     }
-    internal static RichTextBox MessageText(string text)
+    internal static RichTextBox MessageText(string text, Action<Uri>? openLink = null)
     {
         var paragraph = new System.Windows.Documents.Paragraph { Margin = new Thickness(0), LineHeight = 23 };
         var measure = new TextBlock { FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"), FontSize = 14, TextWrapping = TextWrapping.NoWrap, Padding = new Thickness(0) };
         var buffer = new StringBuilder();
         void Flush() { if (buffer.Length > 0) { var value = buffer.ToString(); paragraph.Inlines.Add(new Run(value)); measure.Inlines.Add(new Run(value)); buffer.Clear(); } }
-        var elements = StringInfo.GetTextElementEnumerator(text);
-        while (elements.MoveNext())
+        void AppendText(string value)
         {
-            var element = elements.GetTextElement();
-            if (Find(element) is not null)
+            var elements = StringInfo.GetTextElementEnumerator(value);
+            while (elements.MoveNext())
             {
-                Flush(); paragraph.Inlines.Add(new InlineUIContainer(Icon(element, 22)) { BaselineAlignment = BaselineAlignment.Center });
-                measure.Inlines.Add(new InlineUIContainer(Icon(element, 22)) { BaselineAlignment = BaselineAlignment.Center });
+                var element = elements.GetTextElement();
+                if (Find(element) is not null)
+                {
+                    Flush(); paragraph.Inlines.Add(new InlineUIContainer(Icon(element, 22)) { BaselineAlignment = BaselineAlignment.Center });
+                    measure.Inlines.Add(new InlineUIContainer(Icon(element, 22)) { BaselineAlignment = BaselineAlignment.Center });
+                }
+                else buffer.Append(element);
             }
-            else buffer.Append(element);
+            Flush();
         }
-        Flush();
+        var offset = 0;
+        foreach (var match in openLink is null ? Enumerable.Empty<MessageLink>() : MessageLinks.Find(text))
+        {
+            AppendText(text[offset..match.Start]);
+            var value = text.Substring(match.Start, match.Length);
+            var link = new Hyperlink(new Run(value)) { NavigateUri = match.Uri, ToolTip = match.Uri.AbsoluteUri, Cursor = Cursors.Hand };
+            link.SetResourceReference(TextElement.ForegroundProperty, "AccentBrush");
+            link.RequestNavigate += (_, e) => { e.Handled = true; openLink!(match.Uri); };
+            paragraph.Inlines.Add(link); measure.Inlines.Add(new Run(value));
+            offset = match.Start + match.Length;
+        }
+        AppendText(text[offset..]);
         var document = new FlowDocument(paragraph) { PagePadding = new Thickness(0), TextAlignment = TextAlignment.Left, FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"), FontSize = 14 };
         document.SetResourceReference(FlowDocument.ForegroundProperty, "TextBrush");
         var box = new ContentSizedText(document, measure)
         {
-            IsReadOnly = true, IsReadOnlyCaretVisible = false, IsDocumentEnabled = false, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), MinHeight = 0, MinWidth = 0, FontSize = 14,
+            IsReadOnly = true, IsReadOnlyCaretVisible = false, IsDocumentEnabled = true, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0), MinHeight = 0, MinWidth = 0, FontSize = 14,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
         };
         box.SetResourceReference(Control.ForegroundProperty, "TextBrush");

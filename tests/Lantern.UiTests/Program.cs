@@ -52,9 +52,9 @@ internal sealed class UiHarness : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        var root = e.Args.FirstOrDefault() ?? Path.Combine(Path.GetTempPath(), "Lantern-ui-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        var root = Path.GetFullPath(e.Args.FirstOrDefault() ?? Path.Combine(Path.GetTempPath(), "Lantern-ui-" + Guid.NewGuid().ToString("N"))); Directory.CreateDirectory(root);
         var workspace = Path.Combine(root, "workspace");
-        SetApp("DataDirectory", workspace); SetApp("TestMode", true); SetApp("Settings", new AppSettings { Name = "Linh · Kiểm thử", Onboarded = true, Theme = "light", AutoUpdates = false });
+        SetApp("DataDirectory", workspace); SetApp("TestMode", true); SetApp("Settings", new AppSettings { Name = "Linh · Kiểm thử", Onboarded = true, Theme = "light", AutoUpdates = false, MessageToasts = false });
         SetApp("Vault", WorkspaceVault.Create(workspace, "synthetic QA password only")); ApplyTheme("light");
         using (var seed = new LocalStore(workspace, Vault)) seed.SavePeer(new Peer { Id = new string('c', 64), Name = "Hội thoại khác", Trusted = true, Address = "127.0.0.1" });
         MainWindow? window = null;
@@ -84,6 +84,45 @@ internal sealed class UiHarness : Application
             node.SetPeerAlias(remoteIdentity.Id, "Minh Anh · Thiết kế"); Call(window, "Refresh");
             Check(((TextBlock)window.FindName("ChatTitle")).Text == "Minh Anh · Thiết kế", "Local alias appears in chat header");
             var composer = (TextBox)window.FindName("Composer"); composer.Text = "Chào :) "; Check(composer.Text == "Chào 🙂 ", "Composer replaces completed emoticons");
+            await Task.Delay(80); Check(composer.IsKeyboardFocused, "Selecting an unlocked conversation focuses the composer automatically");
+            var messageMenu = (ContextMenu)Call(window, "MessageMenu", store.Message(first.Id)!)!;
+            Check(messageMenu.Items.OfType<MenuItem>().Select(i => (string)i.Header).SequenceEqual(new[] { "Trả lời", "Chia sẻ", "Copy tin nhắn", "Ghim tin nhắn", "Chọn nhiều tin nhắn", "Xóa chỉ ở phía tôi" }), "Message context menu exposes the requested actions");
+            messageMenu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "Ghim tin nhắn").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Check(store.PinnedMessages(remoteIdentity.Id).Contains(first.Id), "Pinning a message persists the selected message");
+            var conversationMenu = (ContextMenu)Call(window, "ConversationMenu", list.Items.OfType<ContactRow>().Single(r => r.Id == remoteIdentity.Id))!;
+            Check(conversationMenu.Items.OfType<MenuItem>().Select(i => (string)i.Header).SequenceEqual(new[] { "Ghim hội thoại", "Phân loại", "Thêm vào nhóm", "Xóa hội thoại" }), "Conversation context menu exposes the requested actions");
+            conversationMenu.Items.OfType<MenuItem>().First().RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            var categories = conversationMenu.Items.OfType<MenuItem>().Single(i => (string)i.Header == "Phân loại");
+            categories.Items.OfType<MenuItem>().Single(i => (string)i.Header == "Công việc").RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Check(store.Preference(remoteIdentity.Id) is { Pinned: true, Category: "Công việc" }, "Conversation pins and category choices persist locally");
+            var offlineId = new string('c', 64); store.SavePreference(new() { Id = offlineId, Pinned = true });
+            store.SaveMessage(new ChatMessage { ConversationId = offlineId, Outgoing = true, Text = "newer offline fixture", Time = DateTimeOffset.UtcNow.AddMinutes(1) }); Call(window, "Refresh");
+            Check(list.Items.OfType<ContactRow>().First().Id == remoteIdentity.Id, "Offline conversations remain below online conversations even with a newer message and pin");
+            await node.SetConversationRulesAsync(remoteIdentity.Id, true, false); Call(window, "Refresh");
+            Check(ScreenCaptureProtection.IsProtected(window), "A protected conversation enables native Windows capture exclusion");
+            Check(!((ContextMenu)Call(window, "MessageMenu", store.Message(first.Id)!)!).Items.OfType<MenuItem>().Single(i => (string)i.Header == "Chia sẻ").IsEnabled, "Forwarding is disabled in the context menu when the log forbids it");
+            var protectedViewer = new Window { Owner = window, Width = 180, Height = 120, Content = new TextBlock { Text = "protected fixture" } };
+            Call(window, "ProtectOwnedWindow", protectedViewer, remoteIdentity.Id); protectedViewer.Show();
+            Check(ScreenCaptureProtection.IsProtected(protectedViewer), "Owned content windows receive the same capture exclusion"); protectedViewer.Close(); ActivateFixture(window);
+            list.SelectedItem = list.Items.OfType<ContactRow>().Single(r => r.Id == offlineId);
+            Check(!ScreenCaptureProtection.IsProtected(window), "Switching to an ordinary log removes capture exclusion");
+            list.SelectedItem = list.Items.OfType<ContactRow>().Single(r => r.Id == remoteIdentity.Id);
+            await node.SetConversationRulesAsync(remoteIdentity.Id, false, true); Call(window, "Refresh");
+            var avatarPixels = new byte[400 * 200 * 4];
+            for (int y = 0; y < 200; y++) for (int x = 0; x < 400; x++) { int pos = (y * 400 + x) * 4; avatarPixels[pos + (x < 200 ? 2 : 0)] = 255; avatarPixels[pos + 3] = 255; }
+            var avatarEditor = new AvatarEditor(BitmapSource.Create(400, 200, 96, 96, PixelFormats.Bgra32, null, avatarPixels, 1600));
+            var croppedAvatar = avatarEditor.Export(); var avatarImage = AvatarImages.Get(croppedAvatar)!;
+            Check(avatarImage.PixelWidth == 192 && avatarImage.PixelHeight == 192, "Profile editor exports a square avatar from a landscape image");
+            var pan = Field<Canvas>(avatarEditor, "viewport"); for (int step = 0; step < 20; step++) pan.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), Environment.TickCount, Key.Right) { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+            var shiftedAvatar = avatarEditor.Export(); var shiftedPixels = Pixels(AvatarImages.Get(shiftedAvatar)!);
+            Check(shiftedAvatar != croppedAvatar && shiftedPixels[0] == 255 && shiftedPixels[2] == 0, "Moving the crop selects the requested region and clamps to the image edge");
+            Visuals<Slider>(avatarEditor).Single().Value = 2; Check(AvatarImages.Get(avatarEditor.Export()) is { PixelWidth: 192, PixelHeight: 192 }, "Zoom preserves the square output dimensions");
+            _ = Dispatcher.InvokeAsync(() => { Snapshot(window, Path.Combine(root, "avatar-crop.png")); InAppDialog.CancelAll(window); }, System.Windows.Threading.DispatcherPriority.Background);
+            InAppDialog.Show(window, "Cắt ảnh đại diện", avatarEditor, "Dùng ảnh này", width: 410);
+            await node.UpdateAvatarAsync(croppedAvatar); await Until(() => remote.FindPeer(node.Identity.Id)?.Avatar == croppedAvatar, "Avatar sync");
+            await remote.UpdateAvatarAsync(shiftedAvatar); await Until(() => node.FindPeer(remoteIdentity.Id)?.Avatar == shiftedAvatar, "Peer avatar sync"); Call(window, "Refresh");
+            Check(store.Avatar == croppedAvatar && remoteStore.Peers().Single(p => p.Id == node.Identity.Id).Avatar == croppedAvatar && ((Image)window.FindName("DetailAvatar")).Source is not null && list.Items.OfType<ContactRow>().Single(r => r.Id == remoteIdentity.Id).AvatarSource is not null, "Avatars persist and appear in profiles and the conversation list");
+            await remote.UpdateAvatarAsync(""); await Until(() => node.FindPeer(remoteIdentity.Id)?.Avatar == "", "Avatar removal sync"); Check(true, "Removing a profile picture synchronizes to peers");
             Call(window, "BeginReply", store.Message(first.Id)!); composer.Text = "Em nhận rồi :D"; await (Task)Call(window, "SendMessage")!;
             await Until(() => remoteStore.Messages().Any(m => m.ReplyToId == first.Id && m.Text == "Em nhận rồi 😃"), "Quoted emoji delivery"); Check(true, "Reply composer sends quote and expands trailing emoticon");
             await (Task)Call(window, "ToggleReaction", first.Id, "❤️")!; await Until(() => remoteStore.Message(first.Id)!.Reactions.ContainsKey(node.Identity.Id), "UI reaction delivery"); Check(true, "Reaction button updates remote message");
@@ -94,17 +133,31 @@ internal sealed class UiHarness : Application
             var reactionPalette = Field<Popup>(liveDock, "palette");
             Check(reactionPalette.IsOpen, "Hovering the reaction trigger opens emoji choices without a click");
             liveTrigger.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseLeaveEvent });
-            await Task.Delay(300); Check(reactionPalette.IsOpen, "Reaction picker leaves half a second to cross the gap");
+            await Task.Delay(750); Check(reactionPalette.IsOpen, "Reaction picker remains open beyond the old half-second deadline while crossing the gap");
             ((FrameworkElement)reactionPalette.Child).RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
-            await Task.Delay(550); Check(reactionPalette.IsOpen, "Moving from reaction trigger into the palette cancels delayed hiding");
+            await Task.Delay(1100); Check(reactionPalette.IsOpen, "Moving from reaction trigger into the padded palette cancels delayed hiding");
             reactionPalette.IsOpen = false;
             liveTrigger.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(reactionPalette.IsOpen, "Clicking the reaction trigger also opens emoji choices");
             await Task.Delay(60); Snapshot((FrameworkElement)reactionPalette.Child, Path.Combine(root, "reaction-picker.png"));
             Visuals<Button>(reactionPalette.Child).Single(button => button.Content is Image { Tag: "😂" }).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => remoteStore.Message(first.Id)!.Reactions.GetValueOrDefault(node.Identity.Id) == "😂", "New picker delivers reaction"); Check(true, "Bubble-edge reaction picker sends the selected colored emoji");
-            Call(window, "Refresh"); Visuals<Button>(LiveReactions()).Single(button => button.Name == "ReactionSummary").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            await Until(() => remoteStore.Message(first.Id)!.Reactions.GetValueOrDefault(node.Identity.Id) == "", "Summary removes own reaction"); Check(true, "Clicking the reaction count removes the user's own reaction");
+            Call(window, "Refresh");
+            var summary = Visuals<Button>(LiveReactions()).Single(button => button.Name == "ReactionSummary");
+            Check(summary.ToolTip is ToolTip { Placement: PlacementMode.Bottom, Content: string names } && names.Contains("Bạn"), "Reaction tooltip appears below the count and names the reactors");
+            Exception? reactionFailure = null;
+            _ = Dispatcher.InvokeAsync(() => {
+                try {
+                    var dialog = Visuals<Border>(window).Single(view => view.Name == "InAppDialog");
+                    Check(remoteStore.Message(first.Id)!.Reactions.GetValueOrDefault(node.Identity.Id) == "😂" && Visuals<TextBlock>(dialog).Any(t => t.Text == "Bạn"), "Clicking the count opens the reactor list without removing a reaction");
+                    Visuals<Button>(dialog).Single(b => b.Content is TextBlock t && t.Text.Contains("Gỡ cảm xúc")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                } catch (Exception ex) { reactionFailure = ex; InAppDialog.CancelAll(window); }
+            }, System.Windows.Threading.DispatcherPriority.Background);
+            summary.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); if (reactionFailure is not null) throw reactionFailure;
+            await Until(() => remoteStore.Message(first.Id)!.Reactions.GetValueOrDefault(node.Identity.Id) == "", "Explicit removal action"); Check(true, "The explicit remove action clears only the user's reaction");
+            var crowded = new MessageReactions(window, Enumerable.Range(0, 7).ToDictionary(i => "person" + i, _ => "👍"), "self", id => id, _ => Task.CompletedTask);
+            var tooltip = (ToolTip)Visuals<Button>(crowded).Single(b => b.Name == "ReactionSummary").ToolTip;
+            Check(((string)tooltip.Content).Split('\n').Length == 6 && !((string)tooltip.Content).Contains("person5"), "Reaction tooltip shows at most five names and a remaining count");
             await (Task)Call(window, "ToggleReaction", first.Id, "❤️")!;
             Call(window, "BeginMessageSelection", first.Id);
             Check(((Border)window.FindName("SelectionBar")).Visibility == Visibility.Visible && Field<HashSet<string>>(window, "selectedMessages").Contains(first.Id), "Multi-select shows inline controls and selects the invoked message");
@@ -149,6 +202,31 @@ internal sealed class UiHarness : Application
             ((Button)window.FindName("RefreshSharedButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Check(mediaPanel.Children.Count == 1 && !ReferenceEquals(mediaPanel.Children[0], thumbnail), "Manual refresh explicitly reloads shared content");
             var richText = EmojiAssets.MessageText("Chào 👋, cảm ơn ❤️!"); richText.SelectAll(); Check(EmojiAssets.SelectionText(richText.Selection.Start, richText.Selection.End) == "Chào 👋, cảm ơn ❤️!", "Copying a colored emoji message preserves original Unicode text");
+            Uri? openedLink = null;
+            const string linkedMessage = "Chào 👋 https://example.test/a?x=1&y=2, và www.example.org ❤️";
+            var linkedText = EmojiAssets.MessageText(linkedMessage, uri => openedLink = uri);
+            var hyperlinks = ((System.Windows.Documents.Paragraph)linkedText.Document.Blocks.FirstBlock).Inlines.OfType<System.Windows.Documents.Hyperlink>().ToArray();
+            Check(linkedText.IsReadOnly && linkedText.IsDocumentEnabled && hyperlinks.Length == 2, "Chat renders enabled clickable hyperlinks inside read-only messages");
+            var navigate = new System.Windows.Navigation.RequestNavigateEventArgs(hyperlinks[0].NavigateUri, "") { RoutedEvent = System.Windows.Documents.Hyperlink.RequestNavigateEvent };
+            hyperlinks[0].RaiseEvent(navigate);
+            Check(navigate.Handled && openedLink?.AbsoluteUri == "https://example.test/a?x=1&y=2", "Click navigation sends the exact URL to the browser action once");
+            linkedText.SelectAll(); Check(EmojiAssets.SelectionText(linkedText.Selection.Start, linkedText.Selection.End) == linkedMessage, "Copy preserves original URL text, punctuation and colored emoji together");
+            Check(Visuals<RichTextBox>((Panel)window.FindName("MessagesPanel")).SelectMany(box => box.Document.Blocks.OfType<System.Windows.Documents.Paragraph>()).SelectMany(p => p.Inlines.OfType<System.Windows.Documents.Hyperlink>()).Any(link => link.NavigateUri.AbsoluteUri == "https://example.com/design"), "Received chat messages use the clickable link renderer");
+            var htmlPath = Path.Combine(root, "interactive.html");
+            await File.WriteAllTextAsync(htmlPath, "<!doctype html><meta charset='utf-8'><title>HTML fixture</title><style>button { color: rgb(12,34,56) }</style><button id='counter'>0</button><script>document.body.dataset.started='yes';document.querySelector('button').onclick=e=>e.target.textContent=Number(e.target.textContent)+1;fetch('https://example.test/blocked').catch(()=>document.body.dataset.blocked='yes');</script>");
+            var htmlOffer = await remote.OfferFileAsync(node.Identity.Id, htmlPath);
+            await Until(() => store.Message(htmlOffer.Id) is not null, "HTML offer"); Call(window, "Refresh");
+            Check(!File.Exists(store.Message(htmlOffer.Id)!.FilePath), "An offered HTML attachment is not downloaded before opening");
+            var htmlBubble = ((Panel)window.FindName("MessagesPanel")).Children.OfType<FrameworkElement>().Single(view => view.Tag as string == htmlOffer.Id);
+            Visuals<Button>(htmlBubble).Single(button => button.Content as string == "Mở HTML").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var htmlViews = Field<Dictionary<string, HtmlPreview>>(window, "htmlPreviews");
+            await Until(() => htmlViews.TryGetValue(htmlOffer.Id, out var view) && view.Ready, "HTML background download and viewer");
+            var htmlView = htmlViews[htmlOffer.Id];
+            Check(store.Message(htmlOffer.Id)!.Status == "received" && await htmlView.Browser.CoreWebView2.ExecuteScriptAsync("document.body.dataset.started") == "\"yes\"", "One click downloads HTML, verifies the transfer and runs its JavaScript inside Lantern");
+            Check(await htmlView.Browser.CoreWebView2.ExecuteScriptAsync("document.querySelector('button').click();document.querySelector('button').textContent") == "\"1\"" && await htmlView.Browser.CoreWebView2.ExecuteScriptAsync("getComputedStyle(document.querySelector('button')).color") == "\"rgb(12, 34, 56)\"", "HTML preview renders CSS and supports interactive JavaScript");
+            Check(await htmlView.Browser.CoreWebView2.ExecuteScriptAsync("document.body.dataset.blocked") == "\"yes\"" && !htmlView.Browser.CoreWebView2.Settings.AreHostObjectsAllowed && !htmlView.Browser.CoreWebView2.Settings.IsWebMessageEnabled, "HTML preview blocks Internet by default and exposes no app bridge");
+            Check(!HtmlPreview.AllowsResource("file:///C:/private.txt", true) && !HtmlPreview.AllowsResource("javascript:alert(1)", true) && HtmlPreview.AllowsResource("https://example.com/script.js", true) && !HtmlPreview.AllowsResource("https://example.com/script.js", false), "Preview Internet option never grants local-file or external-protocol access");
+            Call(window, "CloseMediaViews"); Check(htmlViews.Count == 0 && !htmlView.IsVisible, "Lock and conversation-switch cleanup closes the HTML viewer");
             Check(richText.Document.FontFamily.Source.Contains("Segoe UI") && richText.Document.FontSize == 14, "Colored emoji messages retain the app typography");
             var iconPixels = Pixels((BitmapSource)EmojiAssets.Icon("😀", 30).Source); Check(Enumerable.Range(0, iconPixels.Length / 4).Any(i => iconPixels[i * 4 + 3] > 100 && Math.Abs(iconPixels[i * 4] - iconPixels[i * 4 + 2]) > 40), "Fluent emoji assets contain actual color pixels");
             var fakeHost = new StackPanel(); var hover = new MessageActions(fakeHost, () => { });
@@ -234,7 +312,7 @@ internal sealed class UiHarness : Application
             Check(conversationUnlocked && infoTabs.IsEnabled && detailContent.IsVisible && !detailLock.IsVisible, "Correct conversation password restores access to every information tab");
             ((Button)window.FindName("HeaderLockButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await remote.SendTextAsync(node.Identity.Id, "Tin mới khi đang khóa"); await Until(() => store.UnreadCount() == 1 && Field<int>(tray, "lastCount") == 1, "Locked incoming badge"); Check(true, "Locked conversation keeps incoming message unread");
-            Check(!Settings.MessageToasts, "Message notifications remain opt-in");
+            Check(!Settings.MessageToasts && new AppSettings().MessageToasts && new AppSettings().MessageToastMode == "private", "Saved opt-out remains while new settings enable private notifications");
             Exception? settingsFailure = null;
             _ = Dispatcher.BeginInvoke(() =>
             {
@@ -242,7 +320,7 @@ internal sealed class UiHarness : Application
                 try
                 {
                     var mode = Visuals<ComboBox>(dialog).Single(combo => combo.Items.Count == 2);
-                    Check(!mode.IsEnabled && mode.Items.Cast<string>().SequenceEqual(new[] { "Hiện người gửi và nội dung", "Chỉ báo có tin nhắn mới" }), "Settings offer both toast modes while notifications default to off");
+                    Check(!mode.IsEnabled && mode.Items.Cast<string>().SequenceEqual(new[] { "Hiện người gửi và nội dung", "Chỉ báo có tin nhắn mới" }), "Settings offer both toast modes and respect saved opt-out");
                     var enable = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Hiện thông báo Windows khi có tin nhắn mới"); enable.IsChecked = true; enable.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent)); mode.SelectedIndex = 1;
                     var closeToTray = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Đóng cửa sổ xuống khay hệ thống"); Check(closeToTray.IsChecked == false, "Close-to-tray setting defaults to off"); closeToTray.IsChecked = true;
                     var startup = Visuals<CheckBox>(dialog).Single(box => box.Content as string == "Khởi động cùng Windows"); Check(startup.IsChecked == true, "Windows startup option defaults on"); startup.IsChecked = false;

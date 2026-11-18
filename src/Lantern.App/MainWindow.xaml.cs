@@ -12,8 +12,10 @@ using Microsoft.Win32;
 
 namespace Lantern.App;
 
-public sealed record ContactRow(string Id, string Name, string Initials, string Subtitle, bool IsGroup, int Unread = 0, string Presence = "offline")
+public sealed record ContactRow(string Id, string Name, string Initials, string Subtitle, bool IsGroup, int Unread = 0, string Presence = "offline", string Avatar = "")
 {
+    public ImageSource? AvatarSource => AvatarImages.Get(Avatar);
+    public Visibility InitialsVisibility => AvatarSource is null ? Visibility.Visible : Visibility.Collapsed;
     public string UnreadLabel => Unread > 99 ? "99+" : Unread.ToString();
     public Visibility UnreadVisibility => Unread > 0 ? Visibility.Visible : Visibility.Collapsed;
     public Visibility PresenceVisibility => IsGroup ? Visibility.Collapsed : Visibility.Visible;
@@ -153,7 +155,7 @@ public partial class MainWindow : Window
     private void NotifyMessage(ChatMessage message)
     {
         if (closing || !App.Settings.MessageToasts || App.Settings.DoNotDisturb || IsConversationVisible(message.ConversationId)) return;
-        bool locked = appLocking || App.Vault.IsConversationLocked(message.ConversationId) && !unlockedConversations.Contains(message.ConversationId);
+        bool locked = appLocking || node.ConversationRules(message.ConversationId).CaptureProtected || App.Vault.IsConversationLocked(message.ConversationId) && !unlockedConversations.Contains(message.ConversationId);
         var name = node.FindPeer(message.SenderId)?.DisplayName ?? "Tin nhắn mới";
         var notification = MessageNotifications.Create(message, name, App.Settings.MessageToastMode, locked);
         tray?.ShowMessage(message.ConversationId, notification.Title, notification.Body);
@@ -183,11 +185,18 @@ public partial class MainWindow : Window
             TaskbarItemInfo.Description = unread > 0 ? $"Lantern · {unread:N0} tin chưa đọc" : "Lantern · Không có tin chưa đọc";
         }
         if (appLocking) return;
+        MyAvatar.Source = AvatarImages.Get(store.Avatar);
+        MyInitials.Visibility = MyAvatar.Source is null ? Visibility.Visible : Visibility.Collapsed;
         refreshing = true;
         var unreadCounts = store.UnreadCounts();
         var query = ContactSearch.Text.Trim();
         var rows = node.Peers.Where(p => !p.Blocked).Select(p => new ContactRow(p.Id, p.DisplayName, p.Initials, !p.Trusted ? p.Connected ? "Chờ xác minh" : "Máy trong LAN" : p.Connected ? "Đang online" : "Offline · Tin nhắn sẽ chờ gửi", false)).Concat(store.Groups().Select(g => new ContactRow(g.Id, g.Name, "#", $"Nhóm · {g.Members.Count} thành viên", true))).Where(r => r.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
-        rows = rows.Select(row => { var peer = node.FindPeer(row.Id); var presence = peer is { Connected: true } ? peer.Presence : "offline"; var result = row with { Unread = unreadCounts.GetValueOrDefault(row.Id), Presence = presence }; return peer is null || !peer.Trusted ? result : result with { Subtitle = result.PresenceLabel }; }).ToList();
+        rows = rows.Select(row => { var peer = node.FindPeer(row.Id); var presence = peer is { Connected: true } ? peer.Presence : "offline"; var result = row with { Unread = unreadCounts.GetValueOrDefault(row.Id), Presence = presence, Avatar = peer?.Avatar ?? "" }; return peer is null || !peer.Trusted ? result : result with { Subtitle = result.PresenceLabel }; }).ToList();
+        var preferences = store.Preferences().ToDictionary(p => p.Id); var activity = store.ConversationActivity(); var groups = store.Groups().ToDictionary(g => g.Id);
+        bool Online(ContactRow row) => row.IsGroup ? groups.TryGetValue(row.Id, out var g) && g.Members.Contains(identity.Id) && g.Members.Any(id => id != identity.Id && node.IsConnected(id)) : node.IsConnected(row.Id);
+        rows = rows.Where(row => preferences.GetValueOrDefault(row.Id)?.Hidden != true).OrderByDescending(Online)
+            .ThenByDescending(row => preferences.GetValueOrDefault(row.Id)?.Pinned == true).ThenByDescending(row => activity.GetValueOrDefault(row.Id)).ThenBy(row => row.Name)
+            .Select(row => row with { Subtitle = (preferences.GetValueOrDefault(row.Id)?.Pinned == true ? "📌 · " : "") + (row.IsGroup && !groups[row.Id].Members.Contains(identity.Id) ? "Đã rời nhóm · Chỉ đọc" : row.Subtitle) + (preferences.GetValueOrDefault(row.Id) is { Category.Length: > 0 } p ? " · " + p.Category : "") }).ToList();
         ContactsList.ItemsSource = rows; ContactsList.SelectedItem = rows.Find(r => r.Id == selectedId);
         NoContacts.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         OnlineCount.Text = $"{node.Peers.Count(p => p.Connected && !p.Blocked)} online";
@@ -197,7 +206,7 @@ public partial class MainWindow : Window
     }
     private async void MarkSelectedRead()
     {
-        if (closing || !IsActive || !IsVisible || WindowState == WindowState.Minimized || selectedId.Length == 0 || ConversationProtected || appLocking) return;
+        if (closing || !IsActive || !IsVisible || WindowState == WindowState.Minimized || selectedId.Length == 0 || ConversationProtected || appLocking || captureUnavailable) return;
         if (markingRead) { readAgain = true; return; }
         markingRead = true;
         try { await node.MarkReadAsync(selectedId); } catch (Exception ex) when (ex is IOException or ObjectDisposedException) { }
@@ -205,17 +214,26 @@ public partial class MainWindow : Window
     }
     private void RefreshConversation()
     {
+        if (selectedId.Length == 32 && !store.Groups().Any(g => g.Id == selectedId))
+        { CloseMediaViews(); drafts.Remove(selectedId); replyDrafts.Remove(selectedId); selectedId = ""; Composer.Clear(); }
         bool protectedDetails = ConversationProtected || appLocking;
         DetailsContent.IsEnabled = !protectedDetails; DetailsContent.Visibility = protectedDetails ? Visibility.Collapsed : Visibility.Visible;
         InfoTabs.IsEnabled = !protectedDetails; DetailsLocked.Visibility = protectedDetails ? Visibility.Visible : Visibility.Collapsed;
         var peer = node.FindPeer(selectedId); var group = store.Groups().Find(g => g.Id == selectedId);
         RenamePeerButton.Visibility = peer is null ? Visibility.Collapsed : Visibility.Visible;
         ShareContactButton.Visibility = peer is { Trusted: true, Blocked: false } ? Visibility.Visible : Visibility.Collapsed;
+        AddGroupMembersButton.Visibility = group?.OwnerId == identity.Id ? Visibility.Visible : Visibility.Collapsed;
+        AddGroupMembersButton.IsEnabled = !protectedDetails && group is { Members.Count: < 32 };
+        LeaveGroupButton.Visibility = group is not null && group.Members.Contains(identity.Id) ? Visibility.Visible : Visibility.Collapsed;
+        DeleteGroupButton.Visibility = group?.OwnerId == identity.Id ? Visibility.Visible : Visibility.Collapsed;
+        PinnedMessagesButton.Content = $"Tin nhắn đã ghim · {store.PinnedMessages(selectedId).Count}";
+        PinnedMessagesButton.IsEnabled = !protectedDetails && selectedId.Length > 0;
+        ConversationRulesButton.IsEnabled = !protectedDetails && (group is not null || peer is { Trusted: true, Blocked: false });
         var seconds = store.Policies().Find(p => p.Id == selectedId)?.DisappearSeconds ?? 0;
         ExpirySettingsButton.Content = "Tin tự hủy · " + (seconds == 0 ? "Tắt" : Duration(seconds));
         ExpirySettingsButton.IsEnabled = group is not null || peer is { Trusted: true, Blocked: false };
         bool hasChat = peer is not null || group is not null;
-        bool allowed = group is not null || peer is { Trusted: true, Blocked: false };
+        bool allowed = group is not null ? group.Members.Contains(identity.Id) : peer is { Trusted: true, Blocked: false };
         ConversationPasswordButton.IsEnabled = hasChat;
         LockConversationButton.Visibility = hasChat && App.Vault.IsConversationLocked(selectedId) && !ConversationProtected ? Visibility.Visible : Visibility.Collapsed;
         HeaderLockButton.Visibility = LockConversationButton.Visibility;
@@ -225,9 +243,11 @@ public partial class MainWindow : Window
         BlockButton.Visibility = peer is not null && peer.Trusted ? Visibility.Visible : Visibility.Collapsed;
         ChatTitle.Text = group?.Name ?? peer?.DisplayName ?? "Không gian của bạn";
         var presenceLabel = peer is null ? "" : new ContactRow("", "", "", "", false, Presence: peer.Connected ? peer.Presence : "offline").PresenceLabel;
-        ChatSubtitle.Text = group is not null ? $"Nhóm riêng · {group.Members.Count} thành viên" : peer is not null ? $"{presenceLabel}{(peer.Trusted ? " · Đã xác minh" : " · Chưa xác minh")}" : "Những cuộc trò chuyện ở ngay bên cạnh";
+        ChatSubtitle.Text = group is not null ? group.Members.Contains(identity.Id) ? $"Nhóm riêng · {group.Members.Count} thành viên" : "Đã rời nhóm · Lịch sử chỉ đọc" : peer is not null ? $"{presenceLabel}{(peer.Trusted ? " · Đã xác minh" : " · Chưa xác minh")}" : "Những cuộc trò chuyện ở ngay bên cạnh";
         DetailName.Text = group?.Name ?? peer?.DisplayName ?? "Kết nối riêng tư";
         DetailInitials.Text = group is not null ? "#" : peer?.Initials ?? "L";
+        DetailAvatar.Source = AvatarImages.Get(peer?.Avatar ?? "");
+        DetailInitials.Visibility = DetailAvatar.Source is null ? Visibility.Visible : Visibility.Collapsed;
         DetailStatus.Text = group is not null ? string.Join("\n", group.Members.Select(id => id == identity.Id ? identity.Name + " (bạn)" : node.FindPeer(id)?.DisplayName ?? "Thành viên chưa ghép đôi")) : peer is null ? "Dữ liệu truyền trực tiếp giữa các máy trong mạng LAN." : $"{peer.Address}:{peer.Port}\nID: {peer.Id[..12]}…\n{(peer.Trusted ? "Đã xác minh danh tính" : "Cần đối chiếu mã xác minh")}";
         MessageSearch.IsEnabled = !protectedDetails;
         RenamePeerButton.IsEnabled = !protectedDetails && peer is not null;
@@ -246,13 +266,14 @@ public partial class MainWindow : Window
             foreach (var player in players) player.Close(); players.Clear(); MessagesPanel.Children.Clear(); expiryLabels.Clear(); progress.Clear();
             WelcomePanel.Visibility = Visibility.Visible; WelcomeTitle.Text = "Cuộc trò chuyện\nđang được khóa."; WelcomeBody.Text = "Nhập mật khẩu riêng để xem nội dung\nvà tệp đã chia sẻ trong cuộc trò chuyện này."; WelcomeAction.Content = "Mở khóa hội thoại"; WelcomeAction.Visibility = Visibility.Visible; NoFiles.Visibility = Visibility.Collapsed; renderKey = "locked:" + selectedId; return;
         }
+        if (!UpdateCaptureProtection()) return;
         WelcomeAction.Content = "Tìm người trong LAN";
         var messages = hasChat ? store.Messages(selectedId, MessageSearch.Text, messageLimit) : [];
         WelcomePanel.Visibility = messages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         WelcomeTitle.Text = hasChat ? "Bắt đầu bằng\nmột lời chào." : "Một lời chào,\nngay trong mạng của bạn.";
         WelcomeBody.Text = hasChat ? "Gửi một tin nhắn, một tấm ảnh\nhay điều bạn muốn chia sẻ." : "Chat, gửi ảnh và chia sẻ tệp trực tiếp.\nMọi thứ ở lại trên máy của bạn.";
         WelcomeAction.Visibility = hasChat ? Visibility.Collapsed : Visibility.Visible;
-        var key = selectedId + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + Codec.Encode(m.Reactions) + string.Join(',', m.Delivery.Values)));
+        var key = selectedId + "|" + node.ConversationRules(selectedId).ForwardAllowed + "|" + string.Join(',', store.PinnedMessages(selectedId).Order()) + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + Codec.Encode(m.Reactions) + string.Join(',', m.Delivery.Values)));
         RefreshSharedContent();
         if (key == renderKey) return;
         renderKey = key;
@@ -288,6 +309,8 @@ public partial class MainWindow : Window
         bubble.SetResourceReference(Border.BackgroundProperty, msg.Outgoing ? "OwnBrush" : "SurfaceBrush"); bubble.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
         var content = new StackPanel(); bubble.Child = content;
         var messageMenu = MessageMenu(msg); bubble.ContextMenu = messageMenu;
+        outer.ContextMenu = messageMenu;
+        messageMenu.Opened += (_, _) => { if (!ScreenCaptureProtection.ProtectPopup(messageMenu, this)) messageMenu.IsOpen = false; };
         if (messageSelection)
         {
             var choose = new CheckBox { Content = "Chọn tin nhắn", IsChecked = selectedMessages.Contains(msg.Id), Margin = new Thickness(0, 0, 0, 6) };
@@ -301,7 +324,7 @@ public partial class MainWindow : Window
         var toolbar = new MessageActions(outer, () => BeginReply(msg), messageMenu);
         if (msg.Outgoing) Canvas.SetRight(toolbar, 0); else Canvas.SetLeft(toolbar, 0);
         Canvas.SetTop(toolbar, -18); overlay.Children.Add(toolbar);
-        var reactions = new MessageReactions(outer, msg.Reactions, identity.Id, id => node.FindPeer(id)?.DisplayName ?? "Thành viên", emoji => ToggleReaction(msg.Id, emoji));
+        var reactions = new MessageReactions(outer, msg.Reactions, identity.Id, id => node.FindPeer(id)?.DisplayName ?? "Thành viên", emoji => ToggleReaction(msg.Id, emoji), id => AvatarImages.Get(id == identity.Id ? store.Avatar : node.FindPeer(id)?.Avatar ?? ""));
         Canvas.SetBottom(reactions, -11); overlay.Children.Add(reactions);
         if (msg.Outgoing) Canvas.SetRight(reactions, 0);
         else
@@ -310,6 +333,8 @@ public partial class MainWindow : Window
             bubbleLayer.SizeChanged += (_, _) => PlaceReactions(); reactions.SizeChanged += (_, _) => PlaceReactions();
         }
         outer.Tag = msg.Id;
+        if (msg.Forwarded) content.Children.Add(Paragraph("↪ Được chuyển tiếp", 10, muted: true));
+        if (store.PinnedMessages(msg.ConversationId).Contains(msg.Id)) content.Children.Add(Paragraph("📌 Đã ghim", 10, muted: true));
         if (msg.ReplyToId.Length > 0)
         {
             var original = store.Message(msg.ReplyToId);
@@ -326,7 +351,7 @@ public partial class MainWindow : Window
         }
         else if (msg.Kind == "text")
         {
-            content.Children.Add(EmojiAssets.MessageText(msg.Text));
+            var text = EmojiAssets.MessageText(msg.Text, OpenChatLink); text.ContextMenu = messageMenu; content.Children.Add(text);
         }
         else
         {
@@ -348,11 +373,12 @@ public partial class MainWindow : Window
             var buttons = new WrapPanel(); content.Children.Add(buttons);
             if (available)
             {
-                AddButton(buttons, "Mở", () => OpenAttachment(msg));
+                AddButton(buttons, HtmlPreview.Supports(msg) ? "Mở HTML" : "Mở", () => OpenAttachment(msg));
                 AddButton(buttons, "Lưu thành…", () => SaveAttachment(msg));
             }
             else if (!msg.Outgoing)
             {
+                if (HtmlPreview.Supports(msg)) AddButton(buttons, "Mở HTML", async () => await OpenHtmlAsync(msg));
                 if (msg.Kind == "image" && msg.Status is "offered" or "receiving")
                     content.Children.Add(Paragraph(node.IsConnected(msg.SenderId) ? "Đang tự động nhận ảnh…" : "Ảnh sẽ tự tải khi người gửi online.", 11, muted: true));
                 else AddButton(buttons, msg.Status == "receiving" || File.Exists(msg.FilePath + ".part") ? "Tiếp tục tải" : "Nhận tệp", async () => { try { await node.AcceptFileAsync(msg.Id); } catch (Exception ex) { ShowError(ex); } });
@@ -443,6 +469,7 @@ public partial class MainWindow : Window
             var image = new Image { Source = bitmap, Stretch = Stretch.Uniform, Margin = new Thickness(16) };
             var window = new Window { Title = msg.FileName, Owner = this, Width = 900, Height = 650, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = image };
             mediaWindows.Add(window); window.Closed += (_, _) => mediaWindows.Remove(window);
+            ProtectOwnedWindow(window, msg.ConversationId);
             window.Show();
         }
         catch (Exception ex) when (ex is IOException or NotSupportedException or ArgumentException or UnauthorizedAccessException) { ShowError(ex); }
@@ -451,6 +478,7 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (HtmlPreview.Supports(msg)) { _ = OpenHtmlAsync(msg); return; }
             if (msg.Kind == "image") { ShowImage(msg); return; }
             var ext = Path.GetExtension(msg.FilePath).ToLowerInvariant();
             if (new[] { ".exe", ".com", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".msi", ".scr", ".lnk", ".hta", ".reg", ".url" }.Contains(ext))
@@ -483,6 +511,7 @@ public partial class MainWindow : Window
         selectedId = row.Id; Composer.Text = drafts.GetValueOrDefault(selectedId, ""); MessageSearch.Clear(); messageLimit = 150; renderKey = ""; RefreshConversation(); ChatScroll.ScrollToEnd();
         if (ConversationProtected) TryUnlockConversation();
         MarkSelectedRead();
+        FocusComposer();
     }
     private void ContactSearchChanged(object sender, TextChangedEventArgs e) { if (node is not null) Refresh(); }
     private void MessageSearchChanged(object sender, TextChangedEventArgs e) { if (node is not null && !ConversationProtected && !appLocking) { renderKey = ""; RefreshConversation(); } }
@@ -601,10 +630,21 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { ShowError(ex); }
     }
+    private bool discovering;
     private async void DiscoverClick(object sender, RoutedEventArgs e)
     {
         if (ConversationProtected) { TryUnlockConversation(); return; }
-        try { ContactSearch.Clear(); await node.AnnounceAsync(); Refresh(); ShowToast("Đang tìm máy. Có thể kết nối bằng IP nếu mạng chặn tự tìm."); } catch (Exception ex) { ShowError(ex); }
+        if (discovering) { ShowToast("Đang tìm máy, vui lòng chờ một chút."); return; }
+        discovering = true;
+        try
+        {
+            ContactSearch.Clear(); ShowToast("Đang dò các máy trong LAN…");
+            var count = await node.DiscoverAsync(uiLifetime.Token); Refresh();
+            ShowToast(count > 0 ? $"Tìm thấy {count} máy đang hoạt động." : "Chưa tìm thấy máy. Máy bên kia cần mở khóa Lantern; nếu khác VLAN, hãy kết nối bằng IP.");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { ShowError(ex); }
+        finally { discovering = false; }
     }
     private void ChatsClick(object sender, RoutedEventArgs e) { ContactSearch.Clear(); ContactsList.Focus(); }
     private async void AddPeerClick(object sender, RoutedEventArgs e)
@@ -628,6 +668,29 @@ public partial class MainWindow : Window
         try { var group = await node.CreateGroupAsync(name.Text, choices.Where(c => c.IsChecked == true).Select(c => (string)c.Tag)); selectedId = group.Id; renderKey = ""; Refresh(); }
         catch (Exception ex) { ShowError(ex); }
     }
+    private async void AddGroupMembersClick(object sender, RoutedEventArgs e)
+    {
+        if (ConversationProtected || appLocking) return;
+        var group = store.Groups().Find(g => g.Id == selectedId);
+        if (group is null || group.OwnerId != identity.Id) return;
+        var available = node.Peers.Where(p => p.Trusted && !p.Blocked && !group.Members.Contains(p.Id)).ToArray();
+        if (available.Length == 0) { ShowToast("Ghép đôi với người mới trước khi thêm vào nhóm."); return; }
+        var panel = new StackPanel(); panel.Children.Add(Paragraph("Thêm thành viên", 24, true));
+        panel.Children.Add(Paragraph(group.Name + $" · {group.Members.Count}/32 thành viên", 13, muted: true));
+        var choices = available.Select(p => new CheckBox { Content = p.DisplayName, Tag = p.Id, Margin = new Thickness(0, 5, 0, 5) }).ToArray();
+        foreach (var choice in choices) { choice.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(choice); }
+        var history = new CheckBox { Name = "IncludeGroupHistory", Content = "Cho người mới đọc tin nhắn cũ", IsChecked = false, Margin = new Thickness(0, 18, 0, 8) };
+        history.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(history);
+        panel.Children.Add(Paragraph("Tắt: chỉ nhận tin từ lúc tham gia. Bật: đồng bộ lịch sử còn lưu khi các máy gửi tin kết nối lại; tin đã xóa hoặc hết hạn không được khôi phục.", 12, muted: true));
+        panel.Children.Add(Paragraph("Các thành viên cần cập nhật Lantern và ghép đôi với nhau để chat, nhận lịch sử và tải tệp.", 12, muted: true));
+        if (!ShowDialog("Thêm người vào nhóm", panel, "Thêm thành viên")) return;
+        try
+        {
+            await node.AddGroupMembersAsync(group.Id, choices.Where(c => c.IsChecked == true).Select(c => (string)c.Tag), history.IsChecked == true);
+            Refresh(); ShowToast("Đã thêm thành viên và lưu quyền xem lịch sử.");
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
     private void ThemeClick(object sender, RoutedEventArgs e)
     {
         App.Settings.Theme = App.Settings.Theme == "dark" ? "light" : "dark"; App.ApplyTheme(App.Settings.Theme); App.SaveSettings(); renderKey = ""; Refresh();
@@ -635,6 +698,7 @@ public partial class MainWindow : Window
     private async void SettingsClick(object sender, RoutedEventArgs e)
     {
         var panel = new StackPanel(); panel.Children.Add(Paragraph("Hồ sơ của bạn", 25, true));
+        var avatar = store.Avatar; panel.Children.Add(AvatarSettings(() => avatar, value => avatar = value));
         panel.Children.Add(Paragraph("Tên hiển thị", bold: true)); var name = new TextBox { Text = identity.Name, MaxLength = 80 }; panel.Children.Add(name);
         panel.Children.Add(Paragraph("Tên mới được cập nhật tới các máy đã ghép đôi. Nếu người khác đã đặt tên riêng cho bạn, họ vẫn thấy tên riêng đó.", 12, muted: true));
         var toasts = new CheckBox { Content = "Hiện thông báo Windows khi có tin nhắn mới", IsChecked = App.Settings.MessageToasts, Margin = new Thickness(0, 0, 0, 16) }; toasts.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(toasts);
@@ -664,6 +728,7 @@ public partial class MainWindow : Window
                 App.Settings.Name = PeerNode.ValidateDisplayName(name.Text); App.Settings.MessageToasts = toasts.IsChecked == true; App.Settings.MessageToastMode = toastMode.SelectedIndex == 1 ? "private" : "full"; App.Settings.CloseToTray = closeToTray.IsChecked == true; App.SaveSettings();
                 WindowsStartup.Apply(startup.IsChecked == true); App.Settings.StartWithWindows = startup.IsChecked == true; App.SaveSettings();
                 await node.UpdateDisplayNameAsync(App.Settings.Name);
+                if (avatar != store.Avatar) await node.UpdateAvatarAsync(avatar);
                 App.ApplyTheme(App.Settings.Theme); MyInitials.Text = Initials(identity.Name); Title = "Lantern · " + identity.Name; renderKey = ""; Refresh(); ShowToast("Đã lưu hồ sơ và cập nhật tên hiển thị.");
             }
             catch (Exception ex) { ShowError(ex); }
@@ -803,6 +868,7 @@ public partial class MainWindow : Window
         var content = DetailsPanel.Child; if (content is null) return;
         DetailsPanel.Child = null;
         var window = new Window { Owner = this, Title = "Thông tin hội thoại", Width = 420, Height = Math.Min(760, SystemParameters.WorkArea.Height - 80), WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = content };
+        ProtectOwnedWindow(window, selectedId);
         try { window.ShowDialog(); } finally { window.Content = null; DetailsPanel.Child = content; }
     }
     private void WindowSizeChanged(object sender, SizeChangedEventArgs e) { if (IsInitialized) UpdateLayoutWidths(); }

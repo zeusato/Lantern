@@ -7,6 +7,18 @@ using System.Security.Cryptography.X509Certificates;
 using Lantern.Core;
 
 if (args.FirstOrDefault() == "--ui-peer") { await UiPeer.Run(args[1], args[2]); return; }
+if (args.FirstOrDefault() == "--groups-only")
+{
+    var directory = Path.Combine(Path.GetTempPath(), "Lantern-groups-" + Guid.NewGuid().ToString("N"));
+    void Verify(bool ok, string name) { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }
+    await GroupMembershipTests.Run(directory, Verify); await GroupLifecycleTests.Run(directory, Verify); return;
+}
+if (args.FirstOrDefault() == "--discovery-only")
+{
+    void Verify(bool ok, string name) { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }
+    await DiscoveryTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-discovery-" + Guid.NewGuid().ToString("N")), Verify);
+    MessageLinkTests.Run(Verify); return;
+}
 if (args.FirstOrDefault() == "--mobile-relay")
 {
     var config = System.Text.Json.JsonSerializer.Deserialize<RelayConfiguration>(Console.ReadLine()!, MobileProtocol.Json)!;
@@ -281,7 +293,8 @@ var literal = "https://example.test/:) C:\\:) abc:) `:) <3` ```\n:) <3\n```";
 Check(Emoticons.Replace(literal) == literal, "Auto replacement preserves URLs, paths and code");
 Check(Emoticons.Replace(":)", false) == ":)" && Emoticons.Replace(":) ", false) == "🙂 " && Emoticons.Replace("Hi :D!") == "Hi 😃!", "Auto replacement waits for a delimiter or sending");
 Check(Emoticons.Replace("🙂 ❤️ tiếng Việt") == "🙂 ❤️ tiếng Việt", "Existing emoji and Vietnamese remain unchanged");
-Check(!new AppSettings().MessageToasts, "Message toasts are disabled by default");
+Check(new AppSettings().MessageToasts && new AppSettings().MessageToastMode == "private" && Codec.Decode<AppSettings>("{}").MessageToasts, "Message toasts default to enabled with private content");
+Check(!Codec.Decode<AppSettings>("{\"messageToasts\":false,\"messageToastMode\":\"full\"}").MessageToasts, "Saved notification preferences are preserved");
 await UpdaterTests.Run(root, Check);
 await PreviewTests.Run(Check);
 await AutoImageTests.Run(root, Check);
@@ -289,4 +302,8 @@ await MobileTests.Run(root, Check);
 await PcControlTests.Run(root, Check);
 await RelayEnrollmentTests.Run(root, Check);
 await DeletionTests.Run(root, Check);
+await DiscoveryTests.Run(root, Check);
+await GroupMembershipTests.Run(root, Check);
+await GroupLifecycleTests.Run(root, Check);
+MessageLinkTests.Run(Check);
 Console.WriteLine($"\n{passed} checks passed. Test data: {root}");

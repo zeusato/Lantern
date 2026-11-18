@@ -2,7 +2,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Lantern.Core;
 
-public sealed class LocalStore : IDisposable
+public sealed partial class LocalStore : IDisposable
 {
     private readonly SqliteConnection db;
     private readonly object gate = new();
@@ -27,6 +27,8 @@ public sealed class LocalStore : IDisposable
         cmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA secure_delete=ON; CREATE TABLE IF NOT EXISTS peers(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,conversation TEXT NOT NULL,time TEXT NOT NULL,data TEXT NOT NULL); CREATE INDEX IF NOT EXISTS ix_messages_conversation ON messages(conversation,time); CREATE TABLE IF NOT EXISTS groups(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS deleted_messages(id TEXT PRIMARY KEY);";
         cmd.ExecuteNonQuery();
         using var extra = db.CreateCommand(); extra.CommandText = "CREATE TABLE IF NOT EXISTS policies(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS expired_messages(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS message_expiry(id TEXT PRIMARY KEY,expires TEXT NOT NULL); CREATE INDEX IF NOT EXISTS ix_message_expiry ON message_expiry(expires);"; extra.ExecuteNonQuery();
+        InitializeGroupActions();
+        using (var profile = db.CreateCommand()) { profile.CommandText = "CREATE TABLE IF NOT EXISTS profile(id TEXT PRIMARY KEY,data TEXT NOT NULL)"; profile.ExecuteNonQuery(); }
         if (vault is not null) MigrateEncryption();
         InitializeUnread();
     }
@@ -61,13 +63,13 @@ public sealed class LocalStore : IDisposable
             while (reader.Read()) counts[reader.GetString(0)] = reader.GetInt32(1); return counts;
         }
     }
-    public bool SaveIncomingMessage(ChatMessage message)
+    public bool SaveIncomingMessage(ChatMessage message, bool unread = true)
     {
         if (message.Outgoing) throw new ArgumentException("Chỉ đánh dấu tin nhận là chưa đọc.");
         lock (gate)
         {
-            if (WasDeleted(message.Id) || Message(message.Id) is not null) return false;
-            using var tx = db.BeginTransaction(); WriteMessage(message, tx); AddUnread(message.Id, tx); tx.Commit(); return true;
+            if (WasDeleted(message.Id) || Message(message.Id) is not null || message.GroupId.Length > 0 && GroupRecord(message.GroupId) is { Deleted: true }) return false;
+            using (var tx = db.BeginTransaction()) { WriteMessage(message, tx); if (unread) AddUnread(message.Id, tx); tx.Commit(); } UnhideConversation(message.ConversationId); return true;
         }
     }
     public List<ChatMessage> MarkConversationRead(string conversationId, IReadOnlySet<string>? visibleMessages = null)
@@ -101,7 +103,7 @@ public sealed class LocalStore : IDisposable
     private void MigrateEncryption()
     {
         var changed = false;
-        foreach (var table in new[] { "peers", "messages", "groups", "policies", "expired_messages" })
+        foreach (var table in new[] { "peers", "messages", "groups", "policies", "expired_messages", "group_actions", "capture_policies", "conversation_preferences", "profile" })
         {
             var rows = new List<(string Id, string Data)>();
             using (var read = db.CreateCommand()) { read.CommandText = $"SELECT id,data FROM {table} WHERE data NOT LIKE 'enc:v1:%'"; using var reader = read.ExecuteReader(); while (reader.Read()) rows.Add((reader.GetString(0), reader.GetString(1))); }
@@ -114,6 +116,15 @@ public sealed class LocalStore : IDisposable
     }
     public void SavePeer(Peer value) => Save("peers", value.Id, Codec.Encode(value));
     public void SaveGroup(ChatGroup value) => Save("groups", value.Id, Codec.Encode(value));
+    internal bool ApplyGroup(ChatGroup value)
+    {
+        lock (gate)
+        {
+            value = FilterDepartures(value);
+            if (!GroupMembership.ShouldReplace(GroupRecord(value.Id), value)) return false;
+            SaveGroup(value); return true;
+        }
+    }
     private void Save(string table, string id, string value)
     {
         lock (gate)
@@ -124,7 +135,7 @@ public sealed class LocalStore : IDisposable
         }
     }
     public List<Peer> Peers() => ReadAll<Peer>("peers");
-    public List<ChatGroup> Groups() => ReadAll<ChatGroup>("groups");
+    public List<ChatGroup> Groups() => ReadAll<ChatGroup>("groups").Where(g => !g.Deleted).ToList();
     public List<ConversationPolicy> Policies() => ReadAll<ConversationPolicy>("policies");
     public List<ChatMessage> ExpiredMessages() => ReadAll<ChatMessage>("expired_messages");
     public bool SavePolicy(ConversationPolicy policy)
@@ -158,9 +169,9 @@ public sealed class LocalStore : IDisposable
             using var tx = db.BeginTransaction();
             foreach (var message in messages)
             {
-                var tombstone = new ChatMessage { Id = message.Id, ConversationId = message.ConversationId, SenderId = message.SenderId, GroupId = message.GroupId, DisappearAfterSeconds = message.DisappearAfterSeconds, ExpiresAt = message.ExpiresAt };
+                var tombstone = new ChatMessage { Id = message.Id, ConversationId = message.ConversationId, SenderId = message.SenderId, GroupId = message.GroupId, GroupRevision = message.GroupRevision, DisappearAfterSeconds = message.DisappearAfterSeconds, ExpiresAt = message.ExpiresAt };
                 using var cmd = db.CreateCommand(); cmd.Transaction = tx;
-                cmd.CommandText = "INSERT OR REPLACE INTO expired_messages(id,data) VALUES($id,$data); INSERT OR IGNORE INTO deleted_messages(id) VALUES($id); DELETE FROM unread_messages WHERE id=$id; DELETE FROM message_expiry WHERE id=$id; DELETE FROM messages WHERE id=$id;";
+                cmd.CommandText = "INSERT OR REPLACE INTO expired_messages(id,data) VALUES($id,$data); INSERT OR IGNORE INTO deleted_messages(id) VALUES($id); DELETE FROM unread_messages WHERE id=$id; DELETE FROM message_expiry WHERE id=$id; DELETE FROM pinned_messages WHERE id=$id; DELETE FROM messages WHERE id=$id;";
                 cmd.Parameters.AddWithValue("$id", message.Id); cmd.Parameters.AddWithValue("$data", Seal(Codec.Encode(tombstone))); cmd.ExecuteNonQuery();
             }
             tx.Commit(); foreach (var conversation in messages.Select(m => m.ConversationId).Distinct()) MessagesChanged(conversation); return messages;
@@ -178,10 +189,15 @@ public sealed class LocalStore : IDisposable
     }
     public void SaveMessage(ChatMessage value)
     {
-        lock (gate) { using var tx = db.BeginTransaction(); WriteMessage(value, tx); tx.Commit(); }
+        lock (gate) { bool fresh = Message(value.Id) is null && !WasDeleted(value.Id); using (var tx = db.BeginTransaction()) { WriteMessage(value, tx); tx.Commit(); } if (fresh) UnhideConversation(value.ConversationId); }
+    }
+    private void UnhideConversation(string id)
+    {
+        var preference = Preference(id); if (!preference.Hidden) return; preference.Hidden = false; SavePreference(preference);
     }
     private void WriteMessage(ChatMessage value, SqliteTransaction? transaction = null)
     {
+            if (value.GroupId.Length > 0 && GroupRecord(value.GroupId, transaction) is { Deleted: true }) return;
             using var cmd = db.CreateCommand(); cmd.Transaction = transaction; cmd.CommandText = "INSERT INTO messages(id,conversation,time,data) SELECT $id,$c,$t,$d WHERE NOT EXISTS(SELECT 1 FROM deleted_messages WHERE id=$id) ON CONFLICT(id) DO UPDATE SET data=$d";
             cmd.Parameters.AddWithValue("$id", value.Id); cmd.Parameters.AddWithValue("$c", value.ConversationId);
             cmd.Parameters.AddWithValue("$t", value.Time.ToString("O")); cmd.Parameters.AddWithValue("$d", Seal(Codec.Encode(value))); cmd.ExecuteNonQuery();
@@ -231,7 +247,7 @@ public sealed class LocalStore : IDisposable
             var messages = Messages(conversation, limit: int.MaxValue).Where(m => ids is null || ids.Contains(m.Id)).ToList();
             using var tx = db.BeginTransaction();
             using var cmd = db.CreateCommand(); cmd.Transaction = tx;
-            cmd.CommandText = "INSERT OR IGNORE INTO deleted_messages(id) VALUES($id); DELETE FROM unread_messages WHERE id=$id; DELETE FROM message_expiry WHERE id=$id; DELETE FROM expired_messages WHERE id=$id; DELETE FROM messages WHERE id=$id;";
+            cmd.CommandText = "INSERT OR IGNORE INTO deleted_messages(id) VALUES($id); DELETE FROM unread_messages WHERE id=$id; DELETE FROM message_expiry WHERE id=$id; DELETE FROM expired_messages WHERE id=$id; DELETE FROM pinned_messages WHERE id=$id; DELETE FROM messages WHERE id=$id;";
             var parameter = cmd.Parameters.Add("$id", SqliteType.Text);
             foreach (var message in messages) { parameter.Value = message.Id; cmd.ExecuteNonQuery(); }
             if (messages.Count > 0)

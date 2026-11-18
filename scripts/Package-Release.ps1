@@ -1,4 +1,4 @@
-param([string]$Version = '1.2.12', [string]$OutputDirectory = 'release-output', [switch]$SkipTests)
+param([string]$Version = '1.2.15', [string]$OutputDirectory = 'release-output', [switch]$SkipTests)
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'Use a stable version such as 1.1.0.' }
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -17,10 +17,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed.' }
     Copy-Item -LiteralPath README.md -Destination (Join-Path $payload 'HUONG-DAN.md')
     Copy-Item -LiteralPath THIRD-PARTY-NOTICES.md -Destination $payload
-    Copy-Item -LiteralPath (Join-Path $projectRoot 'licenses/DOTNET-LICENSE.txt'), (Join-Path $projectRoot 'licenses/DOTNET-THIRD-PARTY-NOTICES.txt'), (Join-Path $projectRoot 'licenses/WPF-THIRD-PARTY-NOTICES.txt') -Destination $payload
+    Copy-Item -LiteralPath (Join-Path $projectRoot 'licenses/DOTNET-LICENSE.txt'), (Join-Path $projectRoot 'licenses/DOTNET-THIRD-PARTY-NOTICES.txt'), (Join-Path $projectRoot 'licenses/WPF-THIRD-PARTY-NOTICES.txt'), (Join-Path $projectRoot 'licenses/WEBVIEW2-LICENSE.txt') -Destination $payload
     $archive = Join-Path $outputRoot 'Lantern-Windows-x64.zip'
     if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive }
-    Compress-Archive -LiteralPath (Get-ChildItem -LiteralPath $payload -File | Where-Object Name -in @('Lantern.exe','HUONG-DAN.md','THIRD-PARTY-NOTICES.md','DOTNET-LICENSE.txt','DOTNET-THIRD-PARTY-NOTICES.txt','WPF-THIRD-PARTY-NOTICES.txt') | Select-Object -ExpandProperty FullName) -DestinationPath $archive -CompressionLevel Optimal
+    Compress-Archive -LiteralPath (Get-ChildItem -LiteralPath $payload -File | Where-Object Name -in @('Lantern.exe','HUONG-DAN.md','THIRD-PARTY-NOTICES.md','DOTNET-LICENSE.txt','DOTNET-THIRD-PARTY-NOTICES.txt','WPF-THIRD-PARTY-NOTICES.txt','WEBVIEW2-LICENSE.txt') | Select-Object -ExpandProperty FullName) -DestinationPath $archive -CompressionLevel Optimal
     $checksum = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() + '  Lantern-Windows-x64.zip'
     [IO.File]::WriteAllText((Join-Path $outputRoot 'SHA256SUMS.txt'), $checksum + [Environment]::NewLine)
     Write-Output "Ready: $archive"

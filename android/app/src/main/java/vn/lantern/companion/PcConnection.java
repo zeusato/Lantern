@@ -39,7 +39,7 @@ final class PcConnection implements AutoCloseable {
         input=new DataInputStream(socket.getInputStream());output=new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(),65536));
         try {
             progress.accept(config.optString("nonce").isEmpty()?"Đang xác nhận thiết bị với PC…":"Đang chờ xác nhận ghép đôi trên PC…");
-            JSONObject hello=new JSONObject().put("type","hello").put("nonce",config.optString("nonce")).put("name",android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL).put("capabilities",new JSONArray().put("push-v1"));
+            JSONObject hello=new JSONObject().put("type","hello").put("nonce",config.optString("nonce")).put("name",android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL).put("capabilities",new JSONArray().put("push-v1").put("capture-protection-v1"));
             JSONObject welcome=request(hello);if(!"welcome".equals(welcome.optString("type")))throw new IOException("PC chưa chấp nhận ghép đôi");
             JSONArray capabilities=welcome.optJSONArray("capabilities");if(capabilities!=null)for(int i=0;i<capabilities.length();i++){if("sync-v1".equals(capabilities.optString(i)))fastSync=true;if("push-v1".equals(capabilities.optString(i)))pushSync=true;}
             socket.setSoTimeout(30000);

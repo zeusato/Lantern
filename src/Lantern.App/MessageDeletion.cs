@@ -11,9 +11,15 @@ public partial class MainWindow
     private ContextMenu MessageMenu(ChatMessage message)
     {
         var menu = new ContextMenu();
+        var reply = new MenuItem { Header = "Trả lời" }; reply.Click += (_, _) => { BeginReply(message); FocusComposer(); }; menu.Items.Add(reply);
+        var share = new MenuItem { Header = "Chia sẻ", IsEnabled = node.ConversationRules(message.ConversationId).ForwardAllowed }; share.Click += async (_, _) => await ForwardMessage(message); menu.Items.Add(share);
+        var copy = new MenuItem { Header = "Copy tin nhắn" }; copy.Click += (_, _) => { if (!appLocking && !ConversationProtected) Clipboard.SetText(message.Kind == "text" ? message.Text : message.Kind == "contact" ? message.Contact?.Name ?? "" : message.FileName); }; menu.Items.Add(copy);
+        bool pinned = store.PinnedMessages(message.ConversationId).Contains(message.Id);
+        var pin = new MenuItem { Header = pinned ? "Bỏ ghim tin nhắn" : "Ghim tin nhắn" }; pin.Click += (_, _) => { if (appLocking || ConversationProtected) return; try { store.PinMessage(message.Id, !pinned); renderKey = ""; RefreshConversation(); ShowToast(pinned ? "Đã bỏ ghim." : "Đã ghim tin nhắn trên máy này."); } catch (Exception ex) { ShowError(ex); } }; menu.Items.Add(pin);
+        menu.Items.Add(new Separator());
         var select = new MenuItem { Header = "Chọn nhiều tin nhắn" };
         select.Click += (_, _) => BeginMessageSelection(message.Id); menu.Items.Add(select);
-        var delete = new MenuItem { Header = "Xóa tin nhắn" };
+        var delete = new MenuItem { Header = "Xóa chỉ ở phía tôi" };
         delete.Click += async (_, _) => await ConfirmDeleteMessages(message.ConversationId, new HashSet<string> { message.Id }); menu.Items.Add(delete);
         return menu;
     }

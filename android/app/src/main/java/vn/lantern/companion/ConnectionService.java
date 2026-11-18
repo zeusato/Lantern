@@ -95,6 +95,13 @@ public final class ConnectionService extends Service {
         lastSync=android.os.SystemClock.elapsedRealtime();notifyUi();
     }
     private void applyContacts(JSONObject response){synchronized(stateGate){if(stopping)return;JSONArray contacts=response.optJSONArray("conversations");if(contacts!=null){
+        Set<String> remaining=new HashSet<>();for(int i=0;i<contacts.length();i++){JSONObject c=contacts.optJSONObject(i);if(c!=null)remaining.add(c.optString("id"));}
+        for(int i=0;i<conversations.length();i++){JSONObject c=conversations.optJSONObject(i);if(c==null)continue;String id=c.optString("id");if(remaining.contains(id))continue;
+            JSONArray previous=snapshots.remove(id);if(previous==null&&cache!=null)previous=cache.messages(id);clearCachedFiles(previous);historyHashes.remove(id);
+            outbox.values().removeIf(m->id.equals(m.optString("conversationId")));try{persistOutbox();}catch(Exception ignored){}
+            if(id.equals(selected)){messages=new JSONArray();clearMedia();}
+            if(cache!=null)save(()->{try{cache.clearConversation(id);}catch(Exception ignored){}});
+        }
         for(int i=0;i<contacts.length();i++){JSONObject c=contacts.optJSONObject(i);if(c==null)continue;String id=c.optString("id");if(c.optLong("historyVersion")!=historyVersion(id)){
             JSONArray previous=snapshots.get(id);if(previous==null&&cache!=null)previous=cache.messages(id);clearCachedFiles(previous);
             snapshots.put(id,new JSONArray());historyHashes.remove(id);if(id.equals(selected))clearMedia();

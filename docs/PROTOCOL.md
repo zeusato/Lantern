@@ -21,14 +21,16 @@ Operations:
 | `ping` | Keepalive |
 | `message` | Direct/group text, authenticated sender ID |
 | `ack`, `read` | Persisted receipt / read receipt |
-| `group` | Immutable group definition, only from authenticated owner |
+| `group` | Owner-authorized group roster with monotonic revision and per-member history access |
+| `group-action` | Signed member departure, owner handoff or terminal group deletion, relayable by trusted peers |
+| `conversation-rules` | Direct-chat capture/forward permissions, ordered by revision then authenticated actor |
 | `offer` | File metadata and SHA-256, no file contents |
 | `accept` | Recipient acceptance (automatic for images under local policy) and resume byte offset |
 | `chunk` | 64 KB or smaller chunk, Base64-encoded with exact byte offset |
 | `end` | Finish and verify local size/SHA-256 |
 | `fileDone` | Recipient has validated and stored the complete file |
 | `decline` | Recipient declines/stops the transfer |
-| `profile` | Authenticated public display name update; never carries a local alias |
+| `profile` | Authenticated public display name and bounded Base64 PNG avatar in `Data`; never carries a local alias |
 | `presence` | `online`, `idle` or `dnd`; disconnected sessions render offline |
 | `reaction` | Message ID, the authenticated actor's emoji (empty means removal), monotonically increasing revision |
 | `contact` | Chat message carrying a public contact card; no trust transfer |
@@ -36,13 +38,23 @@ Operations:
 | `expiry-policy` | Conversation timer for future messages, ordered by revision then authenticated actor |
 | `expiry-start` | A read-triggered deadline for a specific expiring message |
 
-Current hello includes `Version: 2` and presence. Peers with missing/older capability versions cannot receive newly sent self-destruct messages; pending self-destruct sends remain queued until a compatible peer connects. Normal v1 chat remains compatible. Quoted text uses `ReplyToId` and resolves the source only inside the same local conversation. Unknown/expired sources show an unavailable reference instead of copying deleted content.
+Current hello includes `Version: 5` and presence. Version 2 enables self-destruct messages; version 3 enables adding group members; versions 4 and 5 add the lifecycle and permission controls described below. Peers with missing/older timer capability cannot receive newly sent self-destruct messages; pending self-destruct sends remain queued until a compatible peer connects. Normal v1 chat remains compatible. Quoted text uses `ReplyToId` and resolves the source only inside the same local conversation. Unknown/expired sources show an unavailable reference instead of copying deleted content.
 
 Unread markers are stored separately from transfer status. Reading visible unlocked conversations clears markers and persists read receipts. Image offers still waiting/downloading retain unread markers and do not start their expiry timer until downloaded and read. Message replay and reactions do not increment unread totals. A conversation password is unlocked for the process session until explicitly locked or the whole application is locked/closed.
 
 Self-destruct TTL travels with each message. The first recipient to read starts a UTC deadline; group members converge on the earliest authenticated deadline. Offline peers receive deadlines again on reconnect. Expiration removes message payload, unread markers and owned media, and retains only minimal encrypted deadline tombstones for synchronization. Reactions replay only the local actor's latest revision, including removals. Group membership and direct-peer identity are checked before applying either operation.
 
-Before local trust, only hello and keepalive can have useful effects; chat and file operations are ignored. Once trusted, sender identity is checked against TLS. Group messages are accepted only for locally stored membership including both sender and recipient. A group invitation cannot overwrite ownership or membership of an existing group.
+Before local trust, only hello and keepalive can have useful effects; chat and file operations are ignored. Once trusted, sender identity is checked against TLS. Group messages are accepted only for locally stored membership including both sender and recipient. Only the authenticated group owner can append members. An update cannot replace the owner, remove existing members, or change their history permissions; stale revisions are ignored and conflicting equal revisions are rejected.
+
+Existing groups start at revision 0. Each added member records `JoinedRevision` and `IncludeHistory`; each new group message records `GroupRevision`. With history disabled, messages older than the recipient's join revision are rejected both when queued/replayed and when received. A member cannot author messages predating their own join revision. Adding members requires every member's last authenticated hello to support version 3. The owner replays the latest roster on reconnect; each original author adds eligible recipients to their own persisted outbox, so third parties never impersonate the author. History retains original IDs, timestamps and file hashes, respects deletion tombstones and expiry, and does not create notification bursts. Existing pairwise trust is still required for history and attachment transfer.
+
+Hello version 4 supports group lifecycle; version 5 adds shared capture/forward rules. Lifecycle actions require all current members to advertise at least 4; changing shared rules requires 5. Adding members to a transferred/protected group uses the corresponding higher minimum. An ECDSA-SHA256 signature covers `Lantern-group-action-v1\n` plus the exact JSON payload, whose SPKI hash must match the actor. Group snapshots carry `OwnerGeneration` and `OwnershipId`; only signed handoffs advance ownership, and only the current owner can delete. Signed departures remove the matching membership incarnation. Terminal deletion retains signed control records and a group tombstone, purges local messages/unread/media, and cannot be undone by stale rosters or delayed messages. Peers relay control records on reconnect, including to former members. This relay does not relay chat content. Leaving keeps already received history but disables group sending.
+
+Direct-chat rules are TLS-authenticated; group rules travel in the owner's versioned roster. Forwarding checks the source log permission, creates a new message authored by the forwarding user, and marks `Forwarded`; it never impersonates the original author. These are cooperative client permissions, not DRM. Windows applies capture exclusion to the active chat window and owned media windows, restoring ordinary capture on another log. Mobile clients without `capture-protection-v1` receive metadata only for protected logs. Full mobile conversation snapshots set `ConversationSnapshot`, allowing an empty list to invalidate deleted conversations and their cached media/outbox. The web client also purges content when capture protection becomes active.
+
+Avatars are optional PNGs of exactly 192 × 192, at most 160 KiB decoded, sent only in authenticated profile updates and replay. Empty data removes the photo. The desktop editor strips original image metadata by rendering the chosen square into a fresh PNG. Own profile data and received avatars use encrypted store payloads when the workspace is encrypted; discovery and contact lookup do not carry avatars.
+
+Discovery announcements retain `lantern-v1`. A `lantern-probe` UDP packet with the same validated identity/name/TCP-port fields receives one unicast announcement at its source endpoint, rate limited per source address. Announcements are never echoed. The manual search probes bounded local subnets, uses unicast replies to learn dynamic ports, and falls back to TCP/TLS on the default peer port for old clients. Discovery metadata never grants trust. Multicast joins refresh when interfaces change; multicast and each broadcast destination fail independently.
 
 ## Durability and replay
 

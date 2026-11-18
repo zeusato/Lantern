@@ -14,6 +14,7 @@ public sealed class Peer
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string LocalAlias { get; set; } = "";
+    public string Avatar { get; set; } = "";
     [System.Text.Json.Serialization.JsonIgnore]
     public string DisplayName => string.IsNullOrWhiteSpace(LocalAlias) ? Name : LocalAlias;
     public string Address { get; set; } = "";
@@ -33,7 +34,15 @@ public sealed class ChatGroup
     public string Name { get; set; } = "";
     public string OwnerId { get; set; } = "";
     public List<string> Members { get; set; } = [];
+    public long Revision { get; set; }
+    public Dictionary<string, GroupMemberAccess> MemberAccess { get; set; } = [];
+    public long OwnerGeneration { get; set; }
+    public string OwnershipId { get; set; } = "";
+    public bool Deleted { get; set; }
+    public bool CaptureProtected { get; set; }
+    public bool ForwardAllowed { get; set; } = true;
 }
+public sealed record GroupMemberAccess(long JoinedRevision, bool IncludeHistory);
 public sealed class ConversationPolicy
 {
     public string Id { get; set; } = "";
@@ -67,6 +76,8 @@ public sealed class ChatMessage
     public string Status { get; set; } = "queued";
     public Dictionary<string, string> Delivery { get; set; } = [];
     public string GroupId { get; set; } = "";
+    public long GroupRevision { get; set; }
+    public bool Forwarded { get; set; }
     public string Error { get; set; } = "";
     public string ReplyToId { get; set; } = "";
     public ContactCard? Contact { get; set; }
@@ -100,8 +111,8 @@ public sealed class AppSettings
     public int Port { get; set; } = 45853;
     public bool Onboarded { get; set; }
     public bool AutoEmoticons { get; set; } = true;
-    public bool MessageToasts { get; set; }
-    public string MessageToastMode { get; set; } = "full";
+    public bool MessageToasts { get; set; } = true;
+    public string MessageToastMode { get; set; } = "private";
     public bool CloseToTray { get; set; }
     public bool DoNotDisturb { get; set; }
     public bool AutoUpdates { get; set; } = true;

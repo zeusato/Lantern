@@ -13,6 +13,13 @@ public partial class MainWindow
     private string sharedConversation = "";
     private long sharedVersion = -1;
 
+    private void OpenChatLink(Uri uri)
+    {
+        if (appLocking || ConversationProtected || closing || uri.Scheme is not ("http" or "https")) return;
+        try { Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); }
+        catch (Exception ex) { ShowError(ex); }
+    }
+
     private void ClearSharedContent()
     {
         SharedFiles.Children.Clear(); SharedMedia.Children.Clear(); SharedLinks.Children.Clear();
@@ -55,10 +62,10 @@ public partial class MainWindow
             });
             (file.Kind == "file" ? files : media).Add(view);
         }
-        foreach (var link in history.Where(m => m.Kind == "text").SelectMany(m => System.Text.RegularExpressions.Regex.Matches(m.Text, @"https?://[^\s<>]+", System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(200)).Select(match => match.Value.TrimEnd('.', ',', '!', '?', ')', ']'))).Distinct().TakeLast(100).Reverse())
+        foreach (var uri in history.Where(m => m.Kind == "text").SelectMany(m => MessageLinks.Find(m.Text).Select(match => match.Uri)).Distinct().TakeLast(100).Reverse())
         {
-            if (!Uri.TryCreate(link, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http")) continue;
-            links.Add(Item("link:" + link, link, () => new LinkPreviewCard(uri, linkPreviews, () => { try { Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); } catch (Exception ex) { ShowError(ex); } })));
+            var link = uri.AbsoluteUri;
+            links.Add(Item("link:" + link, link, () => new LinkPreviewCard(uri, linkPreviews, () => OpenChatLink(uri))));
         }
         foreach (var id in sharedItems.Keys.Where(id => !retained.Contains(id)).ToArray()) sharedItems.Remove(id);
         ReconcileShared(SharedFiles, files); ReconcileShared(SharedMedia, media); ReconcileShared(SharedLinks, links);

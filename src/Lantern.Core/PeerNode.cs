@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
@@ -10,7 +9,7 @@ using System.Text;
 
 namespace Lantern.Core;
 
-public sealed class PeerNode : IAsyncDisposable
+public sealed partial class PeerNode : IAsyncDisposable
 {
     public const int DiscoveryPort = 45852;
     public const string MulticastAddress = "239.255.42.99";
@@ -101,13 +100,13 @@ public sealed class PeerNode : IAsyncDisposable
     {
         Identity.Name = ValidateDisplayName(name); Changed?.Invoke();
         foreach (var peer in peers.Values.Where(p => p.Trusted && !p.Blocked))
-            await SendTo(peer.Id, new WireMessage { Type = "profile", Name = Identity.Name });
+            await SendTo(peer.Id, new WireMessage { Type = "profile", Name = Identity.Name, Data = Store.Avatar });
         await AnnounceAsync();
     }
     public Peer? FindPeer(string id) => peers.GetValueOrDefault(id);
     public bool IsConnected(string id) => sessions.ContainsKey(id);
     public static bool IsLanAddress(IPAddress ip) => IPAddress.IsLoopback(ip) || ip.AddressFamily == AddressFamily.InterNetwork && (ip.GetAddressBytes()[0] == 10 || ip.GetAddressBytes()[0] == 192 && ip.GetAddressBytes()[1] == 168 || ip.GetAddressBytes()[0] == 172 && ip.GetAddressBytes()[1] is >= 16 and <= 31 || ip.GetAddressBytes()[0] == 169 && ip.GetAddressBytes()[1] == 254);
-    public static string[] LocalAddresses() => NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up).SelectMany(n => n.GetIPProperties().UnicastAddresses).Select(a => a.Address).Where(a => a.AddressFamily == AddressFamily.InterNetwork && IsLanAddress(a) && !IPAddress.IsLoopback(a)).Select(a => a.ToString()).Distinct().ToArray();
+    public static string[] LocalAddresses() => LanDiscovery.Interfaces().Select(n => n.Address.ToString()).Distinct().ToArray();
 
     public Task StartAsync(int port = 45853, bool enableDiscovery = true, bool loopbackOnly = false)
     {
@@ -116,7 +115,8 @@ public sealed class PeerNode : IAsyncDisposable
         catch (SocketException) when (port != 0) { listener = new TcpListener(loopbackOnly ? IPAddress.Loopback : IPAddress.Any, 0); listener.Start(32); }
         Port = ((IPEndPoint)listener.LocalEndpoint).Port;
         acceptTask = AcceptLoop();
-        if (enableDiscovery)
+        discoveryEnabled = enableDiscovery && !loopbackOnly;
+        if (discoveryEnabled)
         {
             try
             {
@@ -124,15 +124,11 @@ public sealed class PeerNode : IAsyncDisposable
                 discovery.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                 discovery.Client.Bind(new IPEndPoint(IPAddress.Any, DiscoveryPort));
                 discovery.EnableBroadcast = true; discovery.MulticastLoopback = true;
-                foreach (var address in LocalAddresses())
-                {
-                    try { discovery.JoinMulticastGroup(IPAddress.Parse(MulticastAddress), IPAddress.Parse(address)); } catch (SocketException) { }
-                }
                 discoverTask = DiscoveryLoop();
             }
-            catch (SocketException ex) { Notice?.Invoke("Tự tìm máy chưa hoạt động. Có thể thêm IP thủ công. " + ex.SocketErrorCode); }
+            catch (SocketException ex) { discovery?.Dispose(); discovery = null; Notice?.Invoke("Tự tìm máy qua UDP chưa hoạt động. Bấm Tìm máy để dò trực tiếp. " + ex.SocketErrorCode); }
         }
-        announceTask = MaintenanceLoop(enableDiscovery);
+        announceTask = MaintenanceLoop(discoveryEnabled);
         expiryTask = ExpiryLoop();
         Changed?.Invoke(); return Task.CompletedTask;
     }
@@ -169,7 +165,7 @@ public sealed class PeerNode : IAsyncDisposable
         }
         finally { connecting.TryRemove(endpoint, out _); }
     }
-    private async Task Establish(TcpClient client, string? expectedId, bool outbound)
+    private async Task Establish(TcpClient client, string? expectedId, bool outbound, bool quiet = false, CancellationToken ct = default)
     {
         Session? session = null;
         var released = false;
@@ -185,12 +181,12 @@ public sealed class PeerNode : IAsyncDisposable
                 certificateId = Identity.PeerId(remote);
                 return certificateId != Identity.Id && (expectedId is null || certificateId == expectedId) && !(peers.TryGetValue(certificateId, out var p) && p.Blocked);
             });
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, ct); timeout.CancelAfter(TimeSpan.FromSeconds(quiet ? 3 : 10));
             if (outbound)
                 await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = "lantern.local", ClientCertificates = new X509CertificateCollection { Identity.Certificate }, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, CertificateRevocationCheckMode = X509RevocationMode.NoCheck }, timeout.Token);
             else
                 await ssl.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = Identity.Certificate, ClientCertificateRequired = true, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, CertificateRevocationCheckMode = X509RevocationMode.NoCheck }, timeout.Token);
-            await Protocol.WriteAsync(ssl, new WireMessage { Type = "hello", Version = 2, Id = Identity.Id, Name = Identity.Name, Port = Port, Data = Presence }, timeout.Token);
+            await Protocol.WriteAsync(ssl, new WireMessage { Type = "hello", Version = 5, Id = Identity.Id, Name = Identity.Name, Port = Port, Data = Presence }, timeout.Token);
             var hello = await Protocol.ReadAsync(ssl, timeout.Token);
             if (hello.Type != "hello" || hello.Id != certificateId || hello.Name.Length is < 1 or > 80 || string.IsNullOrWhiteSpace(hello.Name) || hello.Name.Any(char.IsControl) || hello.Port is < 1 or > 65535) throw new AuthenticationException("Danh tính không khớp khóa của kết nối.");
             session = new Session(certificateId, ssl, client, outbound);
@@ -220,7 +216,7 @@ public sealed class PeerNode : IAsyncDisposable
         catch (Exception ex) when (ex is IOException or SocketException or AuthenticationException or OperationCanceledException or InvalidDataException or System.Text.Json.JsonException)
         {
             session?.Dispose(); client.Dispose();
-            if (!lifetime.IsCancellationRequested) Notice?.Invoke("Chưa kết nối được: " + ex.Message + (ex.InnerException is null ? "" : " " + ex.InnerException.Message));
+            if (!quiet && !lifetime.IsCancellationRequested) Notice?.Invoke("Chưa kết nối được: " + ex.Message + (ex.InnerException is null ? "" : " " + ex.InnerException.Message));
         }
         finally { if (!released) handshakes.Release(); }
     }
@@ -284,11 +280,15 @@ public sealed class PeerNode : IAsyncDisposable
         if (!replaying.TryAdd(peerId, 0)) return;
         try
         {
-            if (includeReceipts) await SendTo(peerId, new WireMessage { Type = "profile", Name = Identity.Name });
+            if (!peers.TryGetValue(peerId, out var recipient) || !recipient.Trusted || recipient.Blocked) return;
+            await ReplayGroupActions(peerId);
+            foreach (var rules in Store.Restrictions().Where(p => p.Id == peerId && p.Actor == Identity.Id)) await SendRestrictions(peerId, rules);
+            if (includeReceipts) await SendTo(peerId, new WireMessage { Type = "profile", Name = Identity.Name, Data = Store.Avatar });
             await SendTo(peerId, new WireMessage { Type = "presence", Data = Presence });
             foreach (var group in Store.Groups().Where(g => g.OwnerId == Identity.Id && g.Members.Contains(peerId))) await SendTo(peerId, new WireMessage { Type = "group", Group = group });
             foreach (var policy in Store.Policies().Where(p => p.Actor == Identity.Id && (p.Id == peerId || Store.Groups().Any(g => g.Id == p.Id && g.Members.Contains(peerId))))) await SendPolicy(peerId, policy);
-            foreach (var msg in Store.Pending(peerId).Where(m => m.SenderId == Identity.Id && (m.DisappearAfterSeconds == 0 || peers[peerId].ProtocolVersion >= 2))) await SendTo(peerId, new WireMessage { Type = msg.Kind == "text" ? "message" : msg.Kind == "contact" ? "contact" : "offer", Message = ForWire(msg) });
+            foreach (var group in Store.Groups().Where(g => g.Members.Contains(peerId))) PrepareGroupHistory(group);
+            foreach (var msg in Store.Pending(peerId).Where(m => m.SenderId == Identity.Id && ConversationHasPeer(m, peerId) && (!m.ExpiresAt.HasValue || m.ExpiresAt > DateTimeOffset.UtcNow) && (m.DisappearAfterSeconds == 0 || peers[peerId].ProtocolVersion >= 2))) await SendTo(peerId, new WireMessage { Type = msg.Kind == "text" ? "message" : msg.Kind == "contact" ? "contact" : "offer", Message = ForRecipient(msg, peerId) });
             // Replay only this machine's reaction, including removals. Revision numbers reject stale updates.
             foreach (var msg in Store.Messages(limit: int.MaxValue).Where(m => m.Reactions.ContainsKey(Identity.Id) && ConversationHasPeer(m, peerId)))
                 await SendTo(peerId, new WireMessage { Type = "reaction", Id = msg.Id, Data = msg.Reactions[Identity.Id], Offset = msg.ReactionVersions.GetValueOrDefault(Identity.Id) });
@@ -305,6 +305,7 @@ public sealed class PeerNode : IAsyncDisposable
     private List<string> Recipients(string conversationId)
     {
         var group = Store.Groups().Find(g => g.Id == conversationId);
+        if (group is not null && !group.Members.Contains(Identity.Id)) throw new InvalidOperationException("Bạn đã rời nhóm; lịch sử chỉ còn để xem.");
         var recipients = group is null ? new List<string> { conversationId } : group.Members.Where(id => id != Identity.Id).ToList();
         if (recipients.Count == 0 || recipients.Any(id => !peers.TryGetValue(id, out var p) || !p.Trusted || p.Blocked)) throw new InvalidOperationException("Cần ghép đôi với tất cả người nhận trước khi gửi.");
         return recipients;
@@ -315,7 +316,7 @@ public sealed class PeerNode : IAsyncDisposable
         if (seconds > 0 && recipients.Any(id => peers[id].ProtocolVersion < 2)) throw new InvalidOperationException("Tin tự hủy yêu cầu tất cả thành viên dùng Lantern 1.1 trở lên.");
         return seconds;
     }
-    public async Task<ChatMessage> SendTextAsync(string conversationId, string text, string replyToId = "", string? stableId = null, bool deliverInBackground = false)
+    public async Task<ChatMessage> SendTextAsync(string conversationId, string text, string replyToId = "", string? stableId = null, bool deliverInBackground = false, bool forwarded = false)
     {
         if (stableId is not null)
         {
@@ -329,6 +330,8 @@ public sealed class PeerNode : IAsyncDisposable
         if (replyToId.Length > 0 && Store.Message(replyToId)?.ConversationId != conversationId) throw new ArgumentException("Tin được trích dẫn không thuộc hội thoại này.");
         var msg = new ChatMessage { ConversationId = conversationId, SenderId = Identity.Id, SenderName = Identity.Name, Text = text, Outgoing = true, GroupId = Store.Groups().Any(g => g.Id == conversationId) ? conversationId : "", Delivery = recipients.ToDictionary(id => id, _ => "queued") };
         msg.ReplyToId = replyToId;
+        msg.GroupRevision = GroupRevision(conversationId);
+        msg.Forwarded = forwarded;
         if (stableId is not null) msg.Id = stableId;
         msg.DisappearAfterSeconds = DisappearSeconds(conversationId, recipients);
         Store.SaveMessage(msg); Changed?.Invoke();
@@ -338,7 +341,7 @@ public sealed class PeerNode : IAsyncDisposable
     }
     private bool ConversationHasPeer(ChatMessage message, string peerId) => message.GroupId.Length == 0
         ? message.ConversationId == peerId
-        : Store.Groups().Any(g => g.Id == message.GroupId && g.Members.Contains(peerId) && g.Members.Contains(Identity.Id));
+        : Store.Groups().Any(g => g.Id == message.GroupId && GroupMembership.CanRead(g, peerId, message) && GroupMembership.CanRead(g, Identity.Id, message));
     public async Task SetDisappearTimerAsync(string conversationId, int seconds, bool deliverInBackground = false)
     {
         if (seconds != 0 && seconds is < 10 or > 604800) throw new ArgumentException("Thời gian tự hủy phải từ 10 giây đến 7 ngày.");
@@ -362,7 +365,7 @@ public sealed class PeerNode : IAsyncDisposable
         long revision = 0;
         Store.UpdateMessage(messageId, current => { revision = checked(current.ReactionVersions.GetValueOrDefault(Identity.Id) + 1); current.Reactions[Identity.Id] = emoji; current.ReactionVersions[Identity.Id] = revision; });
         Changed?.Invoke();
-        foreach (var peer in recipients) await SendTo(peer, new WireMessage { Type = "reaction", Id = messageId, Data = emoji, Offset = revision });
+        foreach (var peer in recipients.Where(id => ConversationHasPeer(message, id))) await SendTo(peer, new WireMessage { Type = "reaction", Id = messageId, Data = emoji, Offset = revision });
     }
     public async Task<ChatMessage> ShareContactAsync(string conversationId, string contactId)
     {
@@ -371,6 +374,7 @@ public sealed class PeerNode : IAsyncDisposable
         var recipients = Recipients(conversationId);
         var card = new ContactCard { Id = contact.Id, Name = contact.Name, Address = contact.Address, Port = contact.Port }; ValidateContact(card);
         var message = new ChatMessage { ConversationId = conversationId, SenderId = Identity.Id, SenderName = Identity.Name, Outgoing = true, Kind = "contact", Contact = card, GroupId = Store.Groups().Any(g => g.Id == conversationId) ? conversationId : "", Delivery = recipients.ToDictionary(id => id, _ => "queued"), DisappearAfterSeconds = DisappearSeconds(conversationId, recipients) };
+        message.GroupRevision = GroupRevision(conversationId);
         Store.SaveMessage(message); Changed?.Invoke();
         foreach (var peer in recipients) await SendTo(peer, new WireMessage { Type = "contact", Message = ForWire(message) });
         return message;
@@ -388,7 +392,7 @@ public sealed class PeerNode : IAsyncDisposable
         foreach (var id in members.Where(id => id != Identity.Id)) await SendTo(id, new WireMessage { Type = "group", Group = group });
         Changed?.Invoke(); return group;
     }
-    public async Task<ChatMessage> OfferFileAsync(string conversationId, string source, CancellationToken ct = default, string? stableId = null, string? displayFileName = null)
+    public async Task<ChatMessage> OfferFileAsync(string conversationId, string source, CancellationToken ct = default, string? stableId = null, string? displayFileName = null, bool forwarded = false, string? forwardSource = null)
     {
         if (stableId is not null)
         {
@@ -399,17 +403,32 @@ public sealed class PeerNode : IAsyncDisposable
         var recipients = Recipients(conversationId); var file = new FileInfo(source);
         if (!file.Exists || file.Length > Protocol.MaxFileSize) throw new ArgumentException("Tệp không tồn tại hoặc vượt quá 10 GB.");
         var msg = new ChatMessage { ConversationId = conversationId, SenderId = Identity.Id, SenderName = Identity.Name, Outgoing = true, Kind = "file", FileName = Protocol.SafeFileName(file.Name), FileSize = file.Length, GroupId = Store.Groups().Any(g => g.Id == conversationId) ? conversationId : "", Delivery = recipients.ToDictionary(id => id, _ => "offered"), Status = "offered" };
+        msg.GroupRevision = GroupRevision(conversationId);
         msg.DisappearAfterSeconds = DisappearSeconds(conversationId, recipients);
+        msg.Forwarded = forwarded;
         if (stableId is not null) msg.Id = stableId;
         if (displayFileName is not null) msg.FileName = Protocol.SafeFileName(displayFileName);
         var ext = Path.GetExtension(msg.FileName).ToLowerInvariant();
         if (new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" }.Contains(ext)) msg.Kind = "image";
         if (new[] { ".mp4", ".m4v", ".wmv", ".avi", ".mov" }.Contains(ext)) msg.Kind = "video";
         msg.FilePath = Path.Combine(Store.MediaPath, msg.Id + "_" + msg.FileName);
-        await using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, Protocol.ChunkSize, true))
-        await using (var output = new FileStream(msg.FilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, Protocol.ChunkSize, true)) await input.CopyToAsync(output, ct);
-        await using (var input = File.OpenRead(msg.FilePath)) msg.Hash = Convert.ToHexString(await SHA256.HashDataAsync(input, ct));
-        Store.SaveMessage(msg); Changed?.Invoke();
+        try
+        {
+            await using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, Protocol.ChunkSize, true))
+            await using (var output = new FileStream(msg.FilePath, FileMode.CreateNew, FileAccess.Write, FileShare.None, Protocol.ChunkSize, true)) await input.CopyToAsync(output, ct);
+            await using (var input = File.OpenRead(msg.FilePath)) msg.Hash = Convert.ToHexString(await SHA256.HashDataAsync(input, ct));
+            if (forwardSource is not null)
+            {
+                var original = Store.Message(forwardSource) ?? throw new InvalidOperationException("Nội dung gốc vừa bị xóa hoặc hết hạn.");
+                if (original.ExpiresAt <= DateTimeOffset.UtcNow || !ConversationRules(original.ConversationId).ForwardAllowed) throw new InvalidOperationException("Nội dung không còn cho phép chuyển tiếp.");
+            }
+            // Membership can change while a large attachment is being copied.
+            recipients = Recipients(conversationId); msg.GroupRevision = GroupRevision(conversationId);
+            msg.Delivery = recipients.ToDictionary(id => id, _ => "offered");
+            Store.SaveMessage(msg);
+        }
+        catch { try { File.Delete(msg.FilePath); } catch (IOException) { } throw; }
+        Changed?.Invoke();
         foreach (var id in recipients) await SendTo(id, new WireMessage { Type = "offer", Message = ForWire(msg) });
         return msg;
     }
@@ -471,6 +490,13 @@ public sealed class PeerNode : IAsyncDisposable
     private async Task Handle(Session session, WireMessage wire)
     {
         var peerId = session.PeerId;
+        if (wire.Type == "group-action") { await HandleGroupAction(wire.Data); return; }
+        if (wire.Type == "conversation-rules")
+        {
+            var rules = Codec.Decode<ConversationRestrictions>(wire.Data);
+            if (rules.Id != "" || rules.Actor != peerId || rules.Revision < 1 || rules.Revision == long.MaxValue) throw new InvalidDataException("Quyền hội thoại không hợp lệ.");
+            rules.Id = peerId; if (Store.SaveRestrictions(rules)) Changed?.Invoke(); return;
+        }
         if (wire.Type == "lookup")
         {
             if (!Protocol.ValidId(wire.Id) || wire.Name.Length is < 2 or > 80 || wire.Name.Any(char.IsControl)) return;
@@ -521,25 +547,33 @@ public sealed class PeerNode : IAsyncDisposable
         if (wire.Type == "profile")
         {
             var name = ValidateDisplayName(wire.Name);
-            var peer = peers[peerId]; lock (peer) { peer.Name = name; Store.SavePeer(peer); }
+            ProfileAvatar.Validate(wire.Data);
+            var peer = peers[peerId]; lock (peer) { peer.Name = name; peer.Avatar = wire.Data; Store.SavePeer(peer); }
             Changed?.Invoke(); return;
         }
         if (wire.Type == "ready") { Track(Replay(peerId)); return; }
         if (wire.Type == "group" && wire.Group is { } group)
         {
-            if (!Protocol.ValidId(group.Id) || group.OwnerId != peerId || group.Name.Length is < 1 or > 64 || group.Members.Count is < 3 or > 32 || !group.Members.Contains(Identity.Id) || !group.Members.Contains(peerId) || group.Members.Distinct().Count() != group.Members.Count || group.Members.Any(id => id.Length != 64 || !id.All(Uri.IsHexDigit))) throw new InvalidDataException("Nhóm không hợp lệ.");
-            var existing = Store.Groups().Find(g => g.Id == group.Id);
-            if (existing is not null && (existing.OwnerId != group.OwnerId || !existing.Members.SequenceEqual(group.Members))) throw new InvalidDataException("Không cho phép thay đổi thành viên nhóm đã xác lập.");
-            Store.SaveGroup(group); Changed?.Invoke(); return;
+            if (group.OwnerId != peerId || !group.Members.Contains(Identity.Id)) throw new InvalidDataException("Nhóm không hợp lệ.");
+            if (Store.ApplyGroup(group))
+            {
+                PrepareGroupHistory(group);
+                foreach (var id in group.Members.Where(id => id != Identity.Id)) Track(Replay(id));
+                Changed?.Invoke();
+            }
+            return;
         }
         if (wire.Type is "message" or "offer" or "contact" && wire.Message is { } incoming)
         {
             if (!Protocol.ValidId(incoming.Id) || incoming.SenderId != peerId || incoming.Text.Length > 16000 || incoming.ReplyToId.Length > 0 && !Protocol.ValidId(incoming.ReplyToId)) throw new InvalidDataException("Tin nhắn không hợp lệ.");
             if (Store.WasDeleted(incoming.Id)) { await SendTo(peerId, new WireMessage { Type = wire.Type is "message" or "contact" ? "ack" : "decline", Id = incoming.Id }); return; }
+            bool history = false;
+            if (incoming.GroupRevision < 0) throw new InvalidDataException("Phiên bản tin nhóm không hợp lệ.");
             if (incoming.GroupId.Length > 0)
             {
                 var target = Store.Groups().Find(g => g.Id == incoming.GroupId);
-                if (target is null || !target.Members.Contains(peerId) || !target.Members.Contains(Identity.Id)) return;
+                if (target is null || !target.Members.Contains(peerId) || !GroupMembership.CanRead(target, Identity.Id, incoming) || target.MemberAccess.TryGetValue(peerId, out var senderAccess) && incoming.GroupRevision < senderAccess.JoinedRevision) return;
+                history = GroupMembership.IsHistory(target, Identity.Id, incoming);
             }
             var old = Store.Message(incoming.Id);
             if (old is not null)
@@ -550,7 +584,9 @@ public sealed class PeerNode : IAsyncDisposable
                 return;
             }
             if (incoming.DisappearAfterSeconds != 0 && incoming.DisappearAfterSeconds is < 10 or > 604800) throw new InvalidDataException("Thời gian tự hủy không hợp lệ.");
-            incoming.Outgoing = false; incoming.ExpiresAt = null; incoming.ConversationId = incoming.GroupId.Length > 0 ? incoming.GroupId : peerId;
+            incoming.Outgoing = false; incoming.ExpiresAt = history && incoming.DisappearAfterSeconds > 0 ? incoming.ExpiresAt : null; incoming.ConversationId = incoming.GroupId.Length > 0 ? incoming.GroupId : peerId;
+            if (incoming.ExpiresAt <= DateTimeOffset.UtcNow) return;
+            if (incoming.ExpiresAt > DateTimeOffset.UtcNow.AddSeconds(incoming.DisappearAfterSeconds + 30)) throw new InvalidDataException("Hạn tự hủy không hợp lệ.");
             incoming.SenderName = peers[peerId].Name; incoming.Delivery.Clear(); incoming.Reactions.Clear(); incoming.ReactionVersions.Clear(); incoming.FilePath = ""; incoming.Error = ""; incoming.Transferred = 0;
             if (incoming.Time > DateTimeOffset.UtcNow.AddMinutes(5) || incoming.Time < DateTimeOffset.UtcNow.AddYears(-10)) incoming.Time = DateTimeOffset.UtcNow;
             if (wire.Type == "message") { incoming.Kind = "text"; incoming.Status = "delivered"; }
@@ -561,7 +597,10 @@ public sealed class PeerNode : IAsyncDisposable
                 incoming.FileName = Protocol.SafeFileName(incoming.FileName);
                 incoming.FilePath = Path.Combine(Store.MediaPath, incoming.Id + "_" + incoming.FileName); incoming.Status = "offered";
             }
-            if (Store.SaveIncomingMessage(incoming)) { Changed?.Invoke(); MessageReceived?.Invoke(incoming); }
+            if (history && incoming.Kind is "text" or "contact") incoming.Status = "read";
+            // Unread expiring history still needs a real read to start its timer.
+            var unread = !history || incoming.DisappearAfterSeconds > 0 && !incoming.ExpiresAt.HasValue;
+            if (Store.SaveIncomingMessage(incoming, unread)) { Changed?.Invoke(); if (!history) MessageReceived?.Invoke(incoming); }
             if (incoming.Kind == "image") Track(ReceiveImagesAsync());
             if (wire.Type is "message" or "contact") await SendTo(peerId, new WireMessage { Type = "ack", Id = incoming.Id });
             return;
@@ -615,7 +654,7 @@ public sealed class PeerNode : IAsyncDisposable
         try
         {
             var msg = Store.Message(messageId);
-            if (msg is null || !msg.Outgoing || msg.Kind == "text" || !msg.Delivery.ContainsKey(session.PeerId) || offset < 0 || offset > msg.FileSize) return;
+            if (msg is null || !msg.Outgoing || msg.Kind == "text" || !msg.Delivery.ContainsKey(session.PeerId) || !ConversationHasPeer(msg, session.PeerId) || offset < 0 || offset > msg.FileSize) return;
             await using var input = new FileStream(msg.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, Protocol.ChunkSize, true);
             input.Position = offset; byte[] buffer = new byte[Protocol.ChunkSize]; int count;
             while ((count = await input.ReadAsync(buffer, lifetime.Token)) > 0)
@@ -630,46 +669,6 @@ public sealed class PeerNode : IAsyncDisposable
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException) { Notice?.Invoke("Truyền tệp tạm ngắt. Người nhận có thể bấm tiếp tục."); }
         finally { sending.TryRemove(key, out _); }
-    }
-    private async Task DiscoveryLoop()
-    {
-        try
-        {
-            while (!lifetime.IsCancellationRequested)
-            {
-                var packet = await discovery!.ReceiveAsync(lifetime.Token);
-                if (packet.Buffer.Length > 1024 || !IsLanAddress(packet.RemoteEndPoint.Address)) continue;
-                try
-                {
-                    var msg = Codec.Decode<WireMessage>(Encoding.UTF8.GetString(packet.Buffer));
-                    Protocol.Validate(msg);
-                    if (msg.Type != "lantern-v1" || msg.Id == Identity.Id || msg.Id.Length != 64 || !msg.Id.All(Uri.IsHexDigit) || msg.Name.Length is < 1 or > 80 || msg.Port is < 1 or > 65535 || peers.Count >= 256 && !peers.ContainsKey(msg.Id)) continue;
-                    var peer = peers.GetOrAdd(msg.Id, id => new Peer { Id = id, Name = msg.Name });
-                    if (peer.Blocked || peer.Connected) continue;
-                    peer.Address = packet.RemoteEndPoint.Address.ToString(); peer.Port = msg.Port; peer.Seen = DateTimeOffset.UtcNow;
-                    Changed?.Invoke();
-                    if (peer.Trusted) Track(QuietConnect(peer));
-                }
-                catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidDataException) { }
-            }
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException) { }
-    }
-    public async Task AnnounceAsync()
-    {
-        if (discovery is null) return;
-        var packet = Encoding.UTF8.GetBytes(Codec.Encode(new WireMessage { Type = "lantern-v1", Id = Identity.Id, Name = Identity.Name, Port = Port }));
-        foreach (var address in LocalAddresses())
-        {
-            try
-            {
-                using var udp = new UdpClient(new IPEndPoint(IPAddress.Parse(address), 0)); udp.EnableBroadcast = true;
-                udp.Client.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastTimeToLive, 1);
-                await udp.SendAsync(packet, new IPEndPoint(IPAddress.Parse(MulticastAddress), DiscoveryPort), lifetime.Token);
-                await udp.SendAsync(packet, new IPEndPoint(IPAddress.Broadcast, DiscoveryPort), lifetime.Token);
-            }
-            catch (Exception ex) when (ex is SocketException or OperationCanceledException) { }
-        }
     }
     public async Task DeleteConversationHistoryAsync(string id)
     {

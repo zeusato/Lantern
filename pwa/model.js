@@ -31,7 +31,21 @@ export function applySnapshot(previous, response) {
 }
 export function invalidateDeletedHistory(state, conversations) {
   const changed = [];
+  const visible = new Set(conversations.map(c => c.id));
+  const blocked = new Set([
+    ...state.conversations.filter(c => !visible.has(c.id)).map(c => c.id),
+    ...conversations.filter(c => c.captureProtected).map(c => c.id),
+  ]);
+  for (const id of blocked) {
+    delete state.histories[id];
+    if (state.hashes) delete state.hashes[id];
+    if (state.boxes) delete state.boxes[id];
+    if (state.drafts) delete state.drafts[id];
+    if (state.outbox) state.outbox = state.outbox.filter(m => m.conversationId !== id);
+    changed.push(id);
+  }
   for (const next of conversations) {
+    if (blocked.has(next.id)) continue;
     const previous = state.conversations.find((c) => c.id === next.id);
     if (
       !previous ||

@@ -30,7 +30,7 @@ final class ConversationSettings {
     private View scroll(LinearLayout content){ScrollView view=new ScrollView(activity);view.addView(content);return view;}
     private Button action(LinearLayout panel,String title,Runnable action){Button b=new Button(activity);b.setText(title);b.setAllCaps(false);b.setOnClickListener(v->action.run());panel.addView(b,new LinearLayout.LayoutParams(-1,-2));return b;}
     static String duration(int seconds){return switch(seconds){case 0->"Tắt";case 10->"10 giây";case 30->"30 giây";case 60->"1 phút";case 300->"5 phút";case 3600->"1 giờ";case 86400->"1 ngày";case 604800->"7 ngày";default->seconds+" giây";};}
-    private AlertDialog open(AlertDialog.Builder builder){dismiss();AlertDialog next=builder.create();dialog=next;next.setOnDismissListener(d->{if(dialog==next){dialog=null;availability=null;heading=null;timer=null;}});return next;}
+    private AlertDialog open(AlertDialog.Builder builder){dismiss();AlertDialog next=builder.create();next.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);dialog=next;next.setOnDismissListener(d->{if(dialog==next){dialog=null;availability=null;heading=null;timer=null;}});return next;}
     void dismiss(){AlertDialog previous=dialog;dialog=null;availability=null;heading=null;timer=null;busy=false;if(previous!=null)previous.dismiss();}
     void refresh(){if(dialog==null)return;if(!allowed()){dismiss();return;}if(heading!=null)heading.setText(contact(id).optString("name"));if(timer!=null)timer.setText("Tin nhắn tự hủy · "+duration(contact(id).optInt("disappearSeconds")));if(availability!=null)availability.run();}
     void show(){

@@ -33,6 +33,7 @@ public sealed class MobileServer : IAsyncDisposable
         public Upload? Upload { get; set; }
         public string Selected { get; set; } = "";
         public string Hash { get; set; } = "";
+        public bool SupportsCaptureProtection { get; set; }
     }
     private sealed record Upload(string Id, string Conversation, string Path, long Size, string Hash);
     public MobileServer(PeerNode node, WorkspaceVault vault)
@@ -185,6 +186,7 @@ public sealed class MobileServer : IAsyncDisposable
             using var helloTimeout = CancellationTokenSource.CreateLinkedTokenSource(stop.Token); helloTimeout.CancelAfter(TimeSpan.FromSeconds(70));
             var hello = await MobileProtocol.ReadAsync(ssl, helloTimeout.Token);
             if (hello.Type != "hello") throw new AuthenticationException();
+            client.SupportsCaptureProtection = hello.Capabilities?.Contains("capture-protection-v1") == true;
             var known = Registry.Snapshot().Devices.Find(d => d.Id == deviceId);
             bool freshInvitation;
             lock (invitationGate) freshInvitation = invitation is { } candidate && candidate.Nonce.Length == 43 && candidate.Expires > DateTimeOffset.UtcNow && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(candidate.Nonce), Encoding.UTF8.GetBytes(hello.Nonce));
@@ -259,7 +261,7 @@ public sealed class MobileServer : IAsyncDisposable
         catch (Exception ex) when (ex is not OutOfMemoryException) { }
         finally { if (onChange is not null) { node.Changed -= onChange; Changed -= onChange; } stop.Cancel(); if (pushing is not null) try { await pushing; } catch (Exception) { } if (client.Upload is { } upload) { try { File.Delete(upload.Path); } catch (IOException) { } } if (clients.TryGetValue(deviceId, out var current) && ReferenceEquals(current, client)) clients.TryRemove(deviceId, out _); Changed?.Invoke(); }
     }
-    private bool Locked(Client client, string id) => vault.IsConversationLocked(id) && !client.Unlocked.ContainsKey(id);
+    private bool Locked(Client client, string id) => node.ConversationRules(id).CaptureProtected && !client.SupportsCaptureProtection || vault.IsConversationLocked(id) && !client.Unlocked.ContainsKey(id);
     private void ValidateConversation(Client client, string id)
     {
         if (!(node.FindPeer(id) is { Trusted: true, Blocked: false }) && !node.Store.Groups().Any(g => g.Id == id && g.Members.Contains(node.Identity.Id))) throw new ArgumentException("Hội thoại không khả dụng.");
@@ -290,6 +292,7 @@ public sealed class MobileServer : IAsyncDisposable
         }
         if (request.Type is "list" or "sync")
         {
+            reply.ConversationSnapshot = true;
             if (request.Type == "sync") client.Selected = request.Conversation;
             var unread = node.Store.UnreadCounts();
             reply.Conversations = node.Peers.Where(p => p.Trusted && !p.Blocked).Select(p => new MobileConversation(p.Id, p.DisplayName, p.Connected ? p.Presence : "offline", unread.GetValueOrDefault(p.Id), Locked(client, p.Id), false, vault.IsConversationLocked(p.Id), Alias: p.LocalAlias, OriginalName: p.Name))
@@ -308,7 +311,7 @@ public sealed class MobileServer : IAsyncDisposable
             }
             var policies = node.Store.Policies().ToDictionary(p => p.Id, p => p.DisappearSeconds);
             var versions = node.Store.HistoryVersions();
-            reply.Conversations = reply.Conversations.Select(c => c with { DisappearSeconds = policies.GetValueOrDefault(c.Id), HistoryVersion = versions.GetValueOrDefault(c.Id) }).ToList();
+            reply.Conversations = reply.Conversations.Select(c => c with { DisappearSeconds = policies.GetValueOrDefault(c.Id), HistoryVersion = versions.GetValueOrDefault(c.Id), CaptureProtected = node.ConversationRules(c.Id).CaptureProtected, ForwardAllowed = node.ConversationRules(c.Id).ForwardAllowed }).ToList();
             return reply;
         }
         if (request.Type == "unlock")

@@ -23,6 +23,7 @@ public sealed class MobilePacket
     public bool Locked { get; set; }
     public int DisappearSeconds { get; set; }
     public long Serial { get; set; }
+    public bool ConversationSnapshot { get; set; }
     public List<MobileConversation> Conversations { get; set; } = [];
     public List<ChatMessage> Messages { get; set; } = [];
     public List<string> VisibleIds { get; set; } = [];
@@ -30,7 +31,7 @@ public sealed class MobilePacket
     public List<string> Capabilities { get; set; } = [];
     public PcPacket? Pc { get; set; }
 }
-public sealed record MobileConversation(string Id, string Name, string Presence, int Unread, bool Locked, bool IsGroup, bool Protected = false, int DisappearSeconds = 0, long HistoryVersion = 0, string Alias = "", string OriginalName = "");
+public sealed record MobileConversation(string Id, string Name, string Presence, int Unread, bool Locked, bool IsGroup, bool Protected = false, int DisappearSeconds = 0, long HistoryVersion = 0, string Alias = "", string OriginalName = "", bool CaptureProtected = false, bool ForwardAllowed = true);
 public static class MobileProtocol
 {
     public const int Version = 1;

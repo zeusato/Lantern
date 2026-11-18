@@ -66,6 +66,11 @@ internal static class MobileTests
             var registryText = File.ReadAllText(Path.Combine(path, "mobile-devices.enc"));
             check(!registryText.Contains(phone.Id) && (relay is null || !registryText.Contains(relay.ServiceToken)), "Device credentials are encrypted in the workspace");
             check((await Call(new() { Type = "list" })).Conversations.Any(c => c.Id == otherId.Id), "Phone uses the PC contact list");
+            await node.SetConversationRulesAsync(otherId.Id, true, false);
+            var hidden = await Call(new() { Type = "sync", Conversation = otherId.Id });
+            check(hidden.ConversationSnapshot && hidden.Locked && hidden.Messages.Count == 0 && hidden.Conversations.Single(c => c.Id == otherId.Id).CaptureProtected, "Clients without capture protection receive metadata but no protected chat content");
+            check((await Call(new() { Type = "history", Conversation = otherId.Id })).Type == "error", "Unsupported clients cannot bypass capture protection by requesting history directly");
+            await node.SetConversationRulesAsync(otherId.Id, false, true);
             vault.SetConversationPassword(otherId.Id, "conversation-secret");
             check((await Call(new() { Type = "list" })).Conversations.Single(c => c.Id == otherId.Id).Protected, "Phone knows protected conversations must stay locked in offline cache");
             check((await Call(new() { Type = "history", Conversation = otherId.Id })).Type == "error", "Locked conversation denies mobile history");

@@ -2,7 +2,7 @@
 
 Automated integration runner uses real TCP sockets and mutual TLS on IPv4 loopback, independent identities, SQLite stores and temporary data. It exits nonzero on failure.
 
-The current core suite passes 109 checks covering:
+The core suite covers:
 
 - Persistent identity, pairing codes, trust gating and certificate pinning.
 - UTF-8 chat, durable delivery/read receipts and replay deduplication.
@@ -20,7 +20,7 @@ The current core suite passes 109 checks covering:
 - Null-field protocol validation, password-protected private network key and bidirectional networking from an encrypted workspace.
 - Profile propagation, private local aliases, clearing aliases and persistence.
 - Durable unread totals and conversation counts, attachment read state, deduplication and migration from older history.
-- Emoticon conversion with URL/path/code preservation; notification opt-in defaults.
+- Emoticon conversion with URL/path/code preservation; enabled/private notification defaults and preserved explicit opt-out.
 - Reactions, reaction removal, stale revision rejection, group reactions and quoted replies.
 - Contact sharing and name lookup through a trusted peer without implicit trust or alias disclosure.
 - Idle and do-not-disturb presence updates.
@@ -28,6 +28,15 @@ The current core suite passes 109 checks covering:
 - Update release selection, SHA-256 and size verification, cache cleanup on failure, repository restrictions and ZIP traversal rejection.
 - Open Graph metadata parsing, image loading/cache and private-address/redirect rejection.
 - Full/private notification content, locked-conversation privacy and persisted toast preference.
+- Bounded subnet discovery, non-/24 masks, multi-interface deduplication, real TCP fallback with UDP disabled, unicast discovery of dynamic ports, malformed datagrams and cancellation.
+- Owner-only member additions, old-client capability gates, history enabled/disabled, original-author history replay, downloadable historical attachments, durable per-member permissions and stale/conflicting roster rejection.
+- Message URL extraction with punctuation, balanced parentheses, queries, Unicode surroundings and non-browser scheme exclusion.
+- Signed group leave/owner handoff/deletion, designated and random succession, last-member cleanup, signature tampering, former-owner denial and offline deletion relayed by another member.
+- Group owner-only rules, direct permission synchronization, rejected forwarding and independent forwarded text/contact/file copies; unsupported mobile clients cannot fetch capture-protected history.
+
+The conversation UI fixture additionally checks both context menus, local pins/categories, online-before-offline ordering, composer autofocus, the native Windows capture-affinity flag and restoration, owned-window protection, reactor lists/explicit removal, five-name tooltips and the expanded hover delay. Avatar checks exercise square export, movement/clamping, zoom, persistence, peer sync and removal; `avatar-crop.png` records the editor. The web model tests cover removal of deleted/protected cached content, encrypted boxes, drafts and pending sends. Android Java compilation checks the corresponding cache invalidation and secure dialog changes. These checks do not certify third-party screen recorders or modified clients.
+
+Additional UI checks verify clickable message links and lossless copy with emoji; a real HTML transfer started by one **Mở HTML** click; WebView2 CSS/JavaScript execution and button interaction; default network isolation, no app bridge, local-file blocking; and closure through the existing media-view lifecycle. Tests use synthetic files and a separate browser profile, never a user's browser or chat history.
 
 `tests/Lantern.UiTests` is a separate fixture host that runs the real WPF MainWindow with synthetic encrypted data and a real loopback peer. It does not modify production authentication or open the user's history. Its standard 70 checks cover tray/taskbar/conversation badges, content-sized left/right message bubbles, lower-edge reaction controls, actual reaction delivery/removal, quotes, colored emoji, clipboard repair, PNG transfer/rendering, automatic image receipt, square thumbnails, Open Graph cards, presence, full information-pane locks, toast/tray settings, embedded login and conversation prompts, real correct/incorrect password verification, password autofocus, account-name greetings, new-workspace creation and unchanged native window handles across startup authentication. Two optional legacy-image/video fixture checks remain available but were not rerun for this release. Screenshots cover light/dark chat, message layout, reactions, locked information, in-app password prompts and login. The QA host explicitly restores focus to its own native window after fixture dialogs; it never activates or opens a user workspace. Run it only on an interactive Windows desktop.
 

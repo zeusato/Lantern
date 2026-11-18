@@ -1,4 +1,4 @@
-const VERSION = "lantern-web-calculator-v2";
+const VERSION = "lantern-web-conversations-v3";
 const ASSETS = [
   "/",
   "/index.html",
