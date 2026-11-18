@@ -1029,3 +1029,5 @@ dialog::backdrop {
 .expression-fields legend { padding: 0 6px; font-weight: 600; }
 .expression-fields p { margin: 0 0 16px; font-size: 13px; line-height: 1.5; }
 .expression-fields label { display: block; margin-top: 12px; }
+.conversation-settings-actions { display: flex; flex-direction: column; gap: 10px; }
+.conversation-settings-actions p { margin: 4px 0; }

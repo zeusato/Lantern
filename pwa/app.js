@@ -126,6 +126,7 @@ function closePairingSheet() {
 }
 function update(packet) {
   if (!state) return;
+  const wasLocked = current ? isLocked(current) : true;
   if (packet.serial && packet.serial <= lastServerSerial) return;
   if (packet.serial) lastServerSerial = packet.serial;
   if (
@@ -148,7 +149,7 @@ function update(packet) {
     )
       toast("Có tin nhắn mới");
     for (const c of state.conversations) {
-      if (c.protected && c.locked && sessionKeys.has(c.id) && !restoring)
+      if (c.protected && c.locked && !restoring && (sessionKeys.has(c.id) || c.id === current && !wasLocked))
         lockLocal(c.id);
     }
   }
@@ -858,6 +859,7 @@ function infoSheet() {
     for (const b of sheet.querySelectorAll("[data-tab]"))
       b.classList.toggle("active", b.dataset.tab === type);
     const area = $("#info-content");
+    area.classList.toggle("conversation-settings-actions", type === "settings");
     if (type === "settings") {
       area.innerHTML = `<p><strong>${esc(contact(id)?.name)}</strong></p>${contact(id)?.isGroup ? "" : '<button class="secondary wide" id="rename-conversation">Đặt tên riêng</button>'}<button class="secondary wide" id="timer-conversation">Tin nhắn tự hủy · ${esc(disappearDuration(contact(id)?.disappearSeconds || 0))}</button>${contact(id)?.protected ? '<button class="secondary wide" id="lock-conversation">Khóa hội thoại ngay</button>' : "<p>Đặt mật khẩu hội thoại trong Lantern trên PC.</p>"}`;
       if ($("#rename-conversation")) $("#rename-conversation").onclick = () => editConversation("name");
