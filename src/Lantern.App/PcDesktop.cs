@@ -244,9 +244,16 @@ internal sealed class PcDesktop : IPcDesktop
     {
         // Chromium may expose the placeholder through ValuePattern on an empty contenteditable.
         // TextPattern distinguishes it from a real draft containing that same text.
-        if (editor.TryGetCurrentPattern(TextPattern.Pattern, out var text))
-            return ((TextPattern)text).DocumentRange.GetText(-1).TrimEnd('\r', '\n');
-        return value.Current.Value;
+        var content = editor.TryGetCurrentPattern(TextPattern.Pattern, out var text)
+            ? ((TextPattern)text).DocumentRange.GetText(-1).TrimEnd('\r', '\n') : value.Current.Value;
+        if (content == editor.Cached.Name && content == "Work with Codex")
+        {
+            var children = editor.FindAll(TreeScope.Children, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)).Cast<AutomationElement>().ToArray();
+            // The observed empty composer has a placeholder text node followed by an empty edit node.
+            // A real draft equal to the placeholder must still be protected.
+            if (children.Length == 2 && children[0].Cached.Name == content && children[1].Cached.Name.Length == 0) return "";
+        }
+        return content;
     }
     private static string ReadAnswer(AutomationElement? document, CacheRequest cache, CancellationToken ct)
     {
