@@ -16,18 +16,25 @@ import static androidx.test.espresso.matcher.ViewMatchers.*;
 import static androidx.test.espresso.matcher.RootMatchers.isDialog;
 import static androidx.test.espresso.matcher.RootMatchers.withDecorView;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.startsWith;
 import static org.hamcrest.Matchers.containsString;
 
 @RunWith(AndroidJUnit4.class)
 public class ConversationSettingsTest {
     private static void until(BooleanSupplier test)throws Exception{long end=System.currentTimeMillis()+25000;while(!test.getAsBoolean()){if(System.currentTimeMillis()>end)throw new AssertionError("Conversation state did not arrive");Thread.sleep(50);}}
+    private static org.hamcrest.Matcher<androidx.test.espresso.Root> dialog(String title){
+        // Shared service data can arrive before the UI callback replaces a dialog.
+        // Match its title as well as its type so outgoing dialogs are never selected.
+        return allOf(isDialog(),withDecorView(hasDescendant(allOf(withText(title),withClassName(endsWith(".DialogTitle"))))));
+    }
     private static void openSettings(android.view.View decor){
         // The response can update shared data before the previous dialog is dismissed.
         // Target the activity so Espresso waits for its focus instead of searching
         // for the toolbar inside the outgoing confirmation dialog.
         onView(withContentDescription("Tùy chọn")).inRoot(withDecorView(is(decor))).perform(click());
-        onView(withText("Cài đặt hội thoại")).inRoot(isDialog()).perform(click());
+        onView(withText("Cài đặt hội thoại")).inRoot(allOf(isDialog(),withDecorView(hasDescendant(withText("Danh sách hội thoại"))))).perform(click());
     }
     @Test public void settingsReachPcAndDeletedHistoryDoesNotReturn()throws Exception{
         String pin=InstrumentationRegistry.getArguments().getString("pcPin");org.junit.Assume.assumeNotNull(pin);
@@ -38,25 +45,26 @@ public class ConversationSettingsTest {
             android.view.View[] decor={null};scenario.onActivity(a->decor[0]=a.getWindow().getDecorView());
             until(()->ConnectionService.connected&&ConnectionService.conversations.length()>0);
             onView(withText("QA contact")).perform(click());onView(withText("Mở khóa hội thoại")).perform(click());
-            onView(withContentDescription("Mật khẩu hội thoại")).inRoot(isDialog()).perform(replaceText("qa-password"),closeSoftKeyboard());onView(withText("Mở khóa")).inRoot(isDialog()).perform(click());
+            onView(withContentDescription("Mật khẩu hội thoại")).inRoot(dialog("Mở khóa hội thoại")).perform(replaceText("qa-password"),closeSoftKeyboard());onView(withText("Mở khóa")).inRoot(dialog("Mở khóa hội thoại")).perform(click());
             until(()->ConnectionService.messages.length()>=30);openSettings(decor[0]);
-            onView(withText("Đặt tên riêng")).inRoot(isDialog()).perform(click());onView(withContentDescription("Tên riêng")).inRoot(isDialog()).perform(replaceText("QA private name"),closeSoftKeyboard());onView(withText("Lưu")).inRoot(isDialog()).perform(click());
+            onView(withText("Đặt tên riêng")).inRoot(dialog("Cài đặt hội thoại")).perform(click());onView(withContentDescription("Tên riêng")).inRoot(dialog("Đặt tên riêng")).perform(replaceText("QA private name"),closeSoftKeyboard());onView(withText("Lưu")).inRoot(dialog("Đặt tên riêng")).perform(click());
             until(()->"QA private name".equals(ConversationSettings.contact(id).optString("name")));
-            onView(withText(startsWith("Tin nhắn tự hủy ·"))).inRoot(isDialog()).perform(click());onView(withText("5 phút")).inRoot(isDialog()).perform(scrollTo(),click());onView(withText("Lưu")).inRoot(isDialog()).perform(click());
+            onView(withText(startsWith("Tin nhắn tự hủy ·"))).inRoot(dialog("Cài đặt hội thoại")).perform(click());onView(withText("5 phút")).inRoot(dialog("Tin nhắn tự hủy")).perform(scrollTo(),click());onView(withText("Lưu")).inRoot(dialog("Tin nhắn tự hủy")).perform(click());
             until(()->ConversationSettings.contact(id).optInt("disappearSeconds")==300);
-            onView(withText("Tin nhắn tự hủy · 5 phút")).inRoot(isDialog()).check(matches(isDisplayed()));
+            onView(withText("Tin nhắn tự hủy · 5 phút")).inRoot(dialog("Cài đặt hội thoại")).check(matches(isDisplayed()));
             scenario.onActivity(a->{try{snapshotSettings(a);}catch(Exception e){throw new AssertionError(e);}});
-            onView(withText("Chọn tin nhắn để xóa")).inRoot(isDialog()).perform(click());
-            onView(withText("Bạn: Earlier chat 0")).inRoot(isDialog()).perform(click());onView(withText("QA contact: Earlier chat 1")).inRoot(isDialog()).perform(click());onView(withText("Xóa (2)")).inRoot(isDialog()).perform(click());
+            onView(withText("Chọn tin nhắn để xóa")).inRoot(dialog("Cài đặt hội thoại")).perform(click());
+            onView(withText("Bạn: Earlier chat 0")).inRoot(dialog("Chọn tin nhắn để xóa")).perform(click());onView(withText("QA contact: Earlier chat 1")).inRoot(dialog("Chọn tin nhắn để xóa")).perform(click());onView(withText("Xóa (2)")).inRoot(dialog("Chọn tin nhắn để xóa")).perform(click());
             // The picker is replaced by a confirmation dialog. Match that root
             // explicitly so Espresso cannot wait on the activity losing focus.
-            onView(withText("Xóa 2 tin nhắn?")).inRoot(isDialog()).check(matches(isDisplayed()));onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click());
+            onView(withText("Xóa 2 tin nhắn?")).inRoot(dialog("Xóa 2 tin nhắn?")).check(matches(isDisplayed()));onView(withId(android.R.id.button1)).inRoot(dialog("Xóa 2 tin nhắn?")).perform(click());
             until(()->ConnectionService.messages.length()==28);assertTrue(ConversationSettings.contact(id).optLong("historyVersion")>0);
-            openSettings(decor[0]);onView(withText("Xóa lịch sử hội thoại")).inRoot(isDialog()).perform(click());onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click());
-            onView(withText("Nhập đúng XÓA để xác nhận.")).inRoot(isDialog()).check(matches(isDisplayed()));assertEquals(28,ConnectionService.messages.length());
-            onView(withContentDescription("Nhập XÓA để xác nhận")).inRoot(isDialog()).perform(replaceText("XÓA"),closeSoftKeyboard());onView(withId(android.R.id.button1)).inRoot(isDialog()).perform(click());until(()->ConnectionService.messages.length()==0);
+            openSettings(decor[0]);onView(withText("Xóa lịch sử hội thoại")).inRoot(dialog("Cài đặt hội thoại")).perform(click());onView(withId(android.R.id.button1)).inRoot(dialog("Xóa lịch sử hội thoại?")).perform(click());
+            onView(withText("Nhập đúng XÓA để xác nhận.")).inRoot(dialog("Xóa lịch sử hội thoại?")).check(matches(isDisplayed()));assertEquals(28,ConnectionService.messages.length());
+            onView(withContentDescription("Nhập XÓA để xác nhận")).inRoot(dialog("Xóa lịch sử hội thoại?")).perform(replaceText("XÓA"),closeSoftKeyboard());onView(withId(android.R.id.button1)).inRoot(dialog("Xóa lịch sử hội thoại?")).perform(click());until(()->ConnectionService.messages.length()==0);
             HistoryCache cache=new HistoryCache(context,pin);until(()->cache.messages(id).length()==0);
-            openSettings(decor[0]);onView(withText("Đặt tên riêng")).inRoot(isDialog()).perform(click());
+            openSettings(decor[0]);onView(withText("Đặt tên riêng")).inRoot(dialog("Cài đặt hội thoại")).perform(click());
+            onView(withContentDescription("Tên riêng")).inRoot(dialog("Đặt tên riêng")).check(matches(isDisplayed()));
             ConnectionService.current.submit(ConnectionService.packet("lock",id),error->{});
             until(()->ConversationSettings.contact(id).optBoolean("locked"));
             onView(withText(containsString("Hội thoại được bảo vệ"))).inRoot(withDecorView(is(decor[0]))).check(matches(isDisplayed()));
