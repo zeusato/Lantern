@@ -1,4 +1,4 @@
-const VERSION = "lantern-web-pc-v1";
+const VERSION = "lantern-web-calculator-v2";
 const ASSETS = [
   "/",
   "/index.html",
@@ -11,6 +11,8 @@ const ASSETS = [
   "/model.js",
   "/qr-scanner.js",
   "/calculator.js",
+  "/calculator-lock.js",
+  "/calculator-fit.js",
   "/camouflage.js",
   "/calculator.css",
   "/vendor/jsQR.js",

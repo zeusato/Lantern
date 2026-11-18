@@ -1,15 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {calculate,Calculator,opensWorkspace} from '../calculator.js';
+import {calculate,Calculator} from '../calculator.js';
 test('calculator evaluates arithmetic, precedence, decimals, signs and percentages without eval',()=>{
  for(const [expression,result] of [['2+3*4',14],['(2+3)*4',20],['0.1+0.2',.3],['200+10%',220],['200-10%',180],['200*10%',20],['50%',.5],['-3*-2',6],['123456789*91',11234567799]])assert.equal(calculate(expression),result,expression);
  for(const invalid of ['1/0','window.location','alert(1)','1..2','(2+3','2**3','9'.repeat(200)])assert.throws(()=>calculate(invalid));
 });
-test('only the exact expression followed by equals reveals the workspace',()=>{
+test('the former shared expression is now ordinary arithmetic with no built-in unlock',()=>{
  const calc=new Calculator();for(const key of '123456789*91')assert.equal(calc.press(key),false);
- assert.equal(calc.press('='),true);assert.equal(calc.display,'0');
- for(const value of ['11234567799','91*123456789','123456789*90','1+123456789*91'])assert.equal(opensWorkspace(value),false);
- assert.equal(opensWorkspace('123456789 × 91'),true);
+ assert.equal(calc.press('='),false);assert.equal(calc.display,'11234567799');
 });
 test('calculator keypad supports clear, backspace, sign change, continuation and recovery',()=>{
  const calc=new Calculator();for(const key of ['1','2','backspace','±','*','3','='])calc.press(key);assert.equal(calc.display,'−3');

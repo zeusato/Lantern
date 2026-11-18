@@ -1025,3 +1025,7 @@ dialog::backdrop {
 .pc-path { overflow-wrap: anywhere; }
 #pc-body progress { width: 100%; }
 #pc-status { white-space: pre-wrap; }
+.expression-fields { min-width: 0; border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin: 20px 0; }
+.expression-fields legend { padding: 0 6px; font-weight: 600; }
+.expression-fields p { margin: 0 0 16px; font-size: 13px; line-height: 1.5; }
+.expression-fields label { display: block; margin-top: 12px; }

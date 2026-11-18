@@ -14,6 +14,8 @@ const names = [
   "model.js",
   "qr-scanner.js",
   "calculator.js",
+  "calculator-lock.js",
+  "calculator-fit.js",
   "camouflage.js",
   "calculator.css",
   "sw.js",

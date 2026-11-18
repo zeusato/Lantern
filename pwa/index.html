@@ -30,7 +30,7 @@
         <button class="calculator-tool" id="calculator-basic-button" aria-label="Máy tính cơ bản"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="2" width="13" height="20" rx="3"/><path d="M8.5 5.5h7v4h-7zM9 13h.01M12 13h.01M15 13h.01M9 16h.01M12 16h.01M15 16h.01M9 19h.01M12 19h.01M15 19h.01"/></svg></button>
       </div>
       <section class="calculator-history" id="calculator-history" aria-label="Lịch sử phép tính" hidden><h2>Lịch sử</h2><p id="calculator-history-empty">Chưa có phép tính nào.</p><div class="calculator-history-list" id="calculator-history-list"></div></section>
-      <div class="calculator-screen" id="calculator-screen"><div id="calculator-expression"></div><output id="calculator-display" aria-live="polite">0</output></div>
+      <div class="calculator-screen" id="calculator-screen"><div id="calculator-expression"><span></span></div><output id="calculator-display" aria-live="polite"><span>0</span></output></div>
       <div class="calculator-keys">
         <button class="utility calculator-delete" data-key="backspace" aria-label="Xóa một chữ số"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M11 5h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H11L2 14Z M13 10l7 8m0-8-7 8"/></svg></button><button class="utility" data-key="AC" aria-label="Xóa tất cả">AC</button><button class="utility" data-key="%" aria-label="Phần trăm">%</button><button class="operator" data-key="/" aria-label="Chia">÷</button>
         <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button><button class="operator" data-key="*" aria-label="Nhân">×</button>

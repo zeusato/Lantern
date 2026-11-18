@@ -14,7 +14,8 @@ import { Client, validatePairing } from "./channel.js";
 import { openPcPanel } from "./pc.js";
 import { Vault, passwordKey, seal, unseal } from "./vault.js";
 import { CameraScanner, readQrPhoto } from "./qr-scanner.js";
-import { isCalculator, showCalculator, showNotice as toast } from "./camouflage.js";
+import { isCalculator, showCalculator, initializeCalculator, calculatorSetupComplete, showNotice as toast } from "./camouflage.js";
+import { hasCalculatorLock, validateCalculatorExpression, createCalculatorLock, saveCalculatorLock, matchesCalculatorLock } from "./calculator-lock.js";
 import {
   joins,
   alive,
@@ -26,6 +27,7 @@ import {
 async function boot() {
   try {
     vault = await new Vault().init();
+    initializeCalculator();
     await gate();
     if ("serviceWorker" in navigator) {
       const registration = await navigator.serviceWorker.register("/sw.js");
@@ -534,7 +536,7 @@ async function lockApp() {
 function settingsSheet() {
   showSheet(
     "Cài đặt",
-    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.8 r2</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
+    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.11 r1</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-expression" class="secondary">Đổi phép tính mở khóa</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
   );
   for (const b of sheet.querySelectorAll("[data-theme]"))
     b.onclick = () => {
@@ -555,6 +557,7 @@ function settingsSheet() {
   $("#settings-lock").onclick = () =>
     lockApp().catch(() => toast("Chưa lưu được dữ liệu."));
   $("#settings-calculator").onclick = showCalculator;
+  $("#settings-expression").onclick = calculatorExpressionSheet;
   $("#settings-reset").onclick = resetSheet;
   $("#settings-update").onclick = async () => {
     await save();
@@ -567,6 +570,36 @@ function settingsSheet() {
       await r?.update();
       toast("Đã kiểm tra bản web mới.");
     }
+  };
+}
+function calculatorExpressionFields(prefix) {
+  return `<fieldset class="expression-fields"><legend>Phép tính mở khóa riêng</legend><p>Nhập phép tính này trên máy tính rồi bấm = để mở Lantern. Dùng ít nhất 6 chữ số và một dấu + − × ÷. Chỉ áp dụng trên thiết bị này.</p><label>Phép tính mới<input id="${prefix}-expression" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" required maxlength="160" placeholder="Phép tính của riêng bạn"></label><label>Nhập lại phép tính<input id="${prefix}-expression-confirm" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" required maxlength="160" placeholder="Nhập lại để xác nhận"></label></fieldset>`;
+}
+function newCalculatorExpression(prefix) {
+  const expression = validateCalculatorExpression($(`#${prefix}-expression`).value);
+  if (expression !== validateCalculatorExpression($(`#${prefix}-expression-confirm`).value))
+    throw Error("Hai phép tính chưa khớp.");
+  return expression;
+}
+function calculatorExpressionSheet() {
+  showSheet("Đổi phép tính mở khóa", `<form id="expression-form"><label>Phép tính hiện tại<input id="expression-current" type="password" autocomplete="current-password" required maxlength="160"></label>${calculatorExpressionFields("change")}<div class="error" role="alert"></div><button class="primary wide">Lưu phép tính</button></form>`);
+  const form = $("#expression-form"), button = form.querySelector("button"), error = form.querySelector(".error");
+  $("#expression-current").focus();
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (button.disabled) return;
+    button.disabled = true; button.textContent = "Đang lưu…"; error.textContent = "";
+    try {
+      const value = newCalculatorExpression("change");
+      if (!await matchesCalculatorLock($("#expression-current").value)) throw Error("Phép tính hiện tại chưa đúng.");
+      const record = await createCalculatorLock(value);
+      if (isCalculator() || !sheet.open || sheet.querySelector("form") !== form) return;
+      saveCalculatorLock(record);
+      calculatorSetupComplete();
+      closeSheet();
+      toast("Đã đổi phép tính mở khóa trên thiết bị này.");
+    } catch (e) { error.textContent = e.message || "Chưa lưu được phép tính. Hãy thử lại."; }
+    finally { button.disabled = false; button.textContent = "Lưu phép tính"; }
   };
 }
 function messageSheet(m) {
@@ -938,7 +971,7 @@ document.addEventListener("visibilitychange", () => {
 });
 document.addEventListener("calculator-mode", (event) => {
   if (event.detail.covered) { clearTimeout(markRead.timer); closeSheet(); }
-  else { resizeViewport(); if (state) { lastRender = ""; renderMessages(); sync(); } }
+  else { resizeViewport(); if (state) { lastRender = ""; renderMessages(); sync(); } else $("#gate-password")?.focus(); }
 });
 window.addEventListener("online", () => {
   if (state?.pairing && !client?.ready) connect();
@@ -1136,7 +1169,8 @@ function newState(identity) {
 }
 async function gate() {
   const existing = await vault.get("header");
-  app.innerHTML = `<main class="gate"><div class="brand"><img src="/icon.svg" alt="">Lantern</div><div class="eyebrow">Không gian của bạn</div><h1>${existing ? "Chào mừng<br>trở lại." : "Mang cuộc trò chuyện<br>theo bạn."}</h1><p class="intro">${existing ? "Mở khóa để tiếp tục những cuộc trò chuyện." : "Kết nối với Lantern trên PC. Một tài khoản, những cuộc trò chuyện luôn ở gần."}</p><form id="gate-form"><label>${existing ? "Mật khẩu ứng dụng" : "Tạo mật khẩu trên điện thoại"}<input id="gate-password" type="password" autocomplete="${existing ? "current-password" : "new-password"}" required minlength="${existing ? 1 : 8}" placeholder="${existing ? "Nhập mật khẩu" : "Ít nhất 8 ký tự"}"></label>${existing ? "" : '<label>Nhập lại mật khẩu<input id="gate-confirm" type="password" autocomplete="new-password" required minlength="8" placeholder="Nhập lại mật khẩu"></label>'}<div class="error" role="alert"></div><button class="primary wide">${existing ? "Mở khóa" : "Bắt đầu"}</button></form>${existing ? '<button class="link-button" id="forget">Quên mật khẩu?</button>' : ""}<p class="footnote">Lịch sử trên điện thoại được mã hóa.<br>PC giữ tài khoản và bản lưu chính.</p></main>`;
+  const setupCalculator = !hasCalculatorLock();
+  app.innerHTML = `<main class="gate"><div class="brand"><img src="/icon.svg" alt="">Lantern</div><div class="eyebrow">Không gian của bạn</div><h1>${existing ? "Chào mừng<br>trở lại." : "Mang cuộc trò chuyện<br>theo bạn."}</h1><p class="intro">${existing ? "Mở khóa để tiếp tục những cuộc trò chuyện." : "Kết nối với Lantern trên PC. Một tài khoản, những cuộc trò chuyện luôn ở gần."}</p><form id="gate-form"><label>${existing ? "Mật khẩu ứng dụng" : "Tạo mật khẩu trên điện thoại"}<input id="gate-password" type="password" autocomplete="${existing ? "current-password" : "new-password"}" required minlength="${existing ? 1 : 8}" placeholder="${existing ? "Nhập mật khẩu" : "Ít nhất 8 ký tự"}"></label>${existing ? "" : '<label>Nhập lại mật khẩu<input id="gate-confirm" type="password" autocomplete="new-password" required minlength="8" placeholder="Nhập lại mật khẩu"></label>'}${setupCalculator ? calculatorExpressionFields("gate") : ""}<div class="error" role="alert"></div><button class="primary wide">${existing ? "Mở khóa" : "Bắt đầu"}</button></form>${existing ? '<button class="link-button" id="forget">Quên mật khẩu?</button>' : ""}<p class="footnote">Lịch sử trên điện thoại được mã hóa.<br>PC giữ tài khoản và bản lưu chính.</p></main>`;
   $("#gate-password").focus();
   $("#gate-form").onsubmit = async (e) => {
     e.preventDefault();
@@ -1144,6 +1178,12 @@ async function gate() {
       error = e.target.querySelector(".error"),
       password = $("#gate-password").value;
     error.textContent = "";
+    if (btn.disabled) return;
+    let expression;
+    if (setupCalculator) {
+      try { expression = newCalculatorExpression("gate"); }
+      catch (e) { error.textContent = e.message; return; }
+    }
     if (!existing && password !== $("#gate-confirm").value) {
       error.textContent = "Hai mật khẩu chưa khớp.";
       return;
@@ -1156,6 +1196,8 @@ async function gate() {
         state = newState(await createIdentity());
         await vault.create(password, state);
       }
+      if (setupCalculator) saveCalculatorLock(await createCalculatorLock(expression));
+      calculatorSetupComplete();
       state.drafts ||= {};
       state.boxes ||= {};
       shell();
@@ -1163,6 +1205,8 @@ async function gate() {
       if (state.pairing) connect();
       else pairSheet();
     } catch {
+      state = null;
+      vault.lock();
       error.textContent = existing
         ? "Mật khẩu chưa đúng hoặc dữ liệu không đọc được."
         : "Không tạo được bộ nhớ. Hãy dùng Safari ngoài chế độ riêng tư.";

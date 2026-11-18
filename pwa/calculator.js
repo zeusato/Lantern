@@ -1,6 +1,5 @@
 // A small arithmetic parser: user input is never evaluated as JavaScript.
 export const normalized = value => String(value).replace(/\s/g, "").replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
-export const opensWorkspace = value => normalized(value) === "123456789*91";
 export function calculate(value) {
   const source = normalized(value);
   if (!source || source.length > 160 || /[^0-9eE.+*/()%\-]/.test(source)) throw Error("Phép tính không hợp lệ");
@@ -35,7 +34,6 @@ export class Calculator {
     key = normalized(key);
     if (key === "AC") { this.expression = this.history = ""; this.result = this.error = false; return false; }
     if (key === "=") {
-      if (opensWorkspace(this.expression)) { this.press("AC"); return true; }
       try { const value = calculate(this.expression || "0"); this.history = this.expression; this.expression = String(value); this.result = true; this.error = false; }
       catch { this.error = true; }
       return false;

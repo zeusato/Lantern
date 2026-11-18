@@ -114,7 +114,7 @@ const server = http.createServer(async (req, res) => {
         "crypto.js",
         "channel.js",
         "model.js",
-        "qr-scanner.js", "calculator.js", "camouflage.js", "calculator.css",
+        "qr-scanner.js", "calculator.js", "calculator-lock.js", "calculator-fit.js", "camouflage.js", "calculator.css", "pc.js",
         "vault.js",
         "sw.js",
         "manifest.webmanifest",

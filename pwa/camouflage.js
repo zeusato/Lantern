@@ -1,5 +1,8 @@
 import { Calculator } from "./calculator.js";
+import { hasCalculatorLock, matchesCalculatorLock } from "./calculator-lock.js";
+import { fitCalculatorLine } from "./calculator-fit.js";
 let covered = true;
+let onboarding = false, revision = 0;
 const calculator = new Calculator();
 const panel = document.querySelector("#calculator");
 const display = document.querySelector("#calculator-display");
@@ -26,11 +29,13 @@ export function showNotice(message) {
   noticeTimer = setTimeout(() => notice.classList.remove("visible"), 4200);
 }
 function render() {
-  display.textContent = pretty(calculator.display);
-  expression.textContent = pretty(calculator.history);
-  display.dataset.long = String(calculator.display.length > 12);
+  display.firstElementChild.textContent = pretty(calculator.display);
+  expression.firstElementChild.textContent = pretty(calculator.history);
+  fitLines();
 }
+function fitLines() { fitCalculatorLine(display); fitCalculatorLine(expression); }
 function setCovered(value) {
+  revision++;
   covered = value;
   document.documentElement.dataset.calculator = value ? "on" : "off";
   document.title = value ? "Máy tính" : "Lantern";
@@ -50,10 +55,33 @@ function setCovered(value) {
   document.dispatchEvent(new CustomEvent("calculator-mode", {detail: {covered: value}}));
 }
 export function showCalculator() { setCovered(true); }
-function press(key) {
+// With no personal expression, enter the normal password gate. An existing vault
+// must be authenticated before saving its first expression; there is no shared fallback.
+export function initializeCalculator() {
+  onboarding = !hasCalculatorLock();
+  if (onboarding) setCovered(false);
+}
+export function calculatorSetupComplete() {
+  onboarding = false;
+  revision++;
+  calculations.length = 0;
+  calculator.press("AC"); showHistory(false); render();
+}
+async function press(key) {
+  const operation = ++revision;
   const input = calculator.expression;
-  if (calculator.press(key)) { setCovered(false); return; }
+  calculator.press(key);
+  if (key === "=") {
+    // Calculate immediately so a slow password derivation never drops rapid
+    // arithmetic input. Hold the expression out of history until it is checked.
+    calculator.history = "";
+    showHistory(false); render();
+    const matches = await matchesCalculatorLock(input);
+    if (operation !== revision || !covered || document.hidden) return;
+    if (matches) { calculator.press("AC"); render(); setCovered(false); return; }
+  }
   if (key === "=" && input && !calculator.error) {
+    calculator.history = input;
     calculations.unshift({expression: input, result: calculator.expression});
     calculations.length = Math.min(calculations.length, 30);
   }
@@ -66,6 +94,7 @@ document.querySelector("#calculator-history-list").addEventListener("click", eve
   const button = event.target.closest("button[data-calculation]");
   const entry = button && calculations[Number(button.dataset.calculation)];
   if (!entry) return;
+  revision++;
   calculator.expression = entry.result; calculator.history = entry.expression; calculator.result = true; calculator.error = false;
   showHistory(false); render();
 });
@@ -79,7 +108,16 @@ document.addEventListener("keydown", event => {
   if (key === ",") key = ".";
   if (/^[\d.+*/()%\-=×÷]$/.test(key) || ["AC", "backspace"].includes(key)) { event.preventDefault(); press(key); }
 });
-document.addEventListener("visibilitychange", () => { if (document.hidden) showCalculator(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) showCalculator();
+  else if (onboarding) setCovered(false);
+});
 window.addEventListener("pagehide", showCalculator);
-window.addEventListener("pageshow", event => { if (event.persisted) showCalculator(); });
+window.addEventListener("pageshow", event => {
+  if (event.persisted) { showCalculator(); if (onboarding && !document.hidden) setCovered(false); }
+});
+window.addEventListener("resize", fitLines);
+window.visualViewport?.addEventListener("resize", fitLines);
+if (typeof ResizeObserver !== "undefined") new ResizeObserver(fitLines).observe(panel);
+document.fonts?.ready.then(fitLines);
 setCovered(true);
