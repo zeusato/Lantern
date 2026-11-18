@@ -383,12 +383,12 @@ public sealed partial class PeerNode : IAsyncDisposable
     {
         if (card is null || card.Id is null || card.Name is null || card.Address is null || card.Id.Length != 64 || !card.Id.All(Uri.IsHexDigit) || string.IsNullOrWhiteSpace(card.Name) || card.Name.Length > 80 || card.Name.Any(char.IsControl) || !IPAddress.TryParse(card.Address, out var address) || address.AddressFamily != AddressFamily.InterNetwork || !IsLanAddress(address) || card.Port is < 1 or > 65535) throw new InvalidDataException("Liên hệ được chia sẻ không hợp lệ.");
     }
-    public async Task<ChatGroup> CreateGroupAsync(string name, IEnumerable<string> memberIds)
+    public async Task<ChatGroup> CreateGroupAsync(string name, IEnumerable<string> memberIds, string avatar = "")
     {
         var members = memberIds.Append(Identity.Id).Distinct().ToList();
         if (string.IsNullOrWhiteSpace(name) || name.Length > 64 || members.Count is < 3 or > 32) throw new ArgumentException("Nhóm cần tên và từ 3 đến 32 thành viên, kể cả người tạo.");
         if (members.Any(id => id != Identity.Id && (!peers.TryGetValue(id, out var p) || !p.Trusted || p.Blocked))) throw new InvalidOperationException("Chỉ thêm người đã ghép đôi.");
-        var group = new ChatGroup { Name = name.Trim(), OwnerId = Identity.Id, Members = members }; Store.SaveGroup(group);
+        var group = new ChatGroup { Name = name.Trim(), Avatar = avatar, OwnerId = Identity.Id, Members = members }; GroupMembership.Validate(group); Store.SaveGroup(group);
         foreach (var id in members.Where(id => id != Identity.Id)) await SendTo(id, new WireMessage { Type = "group", Group = group });
         Changed?.Invoke(); return group;
     }

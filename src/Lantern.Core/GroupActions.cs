@@ -27,7 +27,7 @@ internal static class GroupActions
     {
         try
         {
-            if (envelope.Payload is null || envelope.PublicKey is null || envelope.Signature is null || envelope.Payload.Length > 32000 || envelope.PublicKey.Length > 1024 || envelope.Signature.Length > 256) throw new InvalidDataException("Lệnh nhóm không hợp lệ.");
+            if (envelope.Payload is null || envelope.PublicKey is null || envelope.Signature is null || envelope.Payload.Length > Protocol.MaxFrame || envelope.PublicKey.Length > 1024 || envelope.Signature.Length > 256) throw new InvalidDataException("Lệnh nhóm không hợp lệ.");
             var body = Codec.Decode<GroupActionBody>(envelope.Payload);
             if (body.Id is null || body.Kind is not ("leave" or "transfer" or "delete") || body.ActorId is null || body.SuccessorId is null || body.Group is null || !Protocol.ValidId(body.Id)) throw new InvalidDataException("Lệnh nhóm không hợp lệ.");
             Protocol.Validate(new WireMessage { Group = body.Group }); GroupMembership.Validate(body.Group);

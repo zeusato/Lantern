@@ -21,7 +21,7 @@ internal static class GroupLifecycleTests
                 await Until(() => nodes[b].IsConnected(identities[a].Id), "Lifecycle fixture connection");
                 await nodes[a].TrustAsync(identities[b].Id); await nodes[b].TrustAsync(identities[a].Id);
             }
-            var group = await nodes[0].CreateGroupAsync("Lifecycle group", identities.Skip(1).Select(i => i.Id));
+            var group = await nodes[0].CreateGroupAsync("Lifecycle group", identities.Skip(1).Select(i => i.Id), GroupAvatarFixture.Image);
             await Until(() => stores.All(s => s.Groups().Count == 1), "Initial lifecycle roster");
             var message = await nodes[0].SendTextAsync(group.Id, "history retained on leave");
             await Until(() => stores.All(s => s.Message(message.Id) is not null), "Lifecycle initial history");
@@ -67,6 +67,7 @@ internal static class GroupLifecycleTests
             var next = await nodes[0].LeaveGroupAsync(group.Id, identities[2].Id);
             await Until(() => stores.Take(3).All(s => s.Groups().Single().OwnerId == identities[2].Id), "Designated owner transfer");
             check(next == identities[2].Id && stores[2].Groups().Single().Members.SequenceEqual(new[] { identities[2].Id, identities[3].Id }), "Owner departure transfers authority to the designated remaining member");
+            check(stores.Take(3).All(store => store.Groups().Single().Avatar == GroupAvatarFixture.Image), "Large group photos survive signed departure and owner-transfer messages");
             denied = false; try { await nodes[0].DeleteGroupAsync(group.Id); } catch (InvalidOperationException) { denied = true; }
             check(denied, "Former owners lose deletion authority immediately");
             var retainedTransfer = stores[1].GroupActionRecords().Single(a => a.Body.Kind == "transfer").Envelope;

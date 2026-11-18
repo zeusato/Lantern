@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -12,18 +13,50 @@ using Lantern.Core;
 
 namespace Lantern.App;
 
-internal sealed record EmojiAsset(string Emoji, string Name, string File, string Source);
+internal sealed record EmojiAsset(string Emoji, string Name, string File, string Source, string Shortcode = "", string[]? Aliases = null, string Category = "Cảm xúc");
 
 internal static class EmojiAssets
 {
     internal static readonly IReadOnlyList<EmojiAsset> Catalog = LoadCatalog();
+    private static readonly Dictionary<string, EmojiAsset> ByToken = IndexCatalog();
+    private static readonly Regex InlineTokens = new(@"(?<code>```[\s\S]*?(?:```|$)|`[^`\r\n]*(?:`|$))|(?<!\S)(?<face>" + string.Join('|', ByToken.Keys.Where(key => key.All(c => c <= 127)).OrderByDescending(key => key.Length).Select(Regex.Escape)) + @")(?=$|\s|[!?,.])", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(200));
     private static readonly Dictionary<string, BitmapSource> Images = [];
     private static IReadOnlyList<EmojiAsset> LoadCatalog()
     {
-        using var stream = Application.GetResourceStream(new Uri("pack://application:,,,/Lantern;component/Assets/Emoji/catalog.json"))!.Stream;
+        using var stream = Application.GetResourceStream(new Uri("pack://application:,,,/Lantern;component/Assets/Emoji/zalo-catalog.json"))!.Stream;
         using var reader = new StreamReader(stream); return Codec.Decode<List<EmojiAsset>>(reader.ReadToEnd());
     }
-    internal static EmojiAsset? Find(string emoji) => Catalog.FirstOrDefault(item => item.Emoji.Replace("\uFE0F", "") == emoji.Replace("\uFE0F", ""));
+    private static Dictionary<string, EmojiAsset> IndexCatalog()
+    {
+        var result = new Dictionary<string, EmojiAsset>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in Catalog) foreach (var token in new[] { item.Emoji, item.Shortcode }.Concat(item.Aliases ?? []))
+            if (token.Length > 0) result.TryAdd(token.Replace("\uFE0F", ""), item);
+        return result;
+    }
+    internal static EmojiAsset? Find(string emoji) => ByToken.GetValueOrDefault(emoji.Replace("\uFE0F", ""));
+    internal static string ForInsertion(string text, int start, int length, string token)
+    {
+        if (!token.All(c => c <= 127)) return token;
+        var before = start > 0 && !char.IsWhiteSpace(text[start - 1]) ? " " : "";
+        var end = start + length;
+        var after = end < text.Length && !char.IsWhiteSpace(text[end]) && !"!?,.".Contains(text[end]) ? " " : "";
+        return before + token + after;
+    }
+    internal static string[] UsedIn(string text)
+    {
+        var tokens = InlineTokens.Matches(text).Cast<Match>().ToArray();
+        var excluded = MessageLinks.Find(text).Select(link => (Start: link.Start, End: link.Start + link.Length))
+            .Concat(tokens.Where(token => token.Groups["code"].Success).Select(token => (Start: token.Index, End: token.Index + token.Length))).ToArray();
+        bool IsExcluded(int index) => excluded.Any(range => index >= range.Start && index < range.End);
+        var used = tokens.Where(token => token.Groups["face"].Success && !IsExcluded(token.Index))
+            .Select(token => (Index: token.Index, Emoji: Find(token.Value)!.Emoji)).ToList();
+        var elements = StringInfo.GetTextElementEnumerator(text);
+        while (elements.MoveNext())
+            if (!IsExcluded(elements.ElementIndex) && Find(elements.GetTextElement()) is { } asset)
+                used.Add((elements.ElementIndex, asset.Emoji));
+        return used.OrderBy(item => item.Index).Select(item => item.Emoji).ToArray();
+    }
+    internal static string Tooltip(EmojiAsset asset) => asset.Name + "\nKý tự chèn: " + (asset.Shortcode.Length > 0 ? asset.Shortcode : asset.Emoji);
     internal static Image Icon(string emoji, double size)
     {
         var asset = Find(emoji) ?? throw new ArgumentException("Unknown packaged emoji.");
@@ -32,16 +65,23 @@ internal static class EmojiAssets
             using var stream = Application.GetResourceStream(new Uri("pack://application:,,,/Lantern;component/Assets/Emoji/" + asset.File))!.Stream;
             var image = new BitmapImage(); image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad; image.StreamSource = stream; image.EndInit(); image.Freeze(); Images[asset.File] = bitmap = image;
         }
-        var icon = new Image { Source = bitmap, Width = size, Height = size, Stretch = Stretch.Uniform, Tag = emoji, ToolTip = asset.Name };
+        var icon = new Image { Source = bitmap, Width = size, Height = size, Stretch = Stretch.Uniform, Tag = emoji, ToolTip = Tooltip(asset) };
         AutomationProperties.SetName(icon, asset.Name); return icon;
     }
     internal static RichTextBox MessageText(string text, Action<Uri>? openLink = null)
     {
-        var paragraph = new System.Windows.Documents.Paragraph { Margin = new Thickness(0), LineHeight = 23 };
+        var standalone = Find(text.Trim()) is not null;
+        double iconSize = standalone ? 48 : 22;
+        var paragraph = new System.Windows.Documents.Paragraph { Margin = new Thickness(0), LineHeight = standalone ? 56 : 23 };
         var measure = new TextBlock { FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"), FontSize = 14, TextWrapping = TextWrapping.NoWrap, Padding = new Thickness(0) };
         var buffer = new StringBuilder();
         void Flush() { if (buffer.Length > 0) { var value = buffer.ToString(); paragraph.Inlines.Add(new Run(value)); measure.Inlines.Add(new Run(value)); buffer.Clear(); } }
-        void AppendText(string value)
+        void AddIcon(string token)
+        {
+            Flush(); paragraph.Inlines.Add(new InlineUIContainer(Icon(token, iconSize)) { BaselineAlignment = BaselineAlignment.Center });
+            measure.Inlines.Add(new InlineUIContainer(Icon(token, iconSize)) { BaselineAlignment = BaselineAlignment.Center });
+        }
+        void AppendLiteral(string value)
         {
             var elements = StringInfo.GetTextElementEnumerator(value);
             while (elements.MoveNext())
@@ -49,12 +89,23 @@ internal static class EmojiAssets
                 var element = elements.GetTextElement();
                 if (Find(element) is not null)
                 {
-                    Flush(); paragraph.Inlines.Add(new InlineUIContainer(Icon(element, 22)) { BaselineAlignment = BaselineAlignment.Center });
-                    measure.Inlines.Add(new InlineUIContainer(Icon(element, 22)) { BaselineAlignment = BaselineAlignment.Center });
+                    AddIcon(element);
                 }
                 else buffer.Append(element);
             }
             Flush();
+        }
+        void AppendText(string value)
+        {
+            int at = 0;
+            foreach (Match token in InlineTokens.Matches(value))
+            {
+                AppendLiteral(value[at..token.Index]);
+                if (token.Groups["face"].Success) AddIcon(token.Value);
+                else { buffer.Append(token.Value); Flush(); }
+                at = token.Index + token.Length;
+            }
+            AppendLiteral(value[at..]);
         }
         var offset = 0;
         foreach (var match in openLink is null ? Enumerable.Empty<MessageLink>() : MessageLinks.Find(text))

@@ -18,6 +18,7 @@ public sealed class ConversationRestrictions
 
 public sealed partial class LocalStore
 {
+    public const int MaxPinnedMessages = 3;
     public List<ConversationPreferences> Preferences() => ReadAll<ConversationPreferences>("conversation_preferences");
     public ConversationPreferences Preference(string id) => Preferences().Find(p => p.Id == id) ?? new() { Id = id };
     public void SavePreference(ConversationPreferences value) => Save("conversation_preferences", value.Id, Codec.Encode(value));
@@ -41,12 +42,12 @@ public sealed partial class LocalStore
             return result;
         }
     }
-    public HashSet<string> PinnedMessages(string conversation)
+    public List<string> PinnedMessages(string conversation)
     {
         lock (gate)
         {
-            using var cmd = db.CreateCommand(); cmd.CommandText = "SELECT p.id FROM pinned_messages p JOIN messages m ON p.id=m.id WHERE p.conversation=$c"; cmd.Parameters.AddWithValue("$c", conversation);
-            using var reader = cmd.ExecuteReader(); var ids = new HashSet<string>(); while (reader.Read()) ids.Add(reader.GetString(0)); return ids;
+            using var cmd = db.CreateCommand(); cmd.CommandText = "SELECT p.id FROM pinned_messages p JOIN messages m ON p.id=m.id WHERE p.conversation=$c ORDER BY p.rowid DESC"; cmd.Parameters.AddWithValue("$c", conversation);
+            using var reader = cmd.ExecuteReader(); var ids = new List<string>(); while (reader.Read()) ids.Add(reader.GetString(0)); return ids;
         }
     }
     public void PinMessage(string id, bool pinned)
@@ -54,6 +55,9 @@ public sealed partial class LocalStore
         lock (gate)
         {
             var message = Message(id) ?? throw new ArgumentException("Tin nhắn không còn tồn tại.");
+            var pins = PinnedMessages(message.ConversationId);
+            if (pinned && !pins.Contains(id) && pins.Count >= MaxPinnedMessages)
+                throw new InvalidOperationException("Mỗi hội thoại chỉ ghim tối đa 3 tin nhắn. Hãy bỏ ghim một tin trước.");
             using var cmd = db.CreateCommand(); cmd.CommandText = pinned ? "INSERT OR IGNORE INTO pinned_messages(id,conversation) VALUES($id,$c)" : "DELETE FROM pinned_messages WHERE id=$id";
             cmd.Parameters.AddWithValue("$id", id); if (pinned) cmd.Parameters.AddWithValue("$c", message.ConversationId); cmd.ExecuteNonQuery(); MessagesChanged(message.ConversationId);
         }

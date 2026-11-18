@@ -30,7 +30,7 @@ public static class Protocol
         if (message.Message is { } reply && (reply.ReplyToId is null || reply.Reactions is null || reply.ReactionVersions is null)) throw new InvalidDataException("Tin nhắn chứa trường null.");
         if (message.Type is null || message.Id is null || message.Name is null || message.Data is null) throw new InvalidDataException("Gói tin chứa trường null.");
         if (message.Message is { } m && (m.Id is null || m.ConversationId is null || m.SenderId is null || m.SenderName is null || m.Text is null || m.Kind is null || m.FileName is null || m.FilePath is null || m.Hash is null || m.Status is null || m.Error is null || m.GroupId is null || m.Delivery is null)) throw new InvalidDataException("Tin nhắn chứa trường null.");
-        if (message.Group is { } g && (g.Id is null || g.Name is null || g.OwnerId is null || g.Members is null || g.Members.Any(id => id is null) || g.MemberAccess is null || g.MemberAccess.Any(p => p.Value is null))) throw new InvalidDataException("Nhóm chứa trường null.");
+        if (message.Group is { } g && (g.Id is null || g.Name is null || g.Avatar is null || g.OwnerId is null || g.Members is null || g.Members.Any(id => id is null) || g.MemberAccess is null || g.MemberAccess.Any(p => p.Value is null))) throw new InvalidDataException("Nhóm chứa trường null.");
     }
     public static string SafeFileName(string file)
     {

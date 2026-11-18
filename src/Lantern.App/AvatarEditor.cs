@@ -90,11 +90,11 @@ internal static class AvatarImages
 
 public partial class MainWindow
 {
-    private FrameworkElement AvatarSettings(Func<string> get, Action<string> set)
+    private FrameworkElement AvatarSettings(Func<string> get, Action<string> set, string label = "Chọn ảnh đại diện")
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 16) };
         var image = new Image { Width = 72, Height = 72, Source = AvatarImages.Get(get()), Margin = new Thickness(0, 0, 14, 0) }; row.Children.Add(image);
-        var choose = new Button { Content = "Chọn ảnh đại diện", VerticalAlignment = VerticalAlignment.Center };
+        var choose = new Button { Content = label, VerticalAlignment = VerticalAlignment.Center };
         choose.Click += (_, _) => {
             var file = new OpenFileDialog { Filter = "Ảnh|*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.tif;*.tiff", Title = "Chọn ảnh đại diện" }; if (file.ShowDialog(this) != true) return;
             try { var editor = new AvatarEditor(AvatarEditor.Load(file.FileName)); if (ShowDialog("Cắt ảnh đại diện", editor, "Dùng ảnh này", width: 410)) { var data = editor.Export(); set(data); image.Source = AvatarImages.Get(data); } } catch (Exception ex) { ShowError(ex); }

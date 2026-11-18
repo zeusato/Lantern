@@ -9,6 +9,9 @@ public sealed partial class LocalStore
         using var cmd = db.CreateCommand();
         cmd.CommandText = "CREATE TABLE IF NOT EXISTS group_actions(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS capture_policies(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS conversation_preferences(id TEXT PRIMARY KEY,data TEXT NOT NULL); CREATE TABLE IF NOT EXISTS pinned_messages(id TEXT PRIMARY KEY,conversation TEXT NOT NULL);";
         cmd.ExecuteNonQuery();
+        // Older builds allowed unlimited pins. Keep the newest three in each log.
+        cmd.CommandText = "DELETE FROM pinned_messages WHERE id NOT IN (SELECT id FROM messages); DELETE FROM pinned_messages WHERE rowid IN (SELECT pin_row FROM (SELECT rowid AS pin_row, ROW_NUMBER() OVER (PARTITION BY conversation ORDER BY rowid DESC) AS pin_rank FROM pinned_messages) WHERE pin_rank > 3)";
+        cmd.ExecuteNonQuery();
     }
 
     internal ChatGroup? GroupRecord(string id, SqliteTransaction? transaction = null)

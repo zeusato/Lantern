@@ -6,6 +6,10 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Lantern.Core;
 
+if (args.FirstOrDefault() == "--pins-emoji-only")
+{
+    PinEmojiTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-pins-emoji-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
+}
 if (args.FirstOrDefault() == "--verify-release-package") { UpdaterTests.VerifyReleasePackage(args[1], args[2]); return; }
 if (args.FirstOrDefault() == "--ui-peer") { await UiPeer.Run(args[1], args[2]); return; }
 if (args.FirstOrDefault() == "--groups-only")
@@ -307,4 +311,5 @@ await DiscoveryTests.Run(root, Check);
 await GroupMembershipTests.Run(root, Check);
 await GroupLifecycleTests.Run(root, Check);
 MessageLinkTests.Run(Check);
+PinEmojiTests.Run(root, Check);
 Console.WriteLine($"\n{passed} checks passed. Test data: {root}");

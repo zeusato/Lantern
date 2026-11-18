@@ -39,6 +39,7 @@ public partial class MainWindow
         captureUnavailable = protect && !success;
         if (captureUnavailable)
         {
+            ClearPinnedMessages();
             CloseMediaViews(); MessagesPanel.Children.Clear(); ClearSharedContent(); DetailsContent.Visibility = Visibility.Collapsed; InfoTabs.IsEnabled = false; Composer.Clear();
             Composer.IsEnabled = SendButton.IsEnabled = AttachButton.IsEnabled = EmojiButton.IsEnabled = false;
             WelcomePanel.Visibility = Visibility.Visible; WelcomeTitle.Text = "Không thể mở log\nđược bảo vệ.";

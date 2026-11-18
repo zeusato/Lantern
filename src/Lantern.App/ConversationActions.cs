@@ -122,17 +122,6 @@ public partial class MainWindow
         if (!ShowDialog("Chuyển tiếp", panel, "Chia sẻ")) return;
         try { ShowToast("Đang chuẩn bị nội dung chia sẻ…"); await node.ForwardMessageAsync(message.Id, ((ContactRow)target.SelectedItem).Id, uiLifetime.Token); ShowToast("Đã chuyển tiếp."); } catch (Exception ex) { ShowError(ex); }
     }
-    private void ShowPinnedMessagesClick(object sender, RoutedEventArgs e)
-    {
-        if (ConversationProtected || appLocking) return;
-        var ids = store.PinnedMessages(selectedId); var panel = new StackPanel(); panel.Children.Add(Paragraph("Tin nhắn đã ghim", 23, true));
-        foreach (var message in store.Messages(selectedId, limit: int.MaxValue).Where(m => ids.Contains(m.Id)))
-        {
-            var button = new Button { Content = new TextBlock { Text = Author(message) + " · " + Snippet(message), TextWrapping = TextWrapping.Wrap }, Margin = new Thickness(0, 5, 0, 5), HorizontalContentAlignment = HorizontalAlignment.Left };
-            button.Click += (_, _) => { InAppDialog.CancelAll(this); GoToMessage(message.Id); }; panel.Children.Add(button);
-        }
-        ShowDialog("Tin nhắn đã ghim", panel, "Đóng");
-    }
     private void FocusComposer()
     {
         if (Mouse.RightButton == MouseButtonState.Pressed) return;

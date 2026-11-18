@@ -44,7 +44,7 @@ internal sealed class MessageReactions : StackPanel
         surface.PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) { palette.IsOpen = false; trigger.Focus(); e.Handled = true; } };
         foreach (var emoji in PeerNode.ReactionEmoji)
         {
-            var button = MessageActions.RoundButton(EmojiAssets.Icon(emoji, 28), EmojiAssets.Find(emoji)!.Name); button.Width = button.Height = 36; button.BorderThickness = new Thickness(0);
+            var button = MessageActions.RoundButton(EmojiAssets.Icon(emoji, 28), EmojiAssets.Tooltip(EmojiAssets.Find(emoji)!)); button.Width = button.Height = 36; button.BorderThickness = new Thickness(0);
             button.Click += async (_, _) => { palette.IsOpen = false; await react(emoji); }; choices.Children.Add(button);
         }
         var own = reactions.GetValueOrDefault(selfId, "");

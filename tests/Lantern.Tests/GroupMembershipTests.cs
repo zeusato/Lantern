@@ -22,8 +22,12 @@ internal static class GroupMembershipTests
                     await Until(() => nodes[b].IsConnected(identities[a].Id), "Group fixture pairing");
                     await nodes[a].TrustAsync(identities[b].Id); await nodes[b].TrustAsync(identities[a].Id);
                 }
-            var group = await nodes[0].CreateGroupAsync("Growing group", [identities[1].Id, identities[2].Id]);
+            bool invalidAvatar = false;
+            try { await nodes[0].CreateGroupAsync("Bad photo", [identities[1].Id, identities[2].Id], "invalid"); } catch (InvalidDataException) { invalidAvatar = true; }
+            check(invalidAvatar && stores[0].Groups().Count == 0, "Invalid group photos are rejected before creating a group");
+            var group = await nodes[0].CreateGroupAsync("Growing group", [identities[1].Id, identities[2].Id], GroupAvatarFixture.Image);
             await Until(() => stores[1].Groups().Count == 1 && stores[2].Groups().Count == 1, "Initial group");
+            check(stores.Take(3).All(store => store.Groups().Single().Avatar == GroupAvatarFixture.Image), "Group photos synchronize intact to original members");
             var ownerOld = await nodes[0].SendTextAsync(group.Id, "Owner's old message");
             var authorOld = await nodes[1].SendTextAsync(group.Id, "Another author's old message");
             var file = Path.Combine(root, "group-history.txt"); await File.WriteAllTextAsync(file, "group attachment");
@@ -66,12 +70,16 @@ internal static class GroupMembershipTests
 
             using var reopened = new LocalStore(stores[3].DirectoryPath);
             var persisted = reopened.Groups().Single();
+            check(persisted.Avatar == GroupAvatarFixture.Image && stores.All(store => store.Groups().Single().Avatar == GroupAvatarFixture.Image), "Group photos persist after restart and synchronize to later members");
             check(!persisted.MemberAccess[identities[3].Id].IncludeHistory && persisted.MemberAccess[identities[4].Id].IncludeHistory, "Per-member history choices persist and survive later additions");
             var stale = Codec.Decode<ChatGroup>(Codec.Encode(persisted)); stale.Revision = 0; stale.Members = group.Members; stale.MemberAccess.Clear();
             check(!reopened.ApplyGroup(stale) && reopened.Groups().Single().Members.Count == 5, "Stale roster replay cannot remove added members");
             var tampered = Codec.Decode<ChatGroup>(Codec.Encode(persisted)); tampered.Revision++; tampered.MemberAccess[identities[3].Id] = new(1, true);
             rejected = false; try { reopened.ApplyGroup(tampered); } catch (InvalidDataException) { rejected = true; }
             check(rejected, "Later roster updates cannot silently grant history to a restricted member");
+            var changedPhoto = Codec.Decode<ChatGroup>(Codec.Encode(persisted)); changedPhoto.Avatar = "";
+            rejected = false; try { reopened.ApplyGroup(changedPhoto); } catch (InvalidDataException) { rejected = true; }
+            check(rejected, "Conflicting rosters cannot silently replace a group's photo");
         }
         finally
         {

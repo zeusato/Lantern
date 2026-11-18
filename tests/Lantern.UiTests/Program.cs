@@ -12,7 +12,7 @@ using Lantern.App;
 using Lantern.Core;
 using static Lantern.App.App;
 
-internal sealed class UiHarness : Application
+internal sealed partial class UiHarness : Application
 {
     private static readonly BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
     private int passed;
@@ -51,6 +51,7 @@ internal sealed class UiHarness : Application
     // Isolated fixture host: production startup/password handling is not altered or shipped with a bypass.
     protected override async void OnStartup(StartupEventArgs e)
     {
+        if (e.Args.FirstOrDefault() == "--pins-emoji") { await RunPinsAndEmoji(e.Args.ElementAtOrDefault(1)); return; }
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         var root = Path.GetFullPath(e.Args.FirstOrDefault() ?? Path.Combine(Path.GetTempPath(), "Lantern-ui-" + Guid.NewGuid().ToString("N"))); Directory.CreateDirectory(root);
         var workspace = Path.Combine(root, "workspace");
@@ -228,7 +229,7 @@ internal sealed class UiHarness : Application
             Check(!HtmlPreview.AllowsResource("file:///C:/private.txt", true) && !HtmlPreview.AllowsResource("javascript:alert(1)", true) && HtmlPreview.AllowsResource("https://example.com/script.js", true) && !HtmlPreview.AllowsResource("https://example.com/script.js", false), "Preview Internet option never grants local-file or external-protocol access");
             Call(window, "CloseMediaViews"); Check(htmlViews.Count == 0 && !htmlView.IsVisible, "Lock and conversation-switch cleanup closes the HTML viewer");
             Check(richText.Document.FontFamily.Source.Contains("Segoe UI") && richText.Document.FontSize == 14, "Colored emoji messages retain the app typography");
-            var iconPixels = Pixels((BitmapSource)EmojiAssets.Icon("😀", 30).Source); Check(Enumerable.Range(0, iconPixels.Length / 4).Any(i => iconPixels[i * 4 + 3] > 100 && Math.Abs(iconPixels[i * 4] - iconPixels[i * 4 + 2]) > 40), "Fluent emoji assets contain actual color pixels");
+            var iconPixels = Pixels((BitmapSource)EmojiAssets.Icon("😀", 30).Source); Check(Enumerable.Range(0, iconPixels.Length / 4).Any(i => iconPixels[i * 4 + 3] > 100 && Math.Abs(iconPixels[i * 4] - iconPixels[i * 4 + 2]) > 40), "Packaged emoji assets contain actual color pixels");
             var fakeHost = new StackPanel(); var hover = new MessageActions(fakeHost, () => { });
             Check(hover.Visibility == Visibility.Collapsed, "Message action toolbar is hidden at rest");
             fakeHost.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent }); Check(hover.Visibility == Visibility.Visible, "Hover reveals quote and reaction controls");

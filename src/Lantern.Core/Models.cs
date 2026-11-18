@@ -32,6 +32,7 @@ public sealed class ChatGroup
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
+    public string Avatar { get; set; } = "";
     public string OwnerId { get; set; } = "";
     public List<string> Members { get; set; } = [];
     public long Revision { get; set; }
@@ -111,6 +112,7 @@ public sealed class AppSettings
     public int Port { get; set; } = 45853;
     public bool Onboarded { get; set; }
     public bool AutoEmoticons { get; set; } = true;
+    public List<string> RecentEmoji { get; set; } = [];
     public bool MessageToasts { get; set; } = true;
     public string MessageToastMode { get; set; } = "private";
     public bool CloseToTray { get; set; }
