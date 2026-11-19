@@ -18,7 +18,7 @@ final class MessageAvatars {
             if(bounds.outWidth==192&&bounds.outHeight==192){BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=2;picture=BitmapFactory.decodeByteArray(bytes,0,bytes.length,options);if(picture!=null)pictures.put(data,picture);}
         }catch(IllegalArgumentException ignored){}
         View avatar;
-        if(picture!=null){ImageView image=new ImageView(context);image.setImageBitmap(picture);image.setScaleType(ImageView.ScaleType.CENTER_CROP);avatar=image;}
+        if(picture!=null){ImageView image=new ImageView(context);androidx.core.graphics.drawable.RoundedBitmapDrawable rounded=androidx.core.graphics.drawable.RoundedBitmapDrawableFactory.create(context.getResources(),picture);rounded.setCircular(true);rounded.setAntiAlias(true);image.setImageDrawable(rounded);image.setScaleType(ImageView.ScaleType.CENTER_CROP);avatar=image;}
         else {TextView initials=new TextView(context);String label=name.trim();initials.setText(label.isEmpty()?"?":label.substring(0,label.offsetByCodePoints(0,1)).toUpperCase(java.util.Locale.getDefault()));initials.setTextSize(14);initials.setTextColor(Color.rgb(234,243,246));initials.setGravity(Gravity.CENTER);avatar=initials;}
         GradientDrawable background=new GradientDrawable();background.setColor(Color.rgb(28,92,88));background.setShape(GradientDrawable.OVAL);avatar.setBackground(background);avatar.setClipToOutline(true);avatar.setContentDescription("Ảnh đại diện "+name);avatar.setLayoutParams(new android.widget.FrameLayout.LayoutParams(size,size));
         FrameLayout slot=new FrameLayout(context);slot.addView(avatar);slot.setLayoutParams(new LinearLayout.LayoutParams((int)(40*density),size));return slot;
