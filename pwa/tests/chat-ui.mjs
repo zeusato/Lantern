@@ -12,7 +12,7 @@ const qaId = 'a'.repeat(64), qaOther = 'c'.repeat(64);
 state = { identity: { id: 'b'.repeat(64) }, name: 'Synthetic QA', settings: {}, conversations: [
   { id: qaId, name: 'Hội thoại thử', presence: 'online', captureProtected: true },
   { id: qaOther, name: 'Hội thoại khác', presence: 'online' }
-], histories: { [qaId]: [{ id: '1'.repeat(32), conversationId: qaId, senderId: qaId, text: 'Nội dung vẫn đọc được', kind: 'text', time: new Date().toISOString() }] }, drafts: {}, boxes: {}, outbox: [] };
+], histories: { [qaId]: [{ id: '1'.repeat(32), conversationId: qaId, senderId: qaId, senderName: 'Người gửi thử', text: 'Nội dung vẫn đọc được', kind: 'text', time: new Date().toISOString() }] }, drafts: {}, boxes: {}, outbox: [] };
 shell();
 window.qa = {
   open: () => openConversation(qaId),
@@ -20,6 +20,8 @@ window.qa = {
   lock: () => { contact(qaId).protected = true; sessionKeys.delete(qaId); renderMessages(); },
   unlock: () => { sessionKeys.set(qaId, {}); renderMessages(); },
   outbox: () => state.outbox,
+  group: value => {contact(qaId).isGroup=value;lastRender='';renderMessages();},
+  emoji: () => {state.histories[qaId][0].text='Chào :) ❤️👍';lastRender='';renderMessages();},
 };
 `;
 const server = http.createServer(async (req, res) => {
@@ -70,6 +72,19 @@ try {
     await mkdir(resolve(process.env.LANTERN_UI_SCREENSHOT, ".."), { recursive: true });
     await page.screenshot({ path: process.env.LANTERN_UI_SCREENSHOT });
   }
+  assert.equal(await page.locator('#timeline .sender').count(),0);
+  await page.evaluate(()=>qa.group(true));
+  assert.equal(await page.locator('#timeline .sender').innerText(),'Người gửi thử');
+  await page.evaluate(()=>{qa.group(false);qa.emoji();});
+  assert.equal(await page.locator('#timeline .body img.chat-emoji').count(),3);
+  await page.waitForFunction(()=>[...document.querySelectorAll('#timeline .chat-emoji')].every(x=>x.complete&&x.naturalWidth>0));
+  await page.locator('#draft').fill('abc def');
+  await page.locator('#draft').evaluate(x=>x.setSelectionRange(3,3));
+  await page.getByRole('button',{name:'Đính kèm',exact:true}).click();
+  await page.locator('#choose-emoji').click();
+  await page.locator('#emoji-search').fill('Mỉm cười');
+  await page.locator('#emoji-grid button').filter({has:page.locator('img[alt=":)"]')}).first().click();
+  assert.equal(await page.locator('#draft').inputValue(),'abc :) def');
   assert.deepEqual(errors, []);
   console.log("PASS PWA chat UI: readable capture-protected chat, editable persistent draft, back/reopen, send, info, password lock/unlock redraw and 390px layout");
 } finally { await browser.close(); await new Promise(r => server.close(r)); }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCalculatorLock,saveCalculatorLock,matchesCalculatorLock} from '../calculator-lock.js';
 
-test('calculator conceals notices and chat, pauses media, clears badges and covers background returns', async()=>{
+test('cold start and manual lock conceal chat; switching apps preserves the unlocked session', async()=>{
   class Element extends EventTarget {
     constructor(){super();this.dataset={};this.textContent='';this.firstElementChild={textContent:''};this.style={};this.clientWidth=0;this.classes=new Set();this.classList={add:x=>this.classes.add(x),remove:x=>this.classes.delete(x)};}
     close(){this.open=false;}
@@ -27,10 +27,11 @@ test('calculator conceals notices and chat, pauses media, clears badges and cove
   showNotice('Tin mới khi đang chat');assert.equal(elements['#toast'].classes.has('visible'),true);
   elements['#sheet'].open=true;showCalculator();assertCovered();assert.equal(elements['#sheet'].open,false);assert.ok(paused>=2&&badges>=2&&blurred>=2);
   showNotice('Thông báo cập nhật đến muộn');await reveal();assert.equal(elements['#toast'].textContent,'');
-  document.hidden=true;document.dispatchEvent(new Event('visibilitychange'));assertCovered();
-  document.hidden=false;document.dispatchEvent(new Event('visibilitychange'));assertCovered();
-  await reveal();window.dispatchEvent(new Event('pagehide'));assertCovered();
-  await reveal();const restored=new Event('pageshow');Object.defineProperty(restored,'persisted',{value:true});window.dispatchEvent(restored);assertCovered();
+  document.hidden=true;document.dispatchEvent(new Event('visibilitychange'));assert.equal(isCalculator(),false);
+  document.hidden=false;document.dispatchEvent(new Event('visibilitychange'));assert.equal(isCalculator(),false);
+  window.dispatchEvent(new Event('pagehide'));assert.equal(isCalculator(),false);
+  const restored=new Event('pageshow');Object.defineProperty(restored,'persisted',{value:true});window.dispatchEvent(restored);assert.equal(isCalculator(),false);
+  showCalculator();assertCovered();
   type('654321*87=');showCalculator();await matchesCalculatorLock('654321*87');assertCovered(); // A late check cannot uncover a backgrounded app.
   type('123456789*91=');await matchesCalculatorLock('654321*87');assertCovered();
   showCalculator();type('654321*87=');type('1');await matchesCalculatorLock('654321*87');assertCovered(); // Editing invalidates a pending check.

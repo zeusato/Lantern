@@ -1,3 +1,4 @@
+import {catalog, emojiHtml, emojiUrl, emojiSearchKey, insertEmoji, replaceEmoticons} from "./emoji.js";
 import {
   createIdentity,
   verificationCode,
@@ -543,7 +544,7 @@ async function lockApp() {
 function settingsSheet() {
   showSheet(
     "Cài đặt",
-    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.18</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-expression" class="secondary">Đổi phép tính mở khóa</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
+    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.19</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-expression" class="secondary">Đổi phép tính mở khóa</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
   );
   for (const b of sheet.querySelectorAll("[data-theme]"))
     b.onclick = () => {
@@ -613,7 +614,7 @@ function messageSheet(m) {
   if (!m || isLocked(current)) return;
   showSheet(
     "Tin nhắn",
-    `<div class="palette">${["👍", "❤️", "😂", "😮", "😢", "😡"].map((x) => `<button data-emoji="${x}" aria-label="Thả cảm xúc ${x}">${x}</button>`).join("")}</div><button class="text-action" id="quote-message">↩ Trả lời tin nhắn</button><button class="text-action" id="remove-reaction">Gỡ cảm xúc của mình</button><button class="text-action" id="select-message">Chọn nhiều tin nhắn</button><button class="text-action danger-text" id="delete-message">Xóa tin nhắn</button>${m.kind === "text" ? '<button class="text-action" id="copy-message">Sao chép nội dung</button>' : ""}`,
+    `<div class="palette">${["👍", "❤️", "😂", "😮", "😢", "😡"].map((x) => `<button data-emoji="${x}" aria-label="Thả cảm xúc ${x}">${emojiHtml(x)}</button>`).join("")}</div><button class="text-action" id="quote-message">↩ Trả lời tin nhắn</button><button class="text-action" id="remove-reaction">Gỡ cảm xúc của mình</button><button class="text-action" id="select-message">Chọn nhiều tin nhắn</button><button class="text-action danger-text" id="delete-message">Xóa tin nhắn</button>${m.kind === "text" ? '<button class="text-action" id="copy-message">Sao chép nội dung</button>' : ""}`,
   );
   for (const b of sheet.querySelectorAll("[data-emoji]"))
     b.onclick = () => react(m, b.dataset.emoji);
@@ -664,19 +665,31 @@ async function react(message, emoji) {
     toast(e.message);
   }
 }
+function emojiPicker() {
+  showSheet("Emoji", `<input id="emoji-search" class="search" type="search" placeholder="Tìm tên hoặc ký tự chèn" aria-label="Tìm emoji"><select id="emoji-category" aria-label="Nhóm emoji">${[...new Set(catalog.map(x=>x.Category))].map(x=>`<option>${esc(x)}</option>`).join('')}</select><div id="emoji-grid" class="emoji-grid"></div><p id="emoji-hint"></p>`);
+  const render = () => {
+    const q=emojiSearchKey($("#emoji-search").value);
+    const matches=catalog.filter(x=>q ? emojiSearchKey(x.Name+' '+x.Shortcode+' '+(x.Aliases||[]).join(' ')).includes(q) : x.Category===$("#emoji-category").value);
+    $("#emoji-grid").innerHTML=matches.slice(0,120).map(x=>`<button type="button" data-token="${esc(x.Emoji)}" title="${esc(x.Name+' · '+x.Shortcode)}" aria-label="${esc(x.Name+' · '+x.Shortcode)}"><img src="${emojiUrl(x)}" alt="${esc(x.Emoji)}"><small>${esc(x.Shortcode)}</small></button>`).join('');
+    $("#emoji-hint").textContent=matches.length>120?'Hiện 120 kết quả. Gõ thêm để thu hẹp tìm kiếm.':matches.length?'Chọn emoji hoặc gõ ký tự chèn trong tin nhắn.':'Không tìm thấy emoji.';
+    for(const b of $("#emoji-grid").querySelectorAll('button')) b.onclick=()=>{const input=$("#draft");insertEmoji(input,b.dataset.token);closeSheet();input.focus();autosize();};
+  };
+  $("#emoji-search").oninput=render;$("#emoji-category").onchange=render;render();
+}
 function attachmentSheet() {
   showSheet(
     "Gửi nội dung",
-    `<div class="palette">${["🙂", "❤️", "😄", "👍", "🎉", "🙏"].map((x) => `<button data-emoji="${x}">${x}</button>`).join("")}</div><button id="choose-image" class="text-action">🖼️ Ảnh hoặc video</button><button id="choose-file" class="text-action">📄 Tệp từ điện thoại</button><p>Tối đa 100 MB mỗi tệp. Giữ Lantern mở trong lúc gửi.</p>`,
+    `<div class="palette">${["🙂", "❤️", "😄", "👍", "🎉", "🙏"].map((x) => `<button data-emoji="${x}">${emojiHtml(x)}</button>`).join("")}</div><button id="choose-emoji" class="text-action">Tất cả emoji · Tìm ký tự chèn</button><button id="choose-image" class="text-action">🖼️ Ảnh hoặc video</button><button id="choose-file" class="text-action">📄 Tệp từ điện thoại</button><p>Tối đa 100 MB mỗi tệp. Giữ Lantern mở trong lúc gửi.</p>`,
   );
   for (const b of sheet.querySelectorAll("[data-emoji]"))
     b.onclick = () => {
       const input = $("#draft");
-      input.value += b.dataset.emoji;
+      insertEmoji(input, b.dataset.emoji);
       closeSheet();
       input.focus();
       autosize();
     };
+  $("#choose-emoji").onclick = emojiPicker;
   $("#choose-image").onclick = () => {
     closeSheet();
     $("#file").accept = "image/*,video/*";
@@ -1295,7 +1308,17 @@ function shell() {
   $("#cancel-selection").onclick = () => selectMessages(false);
   $("#composer").onsubmit = sendText;
   $("#send").onpointerdown = (e) => e.preventDefault();
-  $("#draft").oninput = () => {
+  $("#draft").oninput = (event) => {
+    const input=$("#draft");
+    if(state.settings.emoticons && !event?.isComposing) {
+      const a=input.selectionStart,b=input.selectionEnd;
+      const converted=replaceEmoticons(input.value,false);
+      if(converted!==input.value) {
+        const start=replaceEmoticons(input.value.slice(0,a),false).length;
+        const end=replaceEmoticons(input.value.slice(0,b),false).length;
+        input.value=converted;input.setSelectionRange(start,end);
+      }
+    }
     autosize();
     state.drafts[current] = $("#draft").value;
     saveSoon();
@@ -1509,7 +1532,7 @@ function renderMessages(bottom = false) {
               .join(" ");
           let content =
             m.kind === "text"
-              ? `<div class="body">${esc(m.text)}</div>`
+              ? `<div class="body">${emojiHtml(m.text)}</div>`
               : m.kind === "contact"
                 ? `<div class="file-card"><span class="file-symbol">👤</span><div><strong>${esc(m.contact?.name || m.text)}</strong><small>Danh thiếp · mở trên PC để kết nối</small></div></div>`
                 : `<div class="file-card"><span class="file-symbol">${m.kind === "image" ? "🖼️" : m.kind === "video" ? "🎬" : "📄"}</span><div><strong>${esc(m.fileName)}</strong><small>${sizeText(m.fileSize || 0)}</small></div></div><button class="file-action" data-action="${["offered", "offering"].includes(m.status) && !m.outgoing && m.kind === "file" ? "accept" : "media"}" data-id="${m.id}">${["offered", "offering"].includes(m.status) && !m.outgoing && m.kind === "file" ? "Nhận tệp" : "Mở"}</button>`;
@@ -1521,7 +1544,7 @@ function renderMessages(bottom = false) {
               new Date(m.time).toDateString()
               ? `<div class="day">${new Date(m.time).toLocaleDateString("vi-VN", { day: "numeric", month: "long" })}</div>`
               : "";
-          return `${date}<article class="message ${m.outgoing ? "mine" : ""} ${grouped ? "join" : ""}" data-message="${m.id}"><div class="bubble" data-id="${m.id}">${!m.outgoing && contact(current)?.isGroup && !grouped ? `<div class="sender">${esc(m.senderName)}</div>` : ""}${m.replyToId ? `<div class="quote"><strong>${esc(quoted?.senderName || "Trả lời tin nhắn")}</strong>${esc(quoted?.text || quoted?.fileName || "Tin nhắn trước đó")}</div>` : ""}${content}${tail || m._pending ? `<div class="stamp"><time>${esc(clock(m.time))}</time>${m.outgoing ? `<span>${esc(status)}</span>` : ""}</div>` : ""}${m.expiresAt ? `<div class="stamp">Tự hủy · ${Math.max(1, Math.ceil((Date.parse(m.expiresAt) - Date.now()) / 1000))}s</div>` : ""}</div>${counts ? `<button class="reaction-count" data-action="react" data-id="${m.id}">${esc(counts)}</button>` : ""}${m._failed ? `<button class="retry" data-action="retry" data-id="${m.id}">Chạm để thử gửi lại</button>` : ""}</article>`;
+          return `${date}<article class="message ${m.outgoing ? "mine" : ""} ${grouped ? "join" : ""}" data-message="${m.id}"><div class="bubble" data-id="${m.id}">${!m.outgoing && contact(current)?.isGroup && !grouped ? `<div class="sender">${esc(m.senderName)}</div>` : ""}${m.replyToId ? `<div class="quote"><strong>${esc(quoted?.senderName || "Trả lời tin nhắn")}</strong>${esc(quoted?.text || quoted?.fileName || "Tin nhắn trước đó")}</div>` : ""}${content}${tail || m._pending ? `<div class="stamp"><time>${esc(clock(m.time))}</time>${m.outgoing ? `<span>${esc(status)}</span>` : ""}</div>` : ""}${m.expiresAt ? `<div class="stamp">Tự hủy · ${Math.max(1, Math.ceil((Date.parse(m.expiresAt) - Date.now()) / 1000))}s</div>` : ""}</div>${counts ? `<button class="reaction-count" data-action="react" data-id="${m.id}">${emojiHtml(counts)}</button>` : ""}${m._failed ? `<button class="retry" data-action="retry" data-id="${m.id}">Chạm để thử gửi lại</button>` : ""}</article>`;
         })
         .join("")
     : '<div class="empty">Chưa có tin nhắn. Gửi lời chào nhé.</div>';

@@ -1,5 +1,7 @@
-const VERSION = "lantern-web-capture-advisory-v4";
+importScripts("/emoji-precache.js");
+const VERSION = "lantern-web-1.2.19";
 const ASSETS = [
+  "/emoji.js", "/emoji-data.js", "/emoji-precache.js", ...self.LANTERN_EMOJI_FILES,
   "/",
   "/index.html",
   "/style.css",
@@ -22,7 +24,10 @@ const ASSETS = [
   "/manifest.webmanifest",
 ];
 self.addEventListener("install", (event) =>
-  event.waitUntil(caches.open(VERSION).then((cache) => cache.addAll(ASSETS))),
+  event.waitUntil(caches.open(VERSION).then(async (cache) => {
+    // Bound concurrent requests while filling the complete offline emoji library.
+    for(let start=0;start<ASSETS.length;start+=12) await cache.addAll(ASSETS.slice(start,start+12));
+  })),
 );
 self.addEventListener("activate", (event) =>
   event.waitUntil(

@@ -11,7 +11,7 @@ public final class LanternApplication extends Application {
         public void onActivityStarted(Activity a){started++;}
         public void onActivityResumed(Activity a){}
         public void onActivityPaused(Activity a){}
-        public void onActivityStopped(Activity a){started=Math.max(0,started-1);if(started==0&&!a.isChangingConfigurations())AppSession.lock();}
+        public void onActivityStopped(Activity a){started=Math.max(0,started-1);if(started==0&&a.isFinishing()&&a.isTaskRoot()&&!a.isChangingConfigurations())AppSession.lock();}
         public void onActivitySaveInstanceState(Activity a,Bundle state){}
         public void onActivityDestroyed(Activity a){}
     });}

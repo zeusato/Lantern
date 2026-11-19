@@ -50,7 +50,11 @@ public class PcFlowTest {
                 waitText(pc,"Claude · Đang làm việc");
                 pc.onActivity(a->{try{CompanionTest.snapshotCurrent(a,"android-pc-ai-status.png");}catch(Exception e){throw new AssertionError(e);}});
                 pc.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
-                assertFalse("Backgrounding locks account access",AppSession.unlocked());
+                assertTrue("Switching apps preserves account access",AppSession.unlocked());
+                pc.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+                assertTrue(AppSession.unlocked());
+                pc.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
+                AppSession.lock();assertFalse(AppSession.unlocked());
                 assertNull(ConnectionService.current.controlConnection());
                 pc.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
                 onView(withText("Đăng nhập Lantern")).check(matches(isDisplayed()));

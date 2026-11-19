@@ -54,7 +54,11 @@ public class CompanionTest {
                     ConnectionService.conversations=new JSONArray().put(new JSONObject().put("id",ConnectionService.selected).put("name","Minh Anh").put("locked",false));
                     ConnectionService.messages=new JSONArray().put(message("OK",false)).put(message("Em nhận rồi 👍",true)).put(message("Ảnh và tệp sẽ đi qua PC bằng kênh mã hóa riêng.",false));
                     Method build=MainActivity.class.getDeclaredMethod("build");build.setAccessible(true);build.invoke(activity);activity.getWindow().getDecorView().measure(View.MeasureSpec.makeMeasureSpec(1080,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(1920,View.MeasureSpec.EXACTLY));activity.getWindow().getDecorView().layout(0,0,1080,1920);snapshot(activity,"android-chat.png");
-                    ConnectionService.conversations.getJSONObject(0).put("locked",true);build.invoke(activity);snapshot(activity,"android-locked.png");
+                    java.lang.reflect.Field messageBox=MainActivity.class.getDeclaredField("messagesBox");messageBox.setAccessible(true);
+                    assertEquals("Direct chat does not repeat the header name",0,countLabels((View)messageBox.get(activity),"Minh Anh"));
+                    ConnectionService.conversations.getJSONObject(0).put("isGroup",true);build.invoke(activity);
+                    assertTrue("Group chat identifies the sender",countLabels((View)messageBox.get(activity),"Minh Anh")>0);
+                    ConnectionService.conversations.getJSONObject(0).put("isGroup",false).put("locked",true);build.invoke(activity);snapshot(activity,"android-locked.png");
                     java.lang.reflect.Field field=MainActivity.class.getDeclaredField("composerBar");field.setAccessible(true);assertEquals(View.GONE,((View)field.get(activity)).getVisibility());
                     assertTrue(ConnectionService.displayed.ids().isEmpty());
                     ConnectionService.conversations.getJSONObject(0).put("locked",false);ConnectionService.messages=new JSONArray();for(int n=0;n<50;n++)ConnectionService.messages.put(message("Tin kiểm tra vùng nhìn "+n,false));build.invoke(activity);
@@ -64,6 +68,7 @@ public class CompanionTest {
             });
         }finally{ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}
     }
+    private static int countLabels(View view,String label){int count=view instanceof android.widget.TextView&&label.contentEquals(((android.widget.TextView)view).getText())?1:0;if(view instanceof android.view.ViewGroup){android.view.ViewGroup group=(android.view.ViewGroup)view;for(int i=0;i<group.getChildCount();i++)count+=countLabels(group.getChildAt(i),label);}return count;}
     private static JSONObject message(String text,boolean outgoing)throws Exception{return new JSONObject().put("id",UUID.randomUUID().toString().replace("-","")).put("kind","text").put("text",text).put("outgoing",outgoing).put("senderName","Minh Anh").put("time","2026-11-16T10:00:00+07:00").put("status","delivered");}
     static void snapshot(MainActivity activity,String name)throws Exception{
         View view=activity.getWindow().getDecorView();int width=activity.getResources().getDisplayMetrics().widthPixels,height=activity.getResources().getDisplayMetrics().heightPixels;view.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));view.layout(0,0,width,height);snapshotCurrent(activity,name);

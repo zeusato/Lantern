@@ -59,20 +59,4 @@ export function invalidateDeletedHistory(state, conversations) {
   }
   return changed;
 }
-export function emoticons(value) {
-  const map = {
-    ":)": "🙂",
-    ":-)": "🙂",
-    ":D": "😄",
-    ":-D": "😄",
-    ";)": "😉",
-    ":(": "🙁",
-    ":-(": "🙁",
-    "<3": "❤️",
-    ":P": "😛",
-  };
-  return value.replace(
-    /(^|\s)(:-?\)|:-?D|;\)|:-?\(|<3|:P)(?=\s|$)/g,
-    (_, before, match) => before + map[match],
-  );
-}
+export { replaceEmoticons as emoticons } from "./emoji.js";

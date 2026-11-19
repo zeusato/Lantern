@@ -42,7 +42,7 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 - Giao diện tiếng Việt, sáng/tối/theo Windows, thích ứng cửa sổ tối thiểu 780×580.
 - Sao lưu/khôi phục danh tính `.lanternkey` có mật khẩu, chặn và bỏ chặn máy.
 - Mật khẩu ứng dụng bắt buộc; đăng nhập, khóa app và mở khóa hội thoại ngay trong cửa sổ chính, không tạo cửa sổ mật khẩu riêng. Ô mật khẩu tự focus; lời chào dùng tên tài khoản. Ctrl+L khóa ngay; đổi mật khẩu có xác nhận mật khẩu hiện tại.
-- Android dùng mật khẩu tài khoản Lantern trên PC khi mở app hoặc quay lại từ nền; ghép đôi không tự đăng nhập. Cần PC đang chạy và cập nhật cả hai ứng dụng. Điện thoại không lưu mật khẩu; trước đăng nhập không hiện danh sách chat hay dữ liệu cache.
+- Android dùng mật khẩu tài khoản Lantern trên PC khi mở lại sau khi đóng hẳn app hoặc khóa chủ động; ghép đôi không tự đăng nhập. Cần PC đang chạy và cập nhật cả hai ứng dụng. Chuyển ứng dụng giữ phiên mở khóa. Điện thoại không lưu mật khẩu; trước đăng nhập không hiện danh sách chat hay dữ liệu cache.
 - Mật khẩu riêng cho từng cuộc trò chuyện; mở một lần cho cả phiên, khóa chủ động bằng nút khóa ở đầu hội thoại. Khóa hoặc thoát ứng dụng khóa lại tất cả hội thoại.
 - Sửa tên bản thân; đặt tên riêng cho đối tác chỉ trên máy mình, giữ nguyên khi đối tác đổi tên/IP.
 - Số tin chưa đọc trên từng hội thoại, icon tray và badge trên taskbar, hiển thị `99+` khi vượt 99. Nhấp đúp tray để mở app.

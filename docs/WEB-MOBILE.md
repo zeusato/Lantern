@@ -16,6 +16,8 @@ PC giữ danh tính LAN. Điện thoại cần PC đang chạy, đã mở khóa 
 ## Trải nghiệm mobile
 
 
+- Android và web/PWA dùng chung ảnh, tên và ký tự chèn emoji với PC; chat riêng chỉ hiện tên đối tác ở đầu log.
+- Chuyển ứng dụng giữ phiên mở khóa. Dùng **Khóa ứng dụng** để khóa chủ động; đóng hẳn rồi mở lại sẽ yêu cầu mở khóa.
 - Bố cục một cột, chat toàn màn hình, ô nhập bám bàn phím, vùng chạm lớn và bảng thao tác trượt từ dưới.
 - Bấm gửi: ô nhập trống, tin xuất hiện ngay; lưu hàng đợi mã hóa trước khi chuyển về PC. Tự thử lại cùng mã tin để không gửi trùng. Gửi xong giữ focus.
 - Lịch sử đã tải lưu mã hóa trong IndexedDB, mở lại hiện trước rồi đồng bộ. Bản đầu dùng snapshot tối đa 50 tin gần nhất mỗi hội thoại; lịch sử đầy đủ vẫn nằm trên PC.

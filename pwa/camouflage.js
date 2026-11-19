@@ -109,13 +109,10 @@ document.addEventListener("keydown", event => {
   if (/^[\d.+*/()%\-=×÷]$/.test(key) || ["AC", "backspace"].includes(key)) { event.preventDefault(); press(key); }
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) showCalculator();
+  if (document.hidden) revision++;
   else if (onboarding) setCovered(false);
 });
-window.addEventListener("pagehide", showCalculator);
-window.addEventListener("pageshow", event => {
-  if (event.persisted) { showCalculator(); if (onboarding && !document.hidden) setCovered(false); }
-});
+window.addEventListener("pagehide", () => { revision++; });
 window.addEventListener("resize", fitLines);
 window.visualViewport?.addEventListener("resize", fitLines);
 if (typeof ResizeObserver !== "undefined") new ResizeObserver(fitLines).observe(panel);

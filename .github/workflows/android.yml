@@ -2,9 +2,9 @@ name: Android checks
 on:
   push:
     branches: [main]
-    paths: ['android/**', 'tests/MobileInteropFixture/**', '.github/workflows/android.yml']
+    paths: ['android/**', 'src/Lantern.App/Assets/Emoji/**', 'src/Lantern.Core/emoji-shortcodes.json', 'tests/MobileInteropFixture/**', '.github/workflows/android.yml']
   pull_request:
-    paths: ['android/**', 'tests/MobileInteropFixture/**', '.github/workflows/android.yml']
+    paths: ['android/**', 'src/Lantern.App/Assets/Emoji/**', 'src/Lantern.Core/emoji-shortcodes.json', 'tests/MobileInteropFixture/**', '.github/workflows/android.yml']
   workflow_dispatch:
 permissions:
   contents: read

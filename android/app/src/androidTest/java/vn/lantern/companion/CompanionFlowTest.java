@@ -89,7 +89,10 @@ public class CompanionFlowTest {
             ConnectionService stopped=ConnectionService.current;
             JSONObject lateSync=new JSONObject().put("serial",Long.MAX_VALUE).put("locked",false).put("conversations",new JSONArray(ConnectionService.conversations.toString())).put("messages",new JSONArray(ConnectionService.messages.toString()));
             scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
-            assertFalse("Backgrounding locks the whole app",AppSession.unlocked());
+            assertTrue("Switching apps preserves the unlocked session",AppSession.unlocked());
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+            assertTrue(AppSession.unlocked());
+            AppSession.lock();assertFalse("Manual lock closes account access",AppSession.unlocked());
             context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);
             assertEquals(0,ConnectionService.conversations.length());assertEquals(0,ConnectionService.messages.length());
             java.lang.reflect.Method apply=ConnectionService.class.getDeclaredMethod("applySync",String.class,JSONObject.class);apply.setAccessible(true);apply.invoke(stopped,conversation,lateSync);

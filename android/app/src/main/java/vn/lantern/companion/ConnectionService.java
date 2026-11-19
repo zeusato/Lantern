@@ -217,6 +217,7 @@ public final class ConnectionService extends Service {
         }finally{temp.delete();}
     },done,true);}
     static void clearMedia(){for(File file:images.values())file.delete();images.clear();}
+    @Override public void onTaskRemoved(Intent rootIntent){AppSession.lock();stopSelf();super.onTaskRemoved(rootIntent);}
     public void onDestroy(){
         AppSession.invalidate();
         synchronized(stateGate){stopping=true;connected=false;status="Đã ngắt kết nối · Lịch sử đã lưu trên máy";conversations=new JSONArray();messages=new JSONArray();clearMedia();}
