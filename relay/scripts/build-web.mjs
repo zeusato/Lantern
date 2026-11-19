@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const names = [
+  "emoji.js", "emoji-data.js", "emoji-precache.js",
   "index.html",
   "style.css",
   "app.js",
@@ -25,6 +26,8 @@ const names = [
   "icon-512.png",
   "licenses/jsqr.txt",
 ];
+const {catalog}=await import('../../pwa/emoji-data.js');
+names.push(...new Set(catalog.map(item=>'assets/emoji/'+item.File)));
 const types = {
   html: "text/html; charset=utf-8",
   css: "text/css; charset=utf-8",

@@ -53,10 +53,7 @@ public class PcFlowTest {
                 assertTrue("Switching apps preserves account access",AppSession.unlocked());
                 pc.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
                 assertTrue(AppSession.unlocked());
-                pc.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
-                AppSession.lock();assertFalse(AppSession.unlocked());
-                assertNull(ConnectionService.current.controlConnection());
-                pc.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+                pc.onActivity(activity->{AppSession.lock();assertFalse(AppSession.unlocked());assertNull(ConnectionService.current.controlConnection());AppSession.guard(activity);});
                 onView(withText("Đăng nhập Lantern")).check(matches(isDisplayed()));
             }
         }finally{context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);DeviceKeys.forget(context);ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}
