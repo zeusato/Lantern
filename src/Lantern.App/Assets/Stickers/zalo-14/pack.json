@@ -1,0 +1,41 @@
+{
+  "Id": "zalo-14",
+  "Name": "Zalo · 14",
+  "Stickers": [
+    {
+      "Id": "zalo-387",
+      "Name": "Sticker 387",
+      "File": "f022ab0541b4a8c5f7fd85d5cb6b8e7eac8f8463cf5742775441e9cb7169c3b3.gif"
+    },
+    {
+      "Id": "zalo-388",
+      "Name": "Sticker 388",
+      "File": "090e625f14bfe4882c3edd6411873ddba1ff158388314bc2dfe33ad7858ee54e.gif"
+    },
+    {
+      "Id": "zalo-389",
+      "Name": "Sticker 389",
+      "File": "d0cee08d78146340da118d8f01ebca5eaf9de4a99f3a0a1f528e73f74d27fb2e.gif"
+    },
+    {
+      "Id": "zalo-390",
+      "Name": "Sticker 390",
+      "File": "92d2f6db1446d346955800a4451d91ea810656bba057e1e5ea6d2c3f4e2ff87b.gif"
+    },
+    {
+      "Id": "zalo-391",
+      "Name": "Sticker 391",
+      "File": "f8d41a19efadaff2eb35cd5c10fe66cf785b0cef7b3194810acdd0bc954217a6.gif"
+    },
+    {
+      "Id": "zalo-419",
+      "Name": "Sticker 419",
+      "File": "523d2b303c1e774dbbef692e11dbba5077f82da03a9fb2d9c47b0c2affeb2c2a.gif"
+    },
+    {
+      "Id": "zalo-422",
+      "Name": "Sticker 422",
+      "File": "bc850732b1678d609b0a5e6f6a09c4b866e512af3de463611ef58edd3eeba944.gif"
+    }
+  ]
+}

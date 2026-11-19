@@ -415,7 +415,7 @@ public sealed partial class PeerNode : IAsyncDisposable
         foreach (var id in members.Where(id => id != Identity.Id)) await SendTo(id, new WireMessage { Type = "group", Group = group });
         Changed?.Invoke(); return group;
     }
-    public async Task<ChatMessage> OfferFileAsync(string conversationId, string source, CancellationToken ct = default, string? stableId = null, string? displayFileName = null, bool forwarded = false, string? forwardSource = null)
+    public async Task<ChatMessage> OfferFileAsync(string conversationId, string source, CancellationToken ct = default, string? stableId = null, string? displayFileName = null, bool forwarded = false, string? forwardSource = null, StickerReference? sticker = null)
     {
         if (stableId is not null)
         {
@@ -434,6 +434,12 @@ public sealed partial class PeerNode : IAsyncDisposable
         var ext = Path.GetExtension(msg.FileName).ToLowerInvariant();
         if (new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" }.Contains(ext)) msg.Kind = "image";
         if (new[] { ".mp4", ".m4v", ".wmv", ".avi", ".mov" }.Contains(ext)) msg.Kind = "video";
+        if (sticker is not null)
+        {
+            sticker.Validate();
+            if (msg.Kind != "image" || StickerLibrary.ValidateImage(StickerLibrary.ReadImage(source)) != ext) throw new InvalidDataException("Sticker cần là PNG hoặc GIF.");
+            msg.Sticker = sticker;
+        }
         msg.FilePath = Path.Combine(Store.MediaPath, msg.Id + "_" + msg.FileName);
         try
         {
@@ -623,6 +629,11 @@ public sealed partial class PeerNode : IAsyncDisposable
                 incoming.FilePath = Path.Combine(Store.MediaPath, incoming.Id + "_" + incoming.FileName); incoming.Status = "offered";
             }
             if (history && incoming.Kind is "text" or "contact") incoming.Status = "read";
+            if (incoming.Sticker is not null)
+            {
+                incoming.Sticker.Validate();
+                if (incoming.Kind != "image" || incoming.FileSize > StickerLibrary.MaxImageBytes || Path.GetExtension(incoming.FileName).ToLowerInvariant() is not (".png" or ".gif")) throw new InvalidDataException("Thông tin sticker không hợp lệ.");
+            }
             // Unread expiring history still needs a real read to start its timer.
             var unread = !history || incoming.DisappearAfterSeconds > 0 && !incoming.ExpiresAt.HasValue;
             if (Store.SaveIncomingMessage(incoming, unread)) { Changed?.Invoke(); if (!history) MessageReceived?.Invoke(incoming); }

@@ -68,6 +68,7 @@ public sealed class ChatMessage
     public string Text { get; set; } = "";
     public RichTextContent? RichText { get; set; }
     public ChatPoll? Poll { get; set; }
+    public StickerReference? Sticker { get; set; }
     public PollBallot? PendingPollVote { get; set; }
     public DateTimeOffset Time { get; set; } = DateTimeOffset.UtcNow;
     public bool Outgoing { get; set; }
@@ -116,6 +117,7 @@ public sealed class AppSettings
     public bool Onboarded { get; set; }
     public bool AutoEmoticons { get; set; } = true;
     public List<string> RecentEmoji { get; set; } = [];
+    public List<string> RecentStickers { get; set; } = [];
     public bool MessageToasts { get; set; } = true;
     public string MessageToastMode { get; set; } = "private";
     public bool CloseToTray { get; set; }

@@ -15,6 +15,8 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 
 ## Chức năng
 
+- **Xưởng chế tác sticker trên PC**: mở bằng nút sticker cạnh emoji hoặc trong Hồ sơ và cài đặt. Nhập nhiều PNG/GIF, đặt tên bộ và từng sticker; tìm kiếm không dấu, dùng gần đây, đổi tên/xóa/đổi thứ tự sticker. Tạo PNG trong suốt bằng vùng chọn chữ nhật hoặc vẽ tự do, xóa nền đơn sắc và thêm viền trắng. Gửi sticker động trong chat riêng/nhóm; xuất, gửi và nhập cả bộ qua tệp `.lanternstickers`. Thư viện đóng gói có 260 bộ/1.993 sticker lấy từ cache Zalo trên máy nguồn, gồm 1.404 ảnh động; các bộ chỉ có ảnh xem trước trong cache có thể chưa đầy đủ. Xem [chi tiết sticker](docs/STICKERS.md).
+
 - Soạn thảo PC có thanh công cụ ngang; bấm **A✎** hoặc **Ctrl+Shift+X** để mở thanh định dạng phía dưới: đậm, nghiêng, gạch chân/ngang, cỡ/màu chữ, danh sách, thụt lề, hoàn tác/làm lại. Nút mở rộng tăng vùng nhập; ẩn thanh công cụ vẫn giữ định dạng. Rich text được giữ trong nháp theo hội thoại, lịch sử, gửi/nhận và chuyển tiếp trên PC; thiết bị chưa hỗ trợ vẫn đọc phần chữ thuần.
 - Click phải ảnh đã tải trong log chat → **Sao chép ảnh** để dán ảnh gốc sang ứng dụng khác; giữ độ phân giải và độ trong suốt.
 - Bình chọn nhóm trên PC: câu hỏi, 2–10 phương án, chọn một/nhiều, thời hạn tùy chọn, đổi/gỡ phiếu và xem người đã chọn. Người tạo kết thúc poll; phiếu được lưu chờ nếu máy người tạo offline và xác nhận khi kết nối lại. Xem [soạn thảo và bình chọn](docs/CHAT-COMPOSER-POLLS.md).
@@ -90,6 +92,7 @@ Dữ liệu mặc định ở `%LOCALAPPDATA%\Lantern`:
 | `conversation-locks.enc` | Bản ghi mật khẩu hội thoại đã băm, được mã hóa bằng khóa workspace |
 | `media/` | Bản sao tệp gửi/nhận và phần tải dở |
 | `settings.json` | Tên, theme, cổng |
+| `stickers/` | Thư viện sticker, tên bộ/từng sticker và ảnh PNG/GIF cục bộ |
 
 **Media chưa mã hóa riêng khi nằm trên ổ đĩa.** Mật khẩu hội thoại khóa phần xem trong app, không khóa ứng dụng xem tệp bên ngoài. Tài khoản Windows và chính sách bảo vệ ổ đĩa quyết định ai đọc được media trực tiếp. DPAPI bảo vệ khóa định danh; AES-GCM bảo vệ payload lịch sử. Không lưu mật khẩu dạng rõ và không truyền mật khẩu cho peer.
 

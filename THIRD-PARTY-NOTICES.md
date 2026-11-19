@@ -18,6 +18,10 @@ The UI uses Windows-provided Segoe typography and icon fonts; those fonts are no
 
 The desktop catalog includes emoji artwork and insertion-code mappings imported from Zalo PC 26.11.12 (`resources/app.asar`, `pc-dist/emoji`). Original archive member paths and SHA-256 hashes are recorded in `src/Lantern.App/Assets/Emoji/Zalo/source.json`; the import procedure is in `scripts/Import-ZaloEmoji.mjs`. These imported assets retain their original owners' rights.
 
+## Zalo PC stickers
+
+The desktop sticker library contains artwork imported from the local Zalo PC sticker cache. Original owners retain their rights. The cache inventory and conversion settings are recorded in `src/Lantern.App/Assets/Stickers/source.json`; the importer is `scripts/Import-ZaloStickers.py`. Cached previews are not a complete copy of Zalo's online store. Horizontal PNG frame strips were converted to GIF with an assumed 100 ms frame interval when source timing metadata was unavailable. Existing GIF timings were preserved; WebP assets were decoded by file signature.
+
 ## QRCoder 1.6.0
 
 Source: https://github.com/codebude/QRCoder/tree/v1.6.0

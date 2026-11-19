@@ -6,6 +6,11 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Lantern.Core;
 
+if (args.FirstOrDefault() == "--stickers-only")
+{
+    await StickerTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-stickers-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
+}
+
 if (args.FirstOrDefault() == "--mobile-login-only")
 {
     await MobileAppLoginTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-login-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
@@ -323,5 +328,6 @@ await GroupLifecycleTests.Run(root, Check);
 MessageLinkTests.Run(Check);
 PinEmojiTests.Run(root, Check);
 await RichPollTests.Run(Path.Combine(root, "rich-polls"), Check);
+await StickerTests.Run(Path.Combine(root, "stickers"), Check);
 await MobileAppLoginTests.Run(Path.Combine(root, "mobile-login"), Check);
 Console.WriteLine($"\n{passed} checks passed. Test data: {root}");

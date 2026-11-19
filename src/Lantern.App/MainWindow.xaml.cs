@@ -243,6 +243,7 @@ public partial class MainWindow : Window
         Composer.IsEnabled = allowed; SendButton.IsEnabled = allowed; AttachButton.IsEnabled = allowed;
         PollButton.Visibility = selectedId.Length > 0 && store.Groups().Any(g => g.Id == selectedId && g.Members.Contains(identity.Id)) ? Visibility.Visible : Visibility.Collapsed; PollButton.IsEnabled = allowed;
         EmojiButton.IsEnabled = allowed && !ConversationProtected;
+        StickerButton.IsEnabled = allowed && !ConversationProtected;
         PairBanner.Visibility = peer is { Trusted: false, Blocked: false } ? Visibility.Visible : Visibility.Collapsed;
         BlockButton.Visibility = peer is not null && peer.Trusted ? Visibility.Visible : Visibility.Collapsed;
         ChatTitle.Text = group?.Name ?? peer?.DisplayName ?? "Không gian của bạn";
@@ -312,6 +313,7 @@ public partial class MainWindow : Window
         var outer = new StackPanel { HorizontalAlignment = alignment, Margin = new Thickness(msg.Outgoing ? 30 : 0, 0, msg.Outgoing ? 0 : 30, joinsNext ? hasReactions ? 16 : 5 : 16), MaxWidth = 560 };
         var bubble = new Border { Name = "MessageSurface", CornerRadius = new CornerRadius(12, 12, msg.Outgoing ? 4 : 12, msg.Outgoing ? 12 : 4), Padding = new Thickness(12, 9, 12, 9), BorderThickness = new Thickness(msg.Outgoing ? 0 : 1) };
         bubble.SetResourceReference(Border.BackgroundProperty, msg.Outgoing ? "OwnBrush" : "SurfaceBrush"); bubble.SetResourceReference(Border.BorderBrushProperty, "LineBrush");
+        if (msg.Sticker is not null) { bubble.Background = Brushes.Transparent; bubble.BorderThickness = new Thickness(0); }
         var content = new StackPanel(); bubble.Child = content;
         var messageMenu = MessageMenu(msg); bubble.ContextMenu = messageMenu;
         outer.ContextMenu = messageMenu;
@@ -359,6 +361,12 @@ public partial class MainWindow : Window
         {
             var text = RichDocuments.MessageText(msg, OpenChatLink); text.ContextMenu = messageMenu; content.Children.Add(text);
         }
+        else if (msg.Sticker is not null && File.Exists(msg.FilePath))
+        {
+            var sticker = new StickerImage(msg.FilePath, 160) { ToolTip = msg.Sticker.Name, ContextMenu = messageMenu };
+            content.Children.Add(sticker);
+            AddButton(content, "Lưu sticker", () => SaveReceivedSticker(msg));
+        }
         else
         {
             var available = File.Exists(msg.FilePath);
@@ -381,6 +389,7 @@ public partial class MainWindow : Window
             {
                 AddButton(buttons, HtmlPreview.Supports(msg) ? "Mở HTML" : "Mở", () => OpenAttachment(msg));
                 AddButton(buttons, "Lưu thành…", () => SaveAttachment(msg));
+                if (msg.FileName.EndsWith(".lanternstickers", StringComparison.OrdinalIgnoreCase)) AddButton(buttons, "Thêm bộ sticker", () => ImportReceivedPack(msg));
             }
             else if (!msg.Outgoing)
             {
@@ -421,7 +430,7 @@ public partial class MainWindow : Window
     private string Author(ChatMessage message) => message.SenderId == identity.Id ? "Bạn" : node.FindPeer(message.SenderId)?.DisplayName ?? message.SenderName;
     private static string Snippet(ChatMessage message)
     {
-        var text = message.Kind == "text" ? message.Text : message.Kind == "contact" ? "👤 " + message.Contact?.Name : "📎 " + message.FileName;
+        var text = message.Sticker is not null ? "Sticker · " + message.Sticker.Name : message.Kind == "text" ? message.Text : message.Kind == "contact" ? "👤 " + message.Contact?.Name : "📎 " + message.FileName;
         text = text.Replace('\r', ' ').Replace('\n', ' '); return text.Length > 180 ? text[..180] + "…" : text;
     }
     private void BeginReply(ChatMessage message)
@@ -730,6 +739,7 @@ public partial class MainWindow : Window
         panel.Children.Add(Paragraph("Khi bật, nút X chỉ ẩn cửa sổ; Lantern vẫn nhận tin nhắn. Nhấp đúp icon tray để mở lại. Chọn Thoát Lantern ở tray để thoát hẳn.", 12, muted: true));
         var startup = new CheckBox { Content = "Khởi động cùng Windows", IsChecked = App.Settings.StartWithWindows, Margin = new Thickness(0, 0, 0, 18) }; startup.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(startup);
         panel.Children.Add(AppearancePicker());
+        var workshop = new Button { Content = "Xưởng chế tác sticker", Margin = new Thickness(0, 0, 0, 12) }; workshop.Click += (_, _) => OpenStickerWorkshop(); panel.Children.Add(workshop);
         panel.Children.Add(Paragraph("Danh tính cố định", bold: true)); panel.Children.Add(new TextBox { Text = identity.Fingerprint, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas"), FontSize = 12, Margin = new Thickness(0, 0, 0, 18) });
         var actions = new WrapPanel(); AddButton(actions, "Sao lưu danh tính", ExportIdentity); AddButton(actions, "Khôi phục danh tính", ImportIdentity); panel.Children.Add(actions);
         panel.Children.Add(Paragraph("Nội dung lịch sử được mã hóa bằng khóa của mật khẩu ứng dụng. Tệp ảnh/video đã lưu chưa mã hóa riêng trên ổ đĩa. Mật khẩu hội thoại là lớp khóa xem cục bộ, không đặt mật khẩu ở máy người khác.", 12, muted: true));

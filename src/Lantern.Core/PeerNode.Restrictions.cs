@@ -63,6 +63,6 @@ public sealed partial class PeerNode
             }
         }
         if (!ConversationRules(original.ConversationId).ForwardAllowed) throw new InvalidOperationException("Hội thoại vừa tắt quyền chuyển tiếp.");
-        return await OfferFileAsync(target, original.FilePath, ct, displayFileName: original.FileName, forwarded: true, forwardSource: original.Id);
+        return await OfferFileAsync(target, original.FilePath, ct, displayFileName: original.FileName, forwarded: true, forwardSource: original.Id, sticker: original.Sticker);
     }
 }

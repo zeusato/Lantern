@@ -1,0 +1,31 @@
+{
+  "Id": "zalo-51",
+  "Name": "Zalo · 51",
+  "Stickers": [
+    {
+      "Id": "zalo-1123",
+      "Name": "Sticker 1123",
+      "File": "d63ba61875199f11c9a252c8bdf67b98d493a9aba75e88ece520d7a7fc5e32bb.gif"
+    },
+    {
+      "Id": "zalo-1124",
+      "Name": "Sticker 1124",
+      "File": "1f22a33265ac582cf5d41c903cc56a2a5f1cfc11100967b11c3186711af3299d.gif"
+    },
+    {
+      "Id": "zalo-1127",
+      "Name": "Sticker 1127",
+      "File": "963ee6514272c30a01459afa255e5f209c4851d504f98bfa03988e062d5341a0.gif"
+    },
+    {
+      "Id": "zalo-1129",
+      "Name": "Sticker 1129",
+      "File": "8f06ee67a77d5bb0ef127f4444620cf43327106664f8644bff9c65cea4294b19.gif"
+    },
+    {
+      "Id": "zalo-1134",
+      "Name": "Sticker 1134",
+      "File": "c1f11b943ff965c944e7246f7c6491a1c53d0d5a2bfc64cc5d0fda95590a3189.gif"
+    }
+  ]
+}

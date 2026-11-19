@@ -1,0 +1,21 @@
+{
+  "Id": "zalo-21",
+  "Name": "Zalo · 21",
+  "Stickers": [
+    {
+      "Id": "zalo-474",
+      "Name": "Sticker 474",
+      "File": "140039d640b134c59a860b43d9ada4e873fa04db70bc5c0998b461f5f25ad6d7.gif"
+    },
+    {
+      "Id": "zalo-492",
+      "Name": "Sticker 492",
+      "File": "71a34dc84d7d4f1d345d5d87c5006b35a986474c675a70c12a74412cfe6f7e2b.gif"
+    },
+    {
+      "Id": "zalo-502",
+      "Name": "Sticker 502",
+      "File": "81213bd7bc0836a26a7930263666b5695e95ed5c38d1dfb4f10dcd2539294fad.gif"
+    }
+  ]
+}

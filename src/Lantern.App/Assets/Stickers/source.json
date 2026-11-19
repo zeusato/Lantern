@@ -1,0 +1,1308 @@
+{
+  "source": "Zalo PC local sticker cache",
+  "spriteFrameMilliseconds": 100,
+  "packNames": "Source IDs retained where display names are unavailable",
+  "packs": [
+    {
+      "id": "zalo-0",
+      "stickers": 30,
+      "animated": 30
+    },
+    {
+      "id": "zalo-14",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-21",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-22",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-30",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-39",
+      "stickers": 7,
+      "animated": 0
+    },
+    {
+      "id": "zalo-42",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-43",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-44",
+      "stickers": 20,
+      "animated": 20
+    },
+    {
+      "id": "zalo-47",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-50",
+      "stickers": 20,
+      "animated": 20
+    },
+    {
+      "id": "zalo-51",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-58",
+      "stickers": 30,
+      "animated": 30
+    },
+    {
+      "id": "zalo-59",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-65",
+      "stickers": 15,
+      "animated": 15
+    },
+    {
+      "id": "zalo-87",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10029",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-10030",
+      "stickers": 5,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10032",
+      "stickers": 16,
+      "animated": 16
+    },
+    {
+      "id": "zalo-10034",
+      "stickers": 2,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10040",
+      "stickers": 5,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10047",
+      "stickers": 13,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10051",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-10067",
+      "stickers": 5,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10068",
+      "stickers": 6,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10069",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10099",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10104",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-10111",
+      "stickers": 6,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10112",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-10117",
+      "stickers": 14,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10121",
+      "stickers": 15,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10123",
+      "stickers": 13,
+      "animated": 13
+    },
+    {
+      "id": "zalo-10126",
+      "stickers": 13,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10127",
+      "stickers": 12,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10129",
+      "stickers": 13,
+      "animated": 13
+    },
+    {
+      "id": "zalo-10130",
+      "stickers": 8,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10132",
+      "stickers": 9,
+      "animated": 9
+    },
+    {
+      "id": "zalo-10136",
+      "stickers": 6,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10137",
+      "stickers": 10,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10145",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-10166",
+      "stickers": 6,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10167",
+      "stickers": 13,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10169",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-10170",
+      "stickers": 14,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10173",
+      "stickers": 12,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10177",
+      "stickers": 11,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10183",
+      "stickers": 10,
+      "animated": 10
+    },
+    {
+      "id": "zalo-10186",
+      "stickers": 9,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10189",
+      "stickers": 6,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10206",
+      "stickers": 3,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10208",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10219",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-10233",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-10235",
+      "stickers": 27,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10236",
+      "stickers": 5,
+      "animated": 4
+    },
+    {
+      "id": "zalo-10242",
+      "stickers": 9,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10243",
+      "stickers": 13,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10254",
+      "stickers": 3,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10256",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10260",
+      "stickers": 3,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10276",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-10285",
+      "stickers": 20,
+      "animated": 20
+    },
+    {
+      "id": "zalo-10291",
+      "stickers": 10,
+      "animated": 10
+    },
+    {
+      "id": "zalo-10292",
+      "stickers": 1,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10293",
+      "stickers": 16,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10296",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-10299",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10301",
+      "stickers": 2,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10302",
+      "stickers": 16,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10303",
+      "stickers": 10,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10304",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10305",
+      "stickers": 17,
+      "animated": 17
+    },
+    {
+      "id": "zalo-10306",
+      "stickers": 12,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10313",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10319",
+      "stickers": 9,
+      "animated": 9
+    },
+    {
+      "id": "zalo-10320",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-10321",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-10324",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-10336",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-10339",
+      "stickers": 1,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10340",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-10342",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-10343",
+      "stickers": 6,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10362",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-10365",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-10368",
+      "stickers": 13,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10369",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-10370",
+      "stickers": 1,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10371",
+      "stickers": 9,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10380",
+      "stickers": 16,
+      "animated": 16
+    },
+    {
+      "id": "zalo-10381",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10383",
+      "stickers": 9,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10385",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10389",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-10391",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-10394",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-10397",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10398",
+      "stickers": 16,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10411",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-10420",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10425",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-10429",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-10431",
+      "stickers": 11,
+      "animated": 11
+    },
+    {
+      "id": "zalo-10434",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10439",
+      "stickers": 7,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10451",
+      "stickers": 1,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10471",
+      "stickers": 1,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10472",
+      "stickers": 10,
+      "animated": 10
+    },
+    {
+      "id": "zalo-10483",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-10504",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-10529",
+      "stickers": 24,
+      "animated": 24
+    },
+    {
+      "id": "zalo-10539",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-10540",
+      "stickers": 9,
+      "animated": 9
+    },
+    {
+      "id": "zalo-10601",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-10604",
+      "stickers": 15,
+      "animated": 10
+    },
+    {
+      "id": "zalo-10606",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-10607",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-10610",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-10615",
+      "stickers": 11,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10623",
+      "stickers": 10,
+      "animated": 10
+    },
+    {
+      "id": "zalo-10632",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-10645",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10651",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-10653",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-10655",
+      "stickers": 9,
+      "animated": 9
+    },
+    {
+      "id": "zalo-10671",
+      "stickers": 16,
+      "animated": 16
+    },
+    {
+      "id": "zalo-10674",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-10675",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-10677",
+      "stickers": 6,
+      "animated": 6
+    },
+    {
+      "id": "zalo-10679",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10680",
+      "stickers": 6,
+      "animated": 6
+    },
+    {
+      "id": "zalo-10682",
+      "stickers": 12,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10683",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-10685",
+      "stickers": 2,
+      "animated": 0
+    },
+    {
+      "id": "zalo-10688",
+      "stickers": 10,
+      "animated": 10
+    },
+    {
+      "id": "zalo-10690",
+      "stickers": 6,
+      "animated": 6
+    },
+    {
+      "id": "zalo-10693",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-10701",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-10726",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-10739",
+      "stickers": 9,
+      "animated": 9
+    },
+    {
+      "id": "zalo-10740",
+      "stickers": 14,
+      "animated": 14
+    },
+    {
+      "id": "zalo-10743",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10751",
+      "stickers": 10,
+      "animated": 10
+    },
+    {
+      "id": "zalo-10752",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-10776",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-10786",
+      "stickers": 10,
+      "animated": 10
+    },
+    {
+      "id": "zalo-10788",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-10790",
+      "stickers": 9,
+      "animated": 9
+    },
+    {
+      "id": "zalo-10793",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-10799",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-10856",
+      "stickers": 6,
+      "animated": 4
+    },
+    {
+      "id": "zalo-10882",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-10939",
+      "stickers": 13,
+      "animated": 13
+    },
+    {
+      "id": "zalo-10959",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-10961",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-10965",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-11020",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-11030",
+      "stickers": 13,
+      "animated": 13
+    },
+    {
+      "id": "zalo-11031",
+      "stickers": 21,
+      "animated": 21
+    },
+    {
+      "id": "zalo-11107",
+      "stickers": 15,
+      "animated": 15
+    },
+    {
+      "id": "zalo-11130",
+      "stickers": 6,
+      "animated": 6
+    },
+    {
+      "id": "zalo-11135",
+      "stickers": 10,
+      "animated": 10
+    },
+    {
+      "id": "zalo-11150",
+      "stickers": 11,
+      "animated": 0
+    },
+    {
+      "id": "zalo-11168",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-11172",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-11177",
+      "stickers": 3,
+      "animated": 0
+    },
+    {
+      "id": "zalo-11190",
+      "stickers": 20,
+      "animated": 20
+    },
+    {
+      "id": "zalo-11219",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-11221",
+      "stickers": 16,
+      "animated": 16
+    },
+    {
+      "id": "zalo-11229",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-11300",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-11351",
+      "stickers": 6,
+      "animated": 6
+    },
+    {
+      "id": "zalo-11454",
+      "stickers": 9,
+      "animated": 9
+    },
+    {
+      "id": "zalo-11482",
+      "stickers": 13,
+      "animated": 13
+    },
+    {
+      "id": "zalo-11585",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-11636",
+      "stickers": 10,
+      "animated": 10
+    },
+    {
+      "id": "zalo-11659",
+      "stickers": 9,
+      "animated": 9
+    },
+    {
+      "id": "zalo-11661",
+      "stickers": 11,
+      "animated": 11
+    },
+    {
+      "id": "zalo-11663",
+      "stickers": 14,
+      "animated": 14
+    },
+    {
+      "id": "zalo-11672",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-11725",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-11726",
+      "stickers": 17,
+      "animated": 17
+    },
+    {
+      "id": "zalo-11752",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-11782",
+      "stickers": 1,
+      "animated": 0
+    },
+    {
+      "id": "zalo-11786",
+      "stickers": 16,
+      "animated": 16
+    },
+    {
+      "id": "zalo-11788",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-11792",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-11807",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-11819",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-11834",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-11852",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-11855",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-11870",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-11883",
+      "stickers": 11,
+      "animated": 11
+    },
+    {
+      "id": "zalo-11900",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-11901",
+      "stickers": 11,
+      "animated": 11
+    },
+    {
+      "id": "zalo-11903",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-11906",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-11907",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-11917",
+      "stickers": 11,
+      "animated": 11
+    },
+    {
+      "id": "zalo-11927",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-11934",
+      "stickers": 11,
+      "animated": 11
+    },
+    {
+      "id": "zalo-11936",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-11938",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-11941",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-11945",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-11949",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-11951",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-11954",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-11955",
+      "stickers": 7,
+      "animated": 0
+    },
+    {
+      "id": "zalo-11956",
+      "stickers": 2,
+      "animated": 0
+    },
+    {
+      "id": "zalo-11957",
+      "stickers": 3,
+      "animated": 0
+    },
+    {
+      "id": "zalo-11960",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-11962",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-11963",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-11965",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-11969",
+      "stickers": 1,
+      "animated": 0
+    },
+    {
+      "id": "zalo-11972",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-11974",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-11975",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-11977",
+      "stickers": 6,
+      "animated": 6
+    },
+    {
+      "id": "zalo-11978",
+      "stickers": 7,
+      "animated": 7
+    },
+    {
+      "id": "zalo-11984",
+      "stickers": 11,
+      "animated": 11
+    },
+    {
+      "id": "zalo-11986",
+      "stickers": 9,
+      "animated": 9
+    },
+    {
+      "id": "zalo-11994",
+      "stickers": 7,
+      "animated": 0
+    },
+    {
+      "id": "zalo-11998",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-12002",
+      "stickers": 7,
+      "animated": 0
+    },
+    {
+      "id": "zalo-12003",
+      "stickers": 25,
+      "animated": 0
+    },
+    {
+      "id": "zalo-12013",
+      "stickers": 15,
+      "animated": 15
+    },
+    {
+      "id": "zalo-12017",
+      "stickers": 18,
+      "animated": 18
+    },
+    {
+      "id": "zalo-12022",
+      "stickers": 5,
+      "animated": 0
+    },
+    {
+      "id": "zalo-12024",
+      "stickers": 9,
+      "animated": 9
+    },
+    {
+      "id": "zalo-12035",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-12045",
+      "stickers": 14,
+      "animated": 14
+    },
+    {
+      "id": "zalo-12048",
+      "stickers": 8,
+      "animated": 8
+    },
+    {
+      "id": "zalo-12052",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-12059",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-12063",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-12066",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-12238",
+      "stickers": 12,
+      "animated": 12
+    },
+    {
+      "id": "zalo-12334",
+      "stickers": 10,
+      "animated": 10
+    },
+    {
+      "id": "zalo-12340",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-12556",
+      "stickers": 13,
+      "animated": 0
+    },
+    {
+      "id": "zalo-12628",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-12646",
+      "stickers": 6,
+      "animated": 0
+    },
+    {
+      "id": "zalo-12658",
+      "stickers": 20,
+      "animated": 0
+    },
+    {
+      "id": "zalo-12671",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-12672",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-12676",
+      "stickers": 6,
+      "animated": 6
+    },
+    {
+      "id": "zalo-12685",
+      "stickers": 5,
+      "animated": 5
+    },
+    {
+      "id": "zalo-12686",
+      "stickers": 3,
+      "animated": 3
+    },
+    {
+      "id": "zalo-12694",
+      "stickers": 7,
+      "animated": 0
+    },
+    {
+      "id": "zalo-12713",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-12738",
+      "stickers": 1,
+      "animated": 1
+    },
+    {
+      "id": "zalo-12740",
+      "stickers": 2,
+      "animated": 2
+    },
+    {
+      "id": "zalo-12748",
+      "stickers": 4,
+      "animated": 4
+    },
+    {
+      "id": "zalo-12778",
+      "stickers": 5,
+      "animated": 0
+    },
+    {
+      "id": "zalo-12832",
+      "stickers": 4,
+      "animated": 0
+    },
+    {
+      "id": "zalo-61900",
+      "stickers": 12,
+      "animated": 0
+    }
+  ],
+  "errors": []
+}
