@@ -30,7 +30,7 @@ public class CompanionTest {
     @Test public void androidKeystoreAuthenticatesToDotNetAndRejectsWrongPcKey() throws Exception {
         String pin=InstrumentationRegistry.getArguments().getString("pcPin");org.junit.Assume.assumeNotNull(pin);
         JSONObject config=new JSONObject().put("pc",pin).put("port",45854).put("addresses",new JSONArray().put("10.0.2.2")).put("nonce","q".repeat(43));
-        try(PcConnection pc=new PcConnection(config)){assertEquals(DeviceKeys.id(),pc.request(new JSONObject().put("type","list")).getString("text"));}
+        try(PcConnection pc=new PcConnection(config)){assertEquals("app-authenticated",pc.request(new JSONObject().put("type","app-login").put("password","qa-account-password")).getString("type"));assertEquals(DeviceKeys.id(),pc.request(new JSONObject().put("type","list")).getString("text"));}
         config.put("pc","B".repeat(64));assertThrows(Exception.class,()->{try(PcConnection ignored=new PcConnection(config)){fail("Wrong PC pin was accepted");}});
     }
     @Test public void keysAndPrivateConfiguration() throws Exception {

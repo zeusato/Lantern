@@ -68,9 +68,9 @@ internal static class EmojiAssets
         var icon = new Image { Source = bitmap, Width = size, Height = size, Stretch = Stretch.Uniform, Tag = emoji, ToolTip = Tooltip(asset) };
         AutomationProperties.SetName(icon, asset.Name); return icon;
     }
-    internal static RichTextBox MessageText(string text, Action<Uri>? openLink = null)
+    internal static RichTextBox MessageText(string text, Action<Uri>? openLink = null, bool inlineOnly = false)
     {
-        var standalone = Find(text.Trim()) is not null;
+        var standalone = !inlineOnly && Find(text.Trim()) is not null;
         double iconSize = standalone ? 48 : 22;
         var paragraph = new System.Windows.Documents.Paragraph { Margin = new Thickness(0), LineHeight = standalone ? 56 : 23 };
         var measure = new TextBlock { FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"), FontSize = 14, TextWrapping = TextWrapping.NoWrap, Padding = new Thickness(0) };

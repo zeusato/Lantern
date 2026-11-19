@@ -36,7 +36,7 @@ while (true)
         using var remote = X509CertificateLoader.LoadCertificate(ssl.RemoteCertificate!.GetRawCertData());
         using var remoteKey = remote.GetECDsaPublicKey() ?? throw new AuthenticationException();
         var phone = Convert.ToHexString(SHA256.HashData(remoteKey.ExportSubjectPublicKeyInfo()));
-        bool unlocked = false, pushEnabled = false; long serial = 0; int inspections = 0;
+        bool unlocked = false, pushEnabled = false, accountAuthenticated = false; long serial = 0; int inspections = 0;
         var messages = seedMessages.Select(m => new Dictionary<string, object?>(m)).ToList();
         string alias = ""; int disappearSeconds = 0; long historyVersion = 0;
         object Contact() => new { id = conversation, name = alias.Length > 0 ? alias : "QA contact", alias, originalName = "QA contact", presence = "online", unread = 0, locked = !unlocked, @protected = true, isGroup = false, disappearSeconds, historyVersion };
@@ -49,9 +49,15 @@ while (true)
             if (type == "send") Console.Error.WriteLine("QA send: " + request.RootElement.GetProperty("text").GetString());
             // Match MobilePacket's serialized defaults, including empty contact arrays on non-list replies.
             var reply = new Dictionary<string, object?> { ["type"] = type == "hello" ? "welcome" : "ok", ["id"] = pc, ["text"] = phone, ["name"] = "QA PC", ["conversations"] = Array.Empty<object>() };
-            if (type == "hello") { reply["capabilities"] = new[] { "sync-v1", "push-v1", "pc-v1", "conversation-settings-v1" }; pushEnabled = request.RootElement.TryGetProperty("capabilities", out var caps) && caps.EnumerateArray().Any(c => c.GetString() == "push-v1"); }
+            if (type == "hello") { reply["capabilities"] = new[] { "sync-v1", "push-v1", "pc-v1", "conversation-settings-v1", "app-password-v1" }; pushEnabled = request.RootElement.TryGetProperty("capabilities", out var caps) && caps.EnumerateArray().Any(c => c.GetString() == "push-v1"); }
             else if (request.RootElement.TryGetProperty("id", out var requestId)) reply["id"] = requestId.GetString();
             reply["serial"] = ++serial; reply["conversation"] = request.RootElement.TryGetProperty("conversation", out var selected) ? selected.GetString() : "";
+            if (type == "app-login") { accountAuthenticated = request.RootElement.GetProperty("password").GetString() == "qa-account-password"; reply["type"] = accountAuthenticated ? "app-authenticated" : "error"; if (!accountAuthenticated) reply["text"] = "Mật khẩu chưa đúng"; }
+            else if (type == "app-logout") { accountAuthenticated = false; unlocked = false; reply["type"] = "app-locked"; }
+            else if (type == "app-status") reply["type"] = accountAuthenticated ? "app-authenticated" : "app-locked";
+            else if (type != "hello" && !accountAuthenticated) { reply["type"] = type is "sync" or "list" ? "app-locked" : "error"; reply["text"] = "Đăng nhập tài khoản trước"; }
+            else
+            {
             if (type == "pc")
             {
                 reply["type"] = "pc";
@@ -84,9 +90,10 @@ while (true)
             if (type == "history" || changed || (type is "sync" or "unlock") && unlocked) { var hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(messages))); reply["hash"] = hash; reply["messages"] = messages; if (request.RootElement.TryGetProperty("hash", out var previous) && previous.GetString() == hash) { reply["type"] = "unchanged"; reply["messages"] = Array.Empty<object>(); } }
             if (type == "send") { await Task.Delay(500); var id = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(phone + request.RootElement.GetProperty("id").GetString())))[..32].ToLowerInvariant(); if (!messages.Any(m => (string?)m["id"] == id)) messages.Add(new() { ["id"] = id, ["kind"] = "text", ["text"] = request.RootElement.GetProperty("text").GetString(), ["outgoing"] = true, ["senderName"] = "QA PC", ["time"] = DateTimeOffset.UtcNow, ["status"] = "delivered" }); reply["messageId"] = id; reply["messages"] = messages.Where(m => (string?)m["id"] == id).ToArray(); }
             if (type == "download") { await Task.Delay(80); int offset = request.RootElement.GetProperty("offset").GetInt32(); reply["data"] = Convert.ToBase64String(imageBytes, offset, Math.Min(32768, imageBytes.Length - offset)); }
+            }
             var response = JsonSerializer.SerializeToUtf8Bytes(reply);
             var frame = new byte[4 + response.Length]; BinaryPrimitives.WriteInt32BigEndian(frame, response.Length); response.CopyTo(frame, 4); await ssl.WriteAsync(frame, timeout.Token);
-            if (type == "send" && pushEnabled)
+            if (type == "send" && pushEnabled && accountAuthenticated)
             {
                 if (!messages.Any(m => (string?)m.GetValueOrDefault("text") == "Incoming immediately after send")) messages.Add(new() { ["id"] = new string('9',32), ["kind"] = "text", ["text"] = "Incoming immediately after send", ["outgoing"] = false, ["time"] = DateTimeOffset.UtcNow, ["status"] = "delivered" });
                 var push = JsonSerializer.SerializeToUtf8Bytes(new { type = "ok", id = "", serial = ++serial, conversation, locked = !unlocked, hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(messages))), messages, conversations = new[] { Contact() } });

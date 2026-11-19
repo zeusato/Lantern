@@ -7,6 +7,22 @@ namespace Lantern.App;
 
 internal static class ClipboardImages
 {
+    internal static DataObject CopyData(BitmapSource image)
+    {
+        var data = new DataObject();
+        data.SetImage(image);
+        // PNG preserves alpha; Bitmap supports applications expecting CF_BITMAP/CF_DIB.
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
+        var png = new MemoryStream(); encoder.Save(png); png.Position = 0;
+        data.SetData("PNG", png, false);
+        return data;
+    }
+    internal static void CopyLocal(string path)
+    {
+        var data = CopyData(LoadLocal(path, 0));
+        using var png = (Stream)data.GetData("PNG", false)!;
+        Clipboard.SetDataObject(data, true);
+    }
     internal static bool ContainsImage() => Clipboard.ContainsData("PNG") || Clipboard.ContainsImage();
     internal static BitmapSource? Read()
     {

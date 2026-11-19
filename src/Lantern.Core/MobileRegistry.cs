@@ -27,6 +27,7 @@ public sealed class MobileDevice
     public DateTimeOffset Added { get; set; } = DateTimeOffset.UtcNow;
     public MobileRoute? Route { get; set; }
     public PcAccess Access { get; set; } = new();
+    public bool RequireAppPassword { get; set; }
 }
 public sealed class MobileState
 {
@@ -66,6 +67,15 @@ public sealed class MobileRegistry
         }
     }
     public bool Contains(string id) { lock (gate) return state.Devices.Any(d => d.Id == id); }
+    public void RequireAppPassword(string id)
+    {
+        lock (gate)
+        {
+            var device = state.Devices.Find(d => d.Id == id) ?? throw new InvalidOperationException("Thiết bị đã bị gỡ.");
+            if (device.RequireAppPassword) return;
+            device.RequireAppPassword = true; Save();
+        }
+    }
     public void SetAccess(string id, PcAccess access)
     {
         access.Validate();

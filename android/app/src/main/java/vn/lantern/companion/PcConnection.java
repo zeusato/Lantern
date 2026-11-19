@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 
 final class PcConnection implements AutoCloseable {
     private SSLSocket socket; private RelayBridge relay; private DataInputStream input; private DataOutputStream output;
-    boolean fastSync,pushSync,pcCommands,conversationSettings;
+    boolean fastSync,pushSync,pcCommands,conversationSettings,appPassword;
     volatile java.util.function.Consumer<JSONObject> onPush=ignored->{};
     volatile Runnable onDisconnect=()->{};
     private final ConcurrentHashMap<String,CompletableFuture<JSONObject>> pending=new ConcurrentHashMap<>();
@@ -39,12 +39,13 @@ final class PcConnection implements AutoCloseable {
         input=new DataInputStream(socket.getInputStream());output=new DataOutputStream(new BufferedOutputStream(socket.getOutputStream(),65536));
         try {
             progress.accept(config.optString("nonce").isEmpty()?"Đang xác nhận thiết bị với PC…":"Đang chờ xác nhận ghép đôi trên PC…");
-            JSONObject hello=new JSONObject().put("type","hello").put("nonce",config.optString("nonce")).put("name",android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL).put("capabilities",new JSONArray().put("push-v1").put("capture-protection-v1"));
+            JSONObject hello=new JSONObject().put("type","hello").put("nonce",config.optString("nonce")).put("name",android.os.Build.MANUFACTURER+" "+android.os.Build.MODEL).put("capabilities",new JSONArray().put("push-v1").put("capture-protection-v1").put("app-password-v1"));
             JSONObject welcome=request(hello);if(!"welcome".equals(welcome.optString("type")))throw new IOException("PC chưa chấp nhận ghép đôi");
             JSONArray capabilities=welcome.optJSONArray("capabilities");if(capabilities!=null)for(int i=0;i<capabilities.length();i++){if("sync-v1".equals(capabilities.optString(i)))fastSync=true;if("push-v1".equals(capabilities.optString(i)))pushSync=true;}
             socket.setSoTimeout(30000);
             if(capabilities!=null)for(int i=0;i<capabilities.length();i++)if("pc-v1".equals(capabilities.optString(i)))pcCommands=true;
             if(capabilities!=null)for(int i=0;i<capabilities.length();i++)if("conversation-settings-v1".equals(capabilities.optString(i)))conversationSettings=true;
+            if(capabilities!=null)for(int i=0;i<capabilities.length();i++)if("app-password-v1".equals(capabilities.optString(i)))appPassword=true;
             if(pushSync){Thread reader=new Thread(this::readLoop,"lantern-pc-events");reader.setDaemon(true);reader.start();}
         }catch(Exception e){close();throw e;}
     }

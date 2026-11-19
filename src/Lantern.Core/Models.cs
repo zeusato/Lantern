@@ -66,6 +66,9 @@ public sealed class ChatMessage
     public string SenderId { get; set; } = "";
     public string SenderName { get; set; } = "";
     public string Text { get; set; } = "";
+    public RichTextContent? RichText { get; set; }
+    public ChatPoll? Poll { get; set; }
+    public PollBallot? PendingPollVote { get; set; }
     public DateTimeOffset Time { get; set; } = DateTimeOffset.UtcNow;
     public bool Outgoing { get; set; }
     public string Kind { get; set; } = "text";

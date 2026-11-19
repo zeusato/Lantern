@@ -30,7 +30,7 @@ public final class PcActivity extends Activity {
     private interface Reply { void accept(JSONObject value) throws Exception; }
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     @Override public void onCreate(Bundle state){
-        super.onCreate(state);getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);WindowCompat.setDecorFitsSystemWindows(getWindow(),false);
+        super.onCreate(state);if(!AppSession.guard(this))return;getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);WindowCompat.setDecorFitsSystemWindows(getWindow(),false);
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(dp(18),dp(16),dp(18),dp(16));layout.setBackgroundColor(Color.rgb(16,24,29));
         TextView heading=text("Máy tính",24);layout.addView(heading);
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setIndeterminate(true);progress.setContentDescription("Đang xử lý yêu cầu PC");progress.setVisibility(View.GONE);layout.addView(progress,new LinearLayout.LayoutParams(-1,dp(4)));
@@ -40,7 +40,7 @@ public final class PcActivity extends Activity {
         service=ConnectionService.current;connection=service==null?null:service.controlConnection();
         if(state!=null&&state.containsKey("download")){File file=new File(state.getString("download",""));try{if(file.getCanonicalPath().startsWith(new File(getCacheDir(),"attachments").getCanonicalPath()+File.separator)&&file.isFile()){savedFile=file;savedName=state.getString("name","tep");}}catch(IOException ignored){}}
     }
-    @Override protected void onResume(){super.onResume();active=true;if(cancelled)note("Thao tác đã dừng khi rời màn hình. Bấm kiểm tra lại để lấy trạng thái mới.");if(body.getChildCount()==0&&!busy)home();}
+    @Override protected void onResume(){super.onResume();if(!AppSession.guard(this))return;active=true;if(cancelled)note("Thao tác đã dừng khi rời màn hình. Bấm kiểm tra lại để lấy trạng thái mới.");if(body.getChildCount()==0&&!busy)home();}
     @Override protected void onPause(){active=false;cancelled=true;super.onPause();}
     @Override protected void onDestroy(){active=false;cancelled=true;worker.shutdownNow();super.onDestroy();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);if(savedFile!=null){state.putString("download",savedFile.getAbsolutePath());state.putString("name",savedName);}}

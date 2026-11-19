@@ -41,6 +41,7 @@ public class ConversationSettingsTest {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);DeviceKeys.forget(context);
         DeviceKeys.save(context,new JSONObject().put("pc",pin).put("name","QA PC").put("port",45854).put("addresses",new JSONArray().put("10.0.2.2")).put("nonce","q".repeat(43)));
         String id="a".repeat(64);ConnectionService.selected="";
+        FlowLogin.authenticate(context);
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             android.view.View[] decor={null};scenario.onActivity(a->decor[0]=a.getWindow().getDecorView());
             until(()->ConnectionService.connected&&ConnectionService.conversations.length()>0);

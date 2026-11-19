@@ -141,7 +141,7 @@ function update(packet) {
     for (const id of invalidateDeletedHistory(state, packet.conversations))
       clearMedia(id);
     state.conversations = packet.conversations;
-    if (current && (!contact(current) || contact(current).captureProtected)) {
+    if (current && !contact(current)) {
       sessionKeys.delete(current); closeSheet(); selectedMessages.clear(); replyTo = "";
       if ($("#draft")) $("#draft").value = "";
       if (!contact(current)) back();
@@ -440,7 +440,6 @@ function deviceSheet() {
 }
 async function unlockSheet(id) {
   if (current !== id) return;
-  if (contact(id)?.captureProtected) { toast("Hội thoại chống chụp chỉ mở trên ứng dụng hỗ trợ. Bản web giữ nội dung ẩn."); return; }
   showSheet(
     "Mở khóa hội thoại",
     `<p>${esc(contact(id)?.name || "Hội thoại")} được bảo vệ bằng mật khẩu.</p><form id="unlock-form"><input id="conversation-password" type="password" autocomplete="current-password" aria-label="Mật khẩu hội thoại" placeholder="Mật khẩu hội thoại" required><p id="unlock-error" class="error"></p><button class="primary">Mở khóa</button></form>`,
@@ -544,7 +543,7 @@ async function lockApp() {
 function settingsSheet() {
   showSheet(
     "Cài đặt",
-    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.12</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-expression" class="secondary">Đổi phép tính mở khóa</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
+    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.18</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-expression" class="secondary">Đổi phép tính mở khóa</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
   );
   for (const b of sheet.querySelectorAll("[data-theme]"))
     b.onclick = () => {
@@ -1115,7 +1114,7 @@ const sessionKeys = new Map(),
   autoMediaAttempted = new Map();
 const history = (id) => (state?.histories?.[id] || []).filter((x) => alive(x));
 const contact = (id) => state?.conversations?.find((c) => c.id === id);
-const isLocked = (id) => !contact(id) || !!contact(id)?.captureProtected || !!contact(id)?.protected && !sessionKeys.has(id);
+const isLocked = (id) => !contact(id) || !!contact(id)?.protected && !sessionKeys.has(id);
 function closeSheet() {
   sheetCleanup?.();
   sheetCleanup = null;
@@ -1280,7 +1279,7 @@ function resetSheet() {
 }
 function shell() {
   applyColorTheme();
-  app.innerHTML = `<main class="shell"><section id="inbox"><header class="topbar"><div class="brand"><img src="/icon.svg" alt="">Lantern</div><button id="top-settings" class="icon" aria-label="Cài đặt">${icon("settings")}</button></header><div id="status" class="statusline"></div></section><section id="list" class="list-view"><div class="section-title"><h2>Tin nhắn</h2><span id="list-count"></span></div><input id="search" class="search" type="search" placeholder="Tìm cuộc trò chuyện" aria-label="Tìm cuộc trò chuyện"><div id="conversations"></div></section><section id="chat" class="chat-view" hidden><header class="chat-head"><button id="back" class="icon" aria-label="Quay lại">${icon("back")}</button><div id="chat-avatar" class="avatar"></div><div class="chat-title"><strong id="chat-name"></strong><div id="chat-status" class="chat-status"></div></div><button id="info" class="icon" aria-label="Thông tin hội thoại">${icon("more")}</button></header><div id="selection-bar" class="selection-bar" hidden><span id="selection-count"></span><button id="delete-selected">Xóa đã chọn</button><button id="cancel-selection">Hủy</button></div><div id="timeline" class="timeline" role="log" aria-label="Tin nhắn"></div><div id="transfer" class="transfer" hidden></div><div id="composer-area" class="composer-area"><div id="reply-banner" class="reply-banner" hidden></div><form id="composer" class="composer"><button id="attach" class="icon" type="button" aria-label="Đính kèm">${icon("plus")}</button><textarea id="draft" rows="1" placeholder="Tin nhắn…" aria-label="Nhập tin nhắn"></textarea><button id="send" class="icon send" type="submit" aria-label="Gửi tin nhắn" disabled>${icon("send")}</button></form><div id="draft-note" class="draft-note" hidden></div></div></section><nav id="nav" class="nav"><button class="active" id="nav-chat">${icon("chat")}Tin nhắn</button><button id="nav-pair">${icon("phone")}Thiết bị</button><button id="nav-settings">${icon("settings")}Cài đặt</button></nav><input id="file" type="file" hidden></main>`;
+  app.innerHTML = `<main class="shell"><section id="inbox"><header class="topbar"><div class="brand"><img src="/icon.svg" alt="">Lantern</div><button id="top-settings" class="icon" aria-label="Cài đặt">${icon("settings")}</button></header><div id="status" class="statusline"></div></section><section id="list" class="list-view"><div class="section-title"><h2>Tin nhắn</h2><span id="list-count"></span></div><input id="search" class="search" type="search" placeholder="Tìm cuộc trò chuyện" aria-label="Tìm cuộc trò chuyện"><div id="conversations"></div></section><section id="chat" class="chat-view" hidden><header class="chat-head"><button id="back" class="icon" aria-label="Quay lại">${icon("back")}</button><div id="chat-avatar" class="avatar"></div><div class="chat-title"><strong id="chat-name"></strong><div id="chat-status" class="chat-status"></div></div><button id="info" class="icon" aria-label="Thông tin hội thoại">${icon("more")}</button></header><div id="capture-note" class="capture-note" role="note" hidden>Chống chụp màn hình không được hỗ trợ trên bản web.</div><div id="selection-bar" class="selection-bar" hidden><span id="selection-count"></span><button id="delete-selected">Xóa đã chọn</button><button id="cancel-selection">Hủy</button></div><div id="timeline" class="timeline" role="log" aria-label="Tin nhắn"></div><div id="transfer" class="transfer" hidden></div><div id="composer-area" class="composer-area"><div id="reply-banner" class="reply-banner" hidden></div><form id="composer" class="composer"><button id="attach" class="icon" type="button" aria-label="Đính kèm">${icon("plus")}</button><textarea id="draft" rows="1" placeholder="Tin nhắn…" aria-label="Nhập tin nhắn"></textarea><button id="send" class="icon send" type="submit" aria-label="Gửi tin nhắn" disabled>${icon("send")}</button></form><div id="draft-note" class="draft-note" hidden></div></div></section><nav id="nav" class="nav"><button class="active" id="nav-chat">${icon("chat")}Tin nhắn</button><button id="nav-pair">${icon("phone")}Thiết bị</button><button id="nav-settings">${icon("settings")}Cài đặt</button></nav><input id="file" type="file" hidden></main>`;
   $("#top-settings").onclick = $("#nav-settings").onclick = settingsSheet;
   const pcButton = document.createElement("button");
   pcButton.id = "nav-pc"; pcButton.innerHTML = `${icon("phone")}Máy tính`;
@@ -1454,7 +1453,7 @@ function openConversation(id) {
   renderStatus();
   autosize();
   if (isLocked(id)) unlockSheet(id);
-  else sync();
+  sync();
 }
 function messages() {
   return current && !isLocked(current)
@@ -1466,13 +1465,11 @@ function renderMessages(bottom = false) {
   $("#chat-name").textContent = contact(current)?.name || "Hội thoại";
   $("#chat-avatar").textContent = initials(contact(current)?.name);
   const locked = isLocked(current);
+  $("#capture-note").hidden = !contact(current)?.captureProtected;
   $("#composer-area").hidden = locked;
   $("#info").disabled = locked;
   if (locked) {
-    if (contact(current)?.captureProtected) {
-      $("#timeline").innerHTML = `<div class="empty"><h2>Hội thoại chống chụp màn hình</h2><p>Mở bằng ứng dụng Lantern hỗ trợ chống chụp. Bản web giữ nội dung ẩn.</p></div>`;
-      return;
-    }
+    lastRender = "";
     $("#timeline").innerHTML =
       `<div class="empty"><div class="illustration">${icon("lock")}</div><h2>Hội thoại đang khóa</h2><p>Mở khóa để xem tin nhắn và nội dung chia sẻ.</p><button class="primary" id="unlock-now">Mở khóa hội thoại</button></div>`;
     $("#unlock-now").onclick = () => unlockSheet(current);

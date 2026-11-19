@@ -51,6 +51,7 @@ internal sealed partial class UiHarness : Application
     // Isolated fixture host: production startup/password handling is not altered or shipped with a bypass.
     protected override async void OnStartup(StartupEventArgs e)
     {
+        if (e.Args.FirstOrDefault() == "--rich-polls") { await RunRichPollUi(e.Args.ElementAtOrDefault(1)); return; }
         if (e.Args.FirstOrDefault() == "--pins-emoji") { await RunPinsAndEmoji(e.Args.ElementAtOrDefault(1)); return; }
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         var root = Path.GetFullPath(e.Args.FirstOrDefault() ?? Path.Combine(Path.GetTempPath(), "Lantern-ui-" + Guid.NewGuid().ToString("N"))); Directory.CreateDirectory(root);
@@ -81,10 +82,10 @@ internal sealed partial class UiHarness : Application
             await Until(() => window.TaskbarItemInfo.Overlay is null, "Taskbar badge clears"); Check(true, "Reading all messages clears the taskbar badge");
             list.SelectedItem = list.Items.OfType<ContactRow>().Single(r => r.Id == new string('c', 64));
             list.SelectedItem = list.Items.OfType<ContactRow>().Single(r => r.Id == remoteIdentity.Id);
-            Check(Field<HashSet<string>>(window, "unlockedConversations").Contains(remoteIdentity.Id) && ((TextBox)window.FindName("Composer")).IsEnabled, "Conversation remains unlocked when switching away and back");
+            Check(Field<HashSet<string>>(window, "unlockedConversations").Contains(remoteIdentity.Id) && ((RichComposer)window.FindName("Composer")).IsEnabled, "Conversation remains unlocked when switching away and back");
             node.SetPeerAlias(remoteIdentity.Id, "Minh Anh · Thiết kế"); Call(window, "Refresh");
             Check(((TextBlock)window.FindName("ChatTitle")).Text == "Minh Anh · Thiết kế", "Local alias appears in chat header");
-            var composer = (TextBox)window.FindName("Composer"); composer.Text = "Chào :) "; Check(composer.Text == "Chào 🙂 ", "Composer replaces completed emoticons");
+            var composer = (RichComposer)window.FindName("Composer"); composer.Text = "Chào :) "; Check(composer.Text == "Chào 🙂 ", "Composer replaces completed emoticons");
             await Task.Delay(80); Check(composer.IsKeyboardFocused, "Selecting an unlocked conversation focuses the composer automatically");
             var messageMenu = (ContextMenu)Call(window, "MessageMenu", store.Message(first.Id)!)!;
             Check(messageMenu.Items.OfType<MenuItem>().Select(i => (string)i.Header).SequenceEqual(new[] { "Trả lời", "Chia sẻ", "Copy tin nhắn", "Ghim tin nhắn", "Chọn nhiều tin nhắn", "Xóa chỉ ở phía tôi" }), "Message context menu exposes the requested actions");

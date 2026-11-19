@@ -85,6 +85,23 @@ public sealed class WorkspaceVault : IDisposable
         }
         catch (Exception ex) when (ex is CryptographicException or FormatException) { return false; }
     }
+    public bool VerifyAccountPassword(string password)
+    {
+        if (password.Length is < 8 or > 256) return false;
+        lock (gate)
+        {
+            var header = ReadHeader(directory);
+            var derived = Rfc2898DeriveBytes.Pbkdf2(password, Convert.FromBase64String(header.Salt), header.Iterations, HashAlgorithmName.SHA256, 32);
+            try
+            {
+                var actual = Decrypt(derived, Convert.FromBase64String(header.WrappedKey), Encoding.UTF8.GetBytes(header.WorkspaceId + header.OwnerSid));
+                try { return CryptographicOperations.FixedTimeEquals(actual, key); }
+                finally { CryptographicOperations.ZeroMemory(actual); }
+            }
+            catch (CryptographicException) { return false; }
+            finally { CryptographicOperations.ZeroMemory(derived); }
+        }
+    }
     private static void WrapKey(VaultHeader header, byte[] key, string password)
     {
         var derived = Rfc2898DeriveBytes.Pbkdf2(password, Convert.FromBase64String(header.Salt), header.Iterations, HashAlgorithmName.SHA256, 32);

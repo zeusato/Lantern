@@ -1031,3 +1031,5 @@ dialog::backdrop {
 .expression-fields label { display: block; margin-top: 12px; }
 .conversation-settings-actions { display: flex; flex-direction: column; gap: 10px; }
 .conversation-settings-actions p { margin: 4px 0; }
+
+.capture-note { flex: none; padding: 7px 16px; color: var(--muted); background: var(--panel); font-size: 12px; line-height: 1.4; }

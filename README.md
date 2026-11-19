@@ -15,6 +15,10 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 
 ## Chức năng
 
+- Soạn thảo PC có thanh công cụ ngang; bấm **A✎** hoặc **Ctrl+Shift+X** để mở thanh định dạng phía dưới: đậm, nghiêng, gạch chân/ngang, cỡ/màu chữ, danh sách, thụt lề, hoàn tác/làm lại. Nút mở rộng tăng vùng nhập; ẩn thanh công cụ vẫn giữ định dạng. Rich text được giữ trong nháp theo hội thoại, lịch sử, gửi/nhận và chuyển tiếp trên PC; thiết bị chưa hỗ trợ vẫn đọc phần chữ thuần.
+- Click phải ảnh đã tải trong log chat → **Sao chép ảnh** để dán ảnh gốc sang ứng dụng khác; giữ độ phân giải và độ trong suốt.
+- Bình chọn nhóm trên PC: câu hỏi, 2–10 phương án, chọn một/nhiều, thời hạn tùy chọn, đổi/gỡ phiếu và xem người đã chọn. Người tạo kết thúc poll; phiếu được lưu chờ nếu máy người tạo offline và xác nhận khi kết nối lại. Xem [soạn thảo và bình chọn](docs/CHAT-COMPOSER-POLLS.md).
+
 - Ra lệnh từ Android/PWA đã ghép đôi: khóa/tắt Windows, duyệt và tải tệp trong thư mục được cấp, gửi prompt vào AI đang mở (thử nghiệm). Cần cấp quyền riêng trên PC; xem [hướng dẫn và giới hạn](docs/PC-COMMANDS.md).
 
 - Danh tính cố định từ SHA-256 của public key; IP được cập nhật khi kết nối lại.
@@ -25,7 +29,7 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 - Thành viên có thể rời nhóm và giữ lịch sử đã nhận ở chế độ chỉ đọc. Chủ nhóm rời sẽ chuyển quyền cho người được chỉ định hoặc chọn ngẫu nhiên người còn lại. Chủ nhóm có quyền xóa nhóm trên mọi máy; máy offline thực hiện khi kết nối lại. Thành viên cuối cùng rời sẽ xóa nhóm. Tệp đã lưu riêng bên ngoài Lantern không bị xóa.
 - Hội thoại online xếp trước offline; trong mỗi phần ưu tiên hội thoại đã ghim rồi tới tin mới nhất. Click phải hội thoại để ghim, phân loại, thêm người vào nhóm hoặc xóa lịch sử cục bộ và ẩn hội thoại tới khi có tin mới. Chọn hội thoại tự focus ô nhập.
 - Click phải tin nhắn để trả lời, chia sẻ sang log khác, copy, ghim trên máy mình, chọn nhiều hoặc xóa chỉ ở phía mình. Danh sách tin ghim nằm trong **Thông tin → Cài đặt**. Chuyển tiếp hỗ trợ chữ, liên hệ và tệp; tệp chưa nhận được tải trước khi chuyển tiếp.
-- **Thông tin → Cài đặt → Quyền hội thoại** đồng bộ quyền chuyển tiếp và chống chụp cho các bên; nhóm chỉ chủ nhóm được sửa. Chống chụp dùng API Windows cho toàn cửa sổ khi đang mở log đó, gồm cửa sổ xem ảnh/HTML; nếu API không bật được thì ẩn nội dung. Android dùng cửa sổ bảo vệ sẵn có, bản web và thiết bị chưa hỗ trợ không được lấy nội dung log này. Không bảo đảm chặn camera ngoài hoặc ứng dụng đã bị sửa đổi; quyền mới áp dụng sau khi máy offline kết nối lại.
+- **Thông tin → Cài đặt → Quyền hội thoại** đồng bộ quyền chuyển tiếp và chống chụp cho các bên; nhóm chỉ chủ nhóm được sửa. Chống chụp dùng API Windows cho toàn cửa sổ khi đang mở log đó, gồm cửa sổ xem ảnh/HTML; nếu API không bật được thì ẩn nội dung. Android dùng cửa sổ bảo vệ sẵn có. PWA vẫn cho đọc/gửi tin và chỉ báo không hỗ trợ chống chụp; nội dung hiển thị trên PWA có thể bị chụp lại. Thiết bị native cũ chưa hỗ trợ vẫn bị chặn nội dung. Không bảo đảm chặn camera ngoài hoặc ứng dụng đã bị sửa đổi; quyền mới áp dụng sau khi máy offline kết nối lại.
 - Hàng đợi SQLite bền vững: gửi lại khi kết nối, chống tin trùng, định kỳ thử lại tin chưa ACK.
 - Gửi tệp tối đa 10 GB, chia khối 64 KB, tiếp tục từ `.part`, xác minh SHA-256 trước khi hoàn tất.
 - Tối đa 3 tệp nhận đồng thời; ảnh được tự động xếp hàng, tiếp tục tải khi kết nối lại và kiểm tra SHA-256. Tệp/video cần người dùng chủ động nhận.
@@ -36,6 +40,7 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 - Giao diện tiếng Việt, sáng/tối/theo Windows, thích ứng cửa sổ tối thiểu 780×580.
 - Sao lưu/khôi phục danh tính `.lanternkey` có mật khẩu, chặn và bỏ chặn máy.
 - Mật khẩu ứng dụng bắt buộc; đăng nhập, khóa app và mở khóa hội thoại ngay trong cửa sổ chính, không tạo cửa sổ mật khẩu riêng. Ô mật khẩu tự focus; lời chào dùng tên tài khoản. Ctrl+L khóa ngay; đổi mật khẩu có xác nhận mật khẩu hiện tại.
+- Android dùng mật khẩu tài khoản Lantern trên PC khi mở app hoặc quay lại từ nền; ghép đôi không tự đăng nhập. Cần PC đang chạy và cập nhật cả hai ứng dụng. Điện thoại không lưu mật khẩu; trước đăng nhập không hiện danh sách chat hay dữ liệu cache.
 - Mật khẩu riêng cho từng cuộc trò chuyện; mở một lần cho cả phiên, khóa chủ động bằng nút khóa ở đầu hội thoại. Khóa hoặc thoát ứng dụng khóa lại tất cả hội thoại.
 - Sửa tên bản thân; đặt tên riêng cho đối tác chỉ trên máy mình, giữ nguyên khi đối tác đổi tên/IP.
 - Số tin chưa đọc trên từng hội thoại, icon tray và badge trên taskbar, hiển thị `99+` khi vượt 99. Nhấp đúp tray để mở app.

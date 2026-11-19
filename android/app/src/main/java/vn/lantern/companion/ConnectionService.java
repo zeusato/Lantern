@@ -40,17 +40,34 @@ public final class ConnectionService extends Service {
     private String phoneId="";
     private final Handler ui=new Handler(Looper.getMainLooper());
     interface Job { void run(PcConnection connection) throws Exception; }
-    PcConnection controlConnection() { return connected && pc!=null && pc.pcCommands ? pc : null; }
+    PcConnection controlConnection() { return AppSession.unlocked() && connected && pc!=null && pc.pcCommands ? pc : null; }
     boolean conversationSettingsSupported(){return connected&&pc!=null&&pc.conversationSettings;}
     JSONObject controlRequest(PcConnection expected,JSONObject command)throws Exception{
-        if(stopping||!connected||expected==null||pc!=expected)throw new IOException("Kết nối PC đã thay đổi. Mở lại mục Máy tính.");
+        if(!AppSession.unlocked()||stopping||!connected||expected==null||pc!=expected)throw new IOException("Kết nối PC đã thay đổi. Mở lại mục Máy tính.");
         return checked(expected.request(new JSONObject().put("type","pc").put("pc",command))).getJSONObject("pc");
     }
-    private record Work(Job job,Consumer<String> done,boolean transfer){}
+    private record Work(Job job,Consumer<String> done,boolean transfer,boolean login){Work(Job job,Consumer<String> done,boolean transfer){this(job,done,transfer,false);}}
     static JSONObject packet(String type,String conversation) throws JSONException {return new JSONObject().put("type",type).put("conversation",conversation);}
+    boolean accountLoginSupported(){return connected&&pc!=null&&pc.appPassword;}
+    void loginAccount(String password,Consumer<String> done){
+        long generation=AppSession.generation();
+        enqueue(connection->{
+            if(!connection.appPassword)throw new RemoteError("Cập nhật Lantern trên PC để đăng nhập bằng mật khẩu tài khoản.");
+            JSONObject request=packet("app-login","").put("password",password);
+            JSONObject response;try{response=checked(connection.request(request));}finally{request.remove("password");}
+            if(!"app-authenticated".equals(response.optString("type")))throw new RemoteError("PC chưa xác nhận đăng nhập.");
+            if(!AppSession.authenticate(generation)){connection.close();throw new RemoteError("Phiên đăng nhập đã đóng. Đại ca đăng nhập lại.");}
+            account=response.optString("name",account);lastSync=0;sync(connection);notifyUi();
+        },done,false,true);
+    }
+    void lockAccount(){
+        visible=false;displayed=new ReadState("",Collections.emptySet());
+        synchronized(stateGate){conversations=new JSONArray();messages=new JSONArray();clearMedia();}
+        PcConnection active=pc;if(active!=null)active.close();notifyUi();
+    }
     private void notifyUi(){ui.post(()->{if(changed!=null)changed.run();});}
     public IBinder onBind(Intent intent){return null;}
-    public void onCreate(){super.onCreate();current=this;clearMedia();try{JSONObject config=DeviceKeys.load(this);if(config!=null){phoneId=DeviceKeys.id();cache=new HistoryCache(this,config.getString("pc"));JSONArray saved=cache.outbox();for(int i=0;i<saved.length();i++){JSONObject m=saved.getJSONObject(i);m.put("status","retry");outbox.put(m.getString("id"),m);}conversations=cache.conversations();restoreSelected();}}catch(Exception ignored){}}
+    public void onCreate(){super.onCreate();AppSession.invalidate();current=this;clearMedia();try{JSONObject config=DeviceKeys.load(this);if(config!=null){phoneId=DeviceKeys.id();cache=new HistoryCache(this,config.getString("pc"));JSONArray saved=cache.outbox();for(int i=0;i<saved.length();i++){JSONObject m=saved.getJSONObject(i);m.put("status","retry");outbox.put(m.getString("id"),m);}conversations=new JSONArray();messages=new JSONArray();}}catch(Exception ignored){}}
     public int onStartCommand(Intent intent,int flags,int id){
         NotificationManager manager=getSystemService(NotificationManager.class);manager.createNotificationChannel(new NotificationChannel("connection","Kết nối PC",NotificationManager.IMPORTANCE_LOW));
         PendingIntent open=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
@@ -65,8 +82,8 @@ public final class ConnectionService extends Service {
                 JSONObject config=DeviceKeys.load(this);if(config==null)break;
                 status="Đang nối với PC…";notifyUi(); pc=new PcConnection(config,value->{if(!stopping){status=value;notifyUi();}});if(stopping){pc.close();break;}
                 config.put("nonce","");DeviceKeys.save(this,config);account=config.optString("name","Lantern");connected=true;problem="";status="Đã kết nối qua "+pc.transport()+" · "+account;lastSerial=0;lastSync=0;lastRead="";
-                PcConnection active=pc;active.onPush=response->{if(stopping||pc!=active||!connected)return;try{applySync(response.optString("conversation"),response);}catch(Exception ignored){active.close();}};notifyUi();
-                active.onDisconnect=()->{if(stopping||pc!=active)return;connected=false;problem="Kết nối bị gián đoạn";status="Đang kết nối lại · "+problem;synchronized(stateGate){conversations=cache==null?new JSONArray():cache.conversations();clearMedia();restoreSelected();}work.offer(new Work(connection->{},ignored->{},false));notifyUi();};
+                PcConnection active=pc;active.onPush=response->{if(stopping||pc!=active||!connected||!AppSession.unlocked())return;try{applySync(response.optString("conversation"),response);}catch(Exception ignored){active.close();}};notifyUi();
+                active.onDisconnect=()->{if(stopping||pc!=active)return;AppSession.invalidate();connected=false;problem="Kết nối bị gián đoạn";status="Đang kết nối lại · "+problem;synchronized(stateGate){conversations=new JSONArray();messages=new JSONArray();clearMedia();}work.offer(new Work(connection->{},ignored->{},false));notifyUi();};
                 long wait=0;
                 while(!stopping){
                     Work task=work.poll(wait,TimeUnit.MILLISECONDS);boolean requested=task!=null;if(task!=null)perform(task,pc);
@@ -75,7 +92,7 @@ public final class ConnectionService extends Service {
                     if(visible&&!selected.isEmpty()&&!selectedLocked())autoImage(selected);
                     wait=visible?350:1500;
                 }
-            }catch(Exception error){if(stopping)break;connected=false;problem=connectionError(error);status="Đang kết nối lại · "+problem;historyHashes.clear();conversations=cache==null?new JSONArray():cache.conversations();clearMedia();restoreSelected();notifyUi();}
+            }catch(Exception error){if(stopping)break;AppSession.invalidate();connected=false;problem=connectionError(error);status="Đang kết nối lại · "+problem;historyHashes.clear();conversations=new JSONArray();messages=new JSONArray();clearMedia();notifyUi();}
             finally{if(current==this)connected=false;PcConnection connection=pc;pc=null;if(connection!=null)connection.close();Work task;while((task=work.poll())!=null){Work dropped=task;ui.post(()->dropped.done.accept("Mất kết nối. Thao tác này chưa được gửi tới PC."));}}
             if(!stopping)try{Thread.sleep(1000);}catch(InterruptedException ignored){}
         }
@@ -83,6 +100,7 @@ public final class ConnectionService extends Service {
     }
     private JSONArray visibleIds(String conversation){JSONArray read=new JSONArray();ReadState shown=displayed;JSONArray batch=messages;if(visible&&shown.conversation().equals(conversation))for(int i=0;i<batch.length();i++){JSONObject m=batch.optJSONObject(i);if(m!=null&&!m.has("localRequest")&&shown.ids().contains(m.optString("id"))&&(!"image".equals(m.optString("kind"))||images.containsKey(m.optString("id"))))read.put(m.optString("id"));}return read;}
     private void sync(PcConnection connection)throws Exception{
+        if(!AppSession.unlocked()){connection.request(packet("app-status",""));lastSync=android.os.SystemClock.elapsedRealtime();return;}
         String conversation=visible?selected:"";JSONArray read=visibleIds(conversation);
         JSONObject response=checked(connection.request(packet(connection.fastSync?"sync":"list",connection.fastSync?conversation:"").put("hash",historyHashes.getOrDefault(conversation,"")).put("visibleIds",read)));
         if(connection.fastSync){applySync(conversation,response);lastSync=android.os.SystemClock.elapsedRealtime();lastRead=read.toString();return;}
@@ -114,7 +132,7 @@ public final class ConnectionService extends Service {
         if(previous==null)return;Set<String> ids=new HashSet<>();for(int i=0;i<previous.length();i++){JSONObject m=previous.optJSONObject(i);if(m!=null&&m.optString("id").matches("[A-Fa-f0-9]{32,64}")){String id=m.optString("id");ids.add(id);new File(getCacheDir(),"preview-"+id).delete();}}
         File[] files=new File(getCacheDir(),"attachments").listFiles();if(files!=null)for(File file:files)for(String id:ids)if(file.getName().startsWith(id+"_")||file.getName().startsWith(id+".")){file.delete();break;}
     }
-    private void applySync(String conversation,JSONObject response)throws Exception{synchronized(stateGate){if(stopping)return;long serial=response.optLong("serial");if(serial>0&&serial<=lastSerial)return;lastSerial=serial;applyContacts(response);if(!conversation.isEmpty()&&!response.optBoolean("locked",true)&&response.has("messages"))applyHistory(conversation,response);else restoreSelected();if(selectedLocked())clearMedia();}notifyUi();}
+    private void applySync(String conversation,JSONObject response)throws Exception{synchronized(stateGate){if(stopping||!AppSession.unlocked())return;if("app-locked".equals(response.optString("type"))){AppSession.invalidate();conversations=new JSONArray();messages=new JSONArray();notifyUi();return;}long serial=response.optLong("serial");if(serial>0&&serial<=lastSerial)return;lastSerial=serial;applyContacts(response);if(!conversation.isEmpty()&&!response.optBoolean("locked",true)&&response.has("messages"))applyHistory(conversation,response);else restoreSelected();if(selectedLocked())clearMedia();}notifyUi();}
     private void save(Runnable task){if(!stopping)try{disk.execute(task);}catch(RejectedExecutionException ignored){}}
     private void applyHistory(String conversation,JSONObject history)throws Exception{
         synchronized(stateGate){if(stopping)return;if(!"unchanged".equals(history.optString("type"))){JSONArray batch=history.getJSONArray("messages");snapshots.put(conversation,batch);historyHashes.put(conversation,history.optString("hash"));boolean reconciled=false;for(int i=0;i<batch.length();i++)if(outbox.remove(batch.getJSONObject(i).getString("id"))!=null)reconciled=true;persistMessages(conversation,batch);if(reconciled)persistOutbox();}if(selected.equals(conversation))restoreSelected();}
@@ -145,7 +163,7 @@ public final class ConnectionService extends Service {
     private void sendFailed(String id,String error){if(stopping)return;synchronized(stateGate){JSONObject m=outbox.get(id);if(m==null)return;try{m.put("status","retry").put("localError",error);persistOutbox();}catch(Exception ignored){}restoreSelected();}notifyUi();}
     private static final class RemoteError extends Exception{RemoteError(String message){super(message);}}
     private static String connectionError(Exception error){for(Throwable e=error;e!=null;e=e.getCause()){if(e instanceof java.net.SocketTimeoutException)return "PC phản hồi quá chậm";if(e instanceof java.net.UnknownHostException)return "Không tìm thấy địa chỉ relay";if(e instanceof javax.net.ssl.SSLHandshakeException)return "Không xác thực được kết nối với PC";if(e instanceof java.net.ConnectException)return "Chưa tới được cổng kết nối PC";if(e instanceof java.io.EOFException)return "PC đã đóng kết nối";}return error instanceof RemoteError?error.getMessage():"Kết nối bị gián đoạn";}
-    private void perform(Work task,PcConnection connection)throws Exception{try{task.job.run(connection);ui.post(()->task.done.accept(null));}catch(Exception e){ui.post(()->task.done.accept(e instanceof RemoteError?e.getMessage():"Chưa nhận được xác nhận từ PC. Thử lại sẽ dùng cùng mã gửi để tránh trùng."));if(!(e instanceof RemoteError))throw e;}}
+    private void perform(Work task,PcConnection connection)throws Exception{try{if(!task.login&&!AppSession.unlocked())throw new RemoteError("Đăng nhập tài khoản trước khi tiếp tục.");task.job.run(connection);ui.post(()->task.done.accept(null));}catch(Exception e){ui.post(()->task.done.accept(e instanceof RemoteError?e.getMessage():"Chưa nhận được xác nhận từ PC. Thử lại sẽ dùng cùng mã gửi để tránh trùng."));if(!(e instanceof RemoteError))throw e;}}
     private static JSONObject checked(JSONObject response)throws Exception{if("error".equals(response.optString("type")))throw new RemoteError(response.optString("text","PC từ chối thao tác"));return response;}
     void submit(JSONObject request,Consumer<String> done){enqueue(connection->{
         JSONObject response=checked(connection.request(request));String type=request.optString("type"),conversation=request.optString("conversation");
@@ -160,11 +178,12 @@ public final class ConnectionService extends Service {
         }
     },done);}
     private void enqueue(Job task,Consumer<String> done){enqueue(task,done,false);}
-    private void enqueue(Job task,Consumer<String> done,boolean transfer){PcConnection active=pc;Work command=new Work(task,done,transfer);if(stopping||!connected||active==null)ui.post(()->done.accept("Đang nối lại PC. Chạm tin nhắn để thử lại khi có kết nối."));else if(!transfer&&active.pushSync){try{commands.execute(()->{if(stopping||pc!=active){ui.post(()->done.accept("Kết nối đã thay đổi. Chạm để thử lại."));return;}try{perform(command,active);}catch(Exception e){active.close();}});}catch(RejectedExecutionException e){ui.post(()->done.accept("Đã ngắt kết nối."));}}else if(!work.offer(command))ui.post(()->done.accept("Đang xử lý các thao tác trước. Đại ca đợi một chút."));}
+    private void enqueue(Job task,Consumer<String> done,boolean transfer){enqueue(task,done,transfer,false);}
+    private void enqueue(Job task,Consumer<String> done,boolean transfer,boolean login){if(!login&&!AppSession.unlocked()){ui.post(()->done.accept("Đăng nhập tài khoản trước khi tiếp tục."));return;}PcConnection active=pc;Work command=new Work(task,done,transfer,login);if(stopping||!connected||active==null)ui.post(()->done.accept("Đang nối lại PC. Chạm tin nhắn để thử lại khi có kết nối."));else if(!transfer&&active.pushSync){try{commands.execute(()->{if(stopping||pc!=active){ui.post(()->done.accept("Kết nối đã thay đổi. Chạm để thử lại."));return;}try{perform(command,active);}catch(Exception e){active.close();}});}catch(RejectedExecutionException e){ui.post(()->done.accept("Đã ngắt kết nối."));}}else if(!work.offer(command))ui.post(()->done.accept("Đang xử lý các thao tác trước. Đại ca đợi một chút."));}
     private void interactiveCommand(PcConnection connection)throws Exception{for(Work command:work)if(!command.transfer&&work.remove(command))perform(command,connection);if(android.os.SystemClock.elapsedRealtime()-lastSync>=(connection.pushSync?10000:500))sync(connection);}
     void select(String conversation){if(!conversation.equals(selected)){selected=conversation;clearMedia();restoreSelected();restoreCachedImages(conversation,messages);}if(connected)work.offer(new Work(connection->{},ignored->{},false));notifyUi();}
     private void restoreCachedImages(String conversation,JSONArray batch){if(cache==null||selectedLocked())return;long revision=historyVersion(conversation);Thread loader=new Thread(()->{for(int i=0;i<batch.length()&&!stopping&&conversation.equals(selected)&&!selectedLocked();i++){JSONObject message=batch.optJSONObject(i);if(message==null||!"image".equals(message.optString("kind")))continue;File file=new File(getCacheDir(),"preview-"+message.optString("id"));try{if(cache.restoreImage(message,file)){if(!stopping&&current==this&&revision==historyVersion(conversation)&&conversation.equals(selected)&&!selectedLocked()){images.put(message.getString("id"),file);notifyUi();}else file.delete();}}catch(Exception ignored){}}},"lantern-cache");loader.setDaemon(true);loader.start();}
-    private boolean selectedLocked(){for(int i=0;i<conversations.length();i++){JSONObject c=conversations.optJSONObject(i);if(c!=null&&selected.equals(c.optString("id")))return c.optBoolean("locked",true);}return true;}
+    private boolean selectedLocked(){if(!AppSession.unlocked())return true;for(int i=0;i<conversations.length();i++){JSONObject c=conversations.optJSONObject(i);if(c!=null&&selected.equals(c.optString("id")))return c.optBoolean("locked",true);}return true;}
     private void restoreSelected(){synchronized(stateGate){if(selectedLocked()){messages=new JSONArray();return;}JSONArray base=snapshots.get(selected);if(base==null){base=cache==null?new JSONArray():cache.messages(selected);snapshots.put(selected,base);}JSONArray combined=new JSONArray();Set<String> ids=new HashSet<>();for(int i=0;i<base.length();i++){JSONObject m=base.optJSONObject(i);if(m!=null){combined.put(m);ids.add(m.optString("id"));}}for(JSONObject m:outbox.values())if(selected.equals(m.optString("conversationId"))&&!ids.contains(m.optString("id")))combined.put(m);messages=combined;}}
     void download(JSONObject message,Consumer<File> done,Consumer<String> error){String conversation=selected;enqueue(connection->{File file=downloadNow(connection,conversation,message);ui.post(()->done.accept(file));},e->{if(e!=null)error.accept(e);},true);}
     private File downloadNow(PcConnection connection,String conversation,JSONObject message)throws Exception{return downloadNow(connection,conversation,message,false);}
@@ -199,7 +218,8 @@ public final class ConnectionService extends Service {
     },done,true);}
     static void clearMedia(){for(File file:images.values())file.delete();images.clear();}
     public void onDestroy(){
-        synchronized(stateGate){stopping=true;connected=false;status="Đã ngắt kết nối · Lịch sử đã lưu trên máy";conversations=cache==null?new JSONArray():cache.conversations();clearMedia();restoreSelected();}
+        AppSession.invalidate();
+        synchronized(stateGate){stopping=true;connected=false;status="Đã ngắt kết nối · Lịch sử đã lưu trên máy";conversations=new JSONArray();messages=new JSONArray();clearMedia();}
         PcConnection connection=pc;if(connection!=null)connection.close();if(worker!=null)worker.interrupt();
         // Publish service shutdown only after the protected view has been locked.
         if(current==this)current=null;notifyUi();disk.shutdown();commands.shutdown();super.onDestroy();

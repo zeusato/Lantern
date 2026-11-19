@@ -38,7 +38,7 @@ public partial class MainWindow : Window
     private TrayIcon? tray;
     private int taskbarUnread = -1;
     private readonly Dictionary<string, (ProgressBar Bar, TextBlock Label)> progress = [];
-    private readonly Dictionary<string, string> drafts = [];
+    private readonly Dictionary<string, RichTextContent> drafts = [];
     private readonly Dictionary<string, string> replyDrafts = [];
     private string selectedId = "";
     private string renderKey = "";
@@ -83,10 +83,11 @@ public partial class MainWindow : Window
         refreshTimer.Tick += (_, _) => { if (refreshPending && !closing) { refreshPending = false; Refresh(); } };
         refreshTimer.Start();
         sessionTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        sessionTimer.Tick += async (_, _) => { foreach (var view in expiryLabels.Values) view.Label.Text = "Tự hủy sau " + Duration(Math.Max(0, (int)Math.Ceiling((view.Deadline - DateTimeOffset.UtcNow).TotalSeconds))); if (++sessionTicks % 30 == 0 && !closing) await UpdatePresence(); };
+        sessionTimer.Tick += async (_, _) => { if (hasTimedPolls) refreshPending = true; foreach (var view in expiryLabels.Values) view.Label.Text = "Tự hủy sau " + Duration(Math.Max(0, (int)Math.Ceiling((view.Deadline - DateTimeOffset.UtcNow).TotalSeconds))); if (++sessionTicks % 30 == 0 && !closing) await UpdatePresence(); };
         sessionTimer.Start();
         updateTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(6) }; updateTimer.Tick += async (_, _) => { if (App.Settings.AutoUpdates) await updates.CheckAsync(uiLifetime.Token); }; updateTimer.Start();
         updates.Ready += () => Dispatcher.BeginInvoke(() => { UpdateButton.ToolTip = updates.Status; UpdateButton.SetResourceReference(Control.BackgroundProperty, "AccentSoftBrush"); ShowToast(updates.Status); tray?.ShowMessage("", "Lantern · Có bản cập nhật", "Đã tải bản mới. Mở mục Cập nhật để cài và khởi động lại."); });
+        InitializeFormattingToolbar();
         CommandManager.AddPreviewExecutedHandler(Composer, ComposerPaste);
         CommandManager.AddPreviewCanExecuteHandler(Composer, ComposerCanPaste);
         Activated += (_, _) => { refreshPending = true; if (appLocking) loginView?.FocusPassword(); };
@@ -240,6 +241,7 @@ public partial class MainWindow : Window
         LockConversationButton.Visibility = hasChat && App.Vault.IsConversationLocked(selectedId) && !ConversationProtected ? Visibility.Visible : Visibility.Collapsed;
         HeaderLockButton.Visibility = LockConversationButton.Visibility;
         Composer.IsEnabled = allowed; SendButton.IsEnabled = allowed; AttachButton.IsEnabled = allowed;
+        PollButton.Visibility = selectedId.Length > 0 && store.Groups().Any(g => g.Id == selectedId && g.Members.Contains(identity.Id)) ? Visibility.Visible : Visibility.Collapsed; PollButton.IsEnabled = allowed;
         EmojiButton.IsEnabled = allowed && !ConversationProtected;
         PairBanner.Visibility = peer is { Trusted: false, Blocked: false } ? Visibility.Visible : Visibility.Collapsed;
         BlockButton.Visibility = peer is not null && peer.Trusted ? Visibility.Visible : Visibility.Collapsed;
@@ -276,10 +278,10 @@ public partial class MainWindow : Window
         WelcomeTitle.Text = hasChat ? "Bắt đầu bằng\nmột lời chào." : "Một lời chào,\nngay trong mạng của bạn.";
         WelcomeBody.Text = hasChat ? "Gửi một tin nhắn, một tấm ảnh\nhay điều bạn muốn chia sẻ." : "Chat, gửi ảnh và chia sẻ tệp trực tiếp.\nMọi thứ ở lại trên máy của bạn.";
         WelcomeAction.Visibility = hasChat ? Visibility.Collapsed : Visibility.Visible;
-        var key = selectedId + "|" + node.ConversationRules(selectedId).ForwardAllowed + "|" + string.Join(',', store.PinnedMessages(selectedId).Order()) + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + Codec.Encode(m.Reactions) + string.Join(',', m.Delivery.Values)));
+        var key = selectedId + "|" + node.ConversationRules(selectedId).ForwardAllowed + "|" + string.Join(',', store.PinnedMessages(selectedId).Order()) + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + Codec.Encode(m.Reactions) + Codec.Encode(m.Poll) + m.Poll?.IsClosed + Codec.Encode(m.PendingPollVote) + string.Join(',', m.Delivery.Values)));
         RefreshSharedContent();
         if (key == renderKey) return;
-        renderKey = key;
+        renderKey = key; hasTimedPolls = false;
         var shouldScroll = ChatScroll.ScrollableHeight - ChatScroll.VerticalOffset < 80;
         foreach (var player in players) player.Close(); players.Clear();
         MessagesPanel.Children.Clear(); expiryLabels.Clear(); progress.Clear();
@@ -345,7 +347,8 @@ public partial class MainWindow : Window
             var quoted = new Button { Content = new TextBlock { Text = original is null ? "Tin nhắn gốc không còn trên máy này" : Author(original) + "\n" + Snippet(original), TextWrapping = TextWrapping.Wrap, MaxWidth = 400 }, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 10), ToolTip = "Đi tới tin nhắn gốc" };
             quoted.Click += (_, _) => GoToMessage(msg.ReplyToId); content.Children.Add(quoted);
         }
-        if (msg.Kind == "contact" && msg.Contact is { } card)
+        if (msg.Poll is not null) content.Children.Add(PollCard(msg));
+        else if (msg.Kind == "contact" && msg.Contact is { } card)
         {
             content.Children.Add(Paragraph("👤 " + (node.FindPeer(card.Id)?.DisplayName ?? card.Name), 16, true));
             content.Children.Add(Paragraph($"Danh tính: {card.Id[..12]}…", 11, muted: true));
@@ -354,7 +357,7 @@ public partial class MainWindow : Window
         }
         else if (msg.Kind == "text")
         {
-            var text = EmojiAssets.MessageText(msg.Text, OpenChatLink); text.ContextMenu = messageMenu; content.Children.Add(text);
+            var text = RichDocuments.MessageText(msg, OpenChatLink); text.ContextMenu = messageMenu; content.Children.Add(text);
         }
         else
         {
@@ -364,7 +367,7 @@ public partial class MainWindow : Window
                 try
                 {
                     var bitmap = ClipboardImages.LoadLocal(msg.FilePath, 640);
-                    var image = new Image { Source = bitmap, MaxWidth = 380, MaxHeight = 280, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 0, 10), Cursor = Cursors.Hand };
+                    var image = new Image { Source = bitmap, ContextMenu = messageMenu, MaxWidth = 380, MaxHeight = 280, Stretch = Stretch.Uniform, Margin = new Thickness(0, 0, 0, 10), Cursor = Cursors.Hand };
                     image.MouseLeftButtonUp += (_, _) => ShowImage(msg); content.Children.Add(image);
                 }
                 catch (Exception ex) when (ex is NotSupportedException or FileFormatException or IOException) { content.Children.Add(Paragraph("Định dạng ảnh này cần mở bằng ứng dụng khác.", 12, muted: true)); }
@@ -518,9 +521,9 @@ public partial class MainWindow : Window
     private void ContactSelected(object sender, SelectionChangedEventArgs e)
     {
         if (refreshing || ContactsList.SelectedItem is not ContactRow row) return;
-        if (selectedId.Length > 0) drafts[selectedId] = Composer.Text;
+        if (selectedId.Length > 0) drafts[selectedId] = Composer.Export();
         if (selectedId != row.Id) { CloseMediaViews(); if (emojiPopup is not null) emojiPopup.IsOpen = false; }
-        selectedId = row.Id; Composer.Text = drafts.GetValueOrDefault(selectedId, ""); MessageSearch.Clear(); messageLimit = 150; renderKey = ""; RefreshConversation(); ChatScroll.ScrollToEnd();
+        selectedId = row.Id; RestoreComposerDraft(selectedId); MessageSearch.Clear(); messageLimit = 150; renderKey = ""; RefreshConversation(); ChatScroll.ScrollToEnd();
         if (ConversationProtected) TryUnlockConversation();
         MarkSelectedRead();
         FocusComposer();
@@ -532,13 +535,22 @@ public partial class MainWindow : Window
     {
         if (node is null || appLocking || ConversationProtected || InAppDialog.IsOpen(this)) return;
         if (string.IsNullOrWhiteSpace(Composer.Text) || selectedId.Length == 0) return;
-        var text = App.Settings.AutoEmoticons ? Emoticons.Replace(Composer.Text) : Composer.Text;
-        try { await node.SendTextAsync(selectedId, text, replyDrafts.GetValueOrDefault(selectedId, "")); EmojiUsage.Remember(EmojiAssets.UsedIn(text)); Composer.Clear(); drafts[selectedId] = ""; replyDrafts.Remove(selectedId); RefreshReplyPreview(); ChatScroll.ScrollToEnd(); Composer.Focus(); }
+        try
+        {
+            if (App.Settings.AutoEmoticons) { replaceEmoticons = true; try { Composer.ReplaceEmoticons(true); } finally { replaceEmoticons = false; } }
+            var draft = Composer.Export(); var text = draft.PlainText();
+            draft.Validate(text);
+            var conversation = selectedId; var reply = replyDrafts.GetValueOrDefault(conversation, "");
+            await node.SendTextAsync(conversation, text, reply, deliverInBackground: true, richText: draft.HasFormatting ? draft : null);
+            EmojiUsage.Remember(EmojiAssets.UsedIn(text)); drafts.Remove(conversation); replyDrafts.Remove(conversation);
+            if (selectedId == conversation) { Composer.Clear(); RefreshReplyPreview(); ChatScroll.ScrollToEnd(); Composer.Focus(); }
+        }
         catch (Exception ex) { ShowError(ex); }
     }
     private async void ComposerKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter && Keyboard.Modifiers != ModifierKeys.Shift) { e.Handled = true; await SendMessage(); }
+        if (e.Key == Key.X && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)) { e.Handled = true; FormatClick(this, new RoutedEventArgs()); return; }
+        if (e.Key == Key.Enter && Keyboard.Modifiers is ModifierKeys.None or ModifierKeys.Control) { e.Handled = true; await SendMessage(); }
     }
     private void ComposerCanPaste(object sender, CanExecuteRoutedEventArgs e)
     {
@@ -571,16 +583,9 @@ public partial class MainWindow : Window
     private void ComposerTextChanged(object sender, TextChangedEventArgs e)
     {
         if (replaceEmoticons || e.UndoAction is UndoAction.Undo or UndoAction.Redo || !App.Settings.AutoEmoticons || Composer is null) return;
-        var original = Composer.Text;
-        var updated = Emoticons.Replace(original, false);
-        if (original == updated) return;
-        var caret = Composer.SelectionStart;
-        var selected = Composer.SelectionLength;
-        var before = Emoticons.Replace(original[..caret], false).Length;
-        var through = Emoticons.Replace(original[..(caret + selected)], false).Length;
         replaceEmoticons = true;
-        try { Composer.BeginChange(); Composer.Text = updated; Composer.Select(Math.Min(before, updated.Length), Math.Min(Math.Max(0, through - before), Math.Max(0, updated.Length - before))); }
-        finally { Composer.EndChange(); replaceEmoticons = false; }
+        try { Composer.ReplaceEmoticons(false); }
+        finally { replaceEmoticons = false; }
     }
     private void EmojiClick(object sender, RoutedEventArgs e)
     {
@@ -888,7 +893,7 @@ public partial class MainWindow : Window
         ProtectOwnedWindow(window, selectedId);
         try { window.ShowDialog(); } finally { window.Content = null; DetailsPanel.Child = content; }
     }
-    private void WindowSizeChanged(object sender, SizeChangedEventArgs e) { if (IsInitialized) UpdateLayoutWidths(); }
+    private void WindowSizeChanged(object sender, SizeChangedEventArgs e) { if (IsInitialized) { UpdateLayoutWidths(); UpdateComposerHeight(); } }
     private void UpdateLayoutWidths()
     {
         DetailsColumn.Width = new GridLength(detailsVisible && ActualWidth >= 1150 ? 300 : 0); DetailsPanel.Visibility = DetailsColumn.Width.Value > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -909,7 +914,7 @@ public partial class MainWindow : Window
         var password = new PasswordBox { Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 16) }; panel.Children.Add(password);
         var forgot = new Button { Content = "Quên mật khẩu? Xóa lịch sử hội thoại", Margin = new Thickness(0, 0, 0, 12) }; forgot.Click += async (_, _) => { if (await ResetConversation(id)) { forgot.Content = "Đã xóa lịch sử. Bấm Mở khóa để bắt đầu lại."; forgot.IsEnabled = false; } }; panel.Children.Add(forgot);
         if (!ShowDialog("Hội thoại được bảo vệ", panel, "Mở khóa", () => !App.Vault.IsConversationLocked(id) || App.Vault.VerifyConversation(id, password.Password), password)) return false;
-        password.Clear(); unlockedConversations.Add(id); Composer.Text = drafts.GetValueOrDefault(id, ""); renderKey = ""; RefreshConversation(); return true;
+        password.Clear(); unlockedConversations.Add(id); RestoreComposerDraft(id); renderKey = ""; RefreshConversation(); return true;
     }
     private void ConversationPasswordClick(object sender, RoutedEventArgs e)
     {

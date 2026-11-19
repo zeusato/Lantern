@@ -6,7 +6,8 @@
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
-  <application android:theme="@style/AppTheme" android:label="Lantern" android:icon="@drawable/ic_lantern" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
+  <application android:name=".LanternApplication" android:theme="@style/AppTheme" android:label="Lantern" android:icon="@drawable/ic_lantern" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="false" android:usesCleartextTraffic="false" android:supportsRtl="true">
+    <activity android:name=".LoginActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
     <activity android:name=".UpdateActivity" android:exported="false" />
     <activity android:name=".PcActivity" android:exported="false" />
     <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">

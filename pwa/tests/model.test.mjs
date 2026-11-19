@@ -138,7 +138,7 @@ test("PC deletion invalidates locked and inactive cached history without losing 
   assert.equal(state.boxes.a.pendingBox, "encrypted pending");
   assert.equal(state.histories.b[0].text, "keep");
 });
-test("removed groups and capture-protected web logs purge cached content and pending sends", () => {
+test("removed groups purge cache while capture-protected web logs remain usable", () => {
   const state = {
     conversations: [{ id: "deleted" }, { id: "protected" }, { id: "keep" }],
     histories: { deleted: [1], protected: [2], keep: [3] },
@@ -147,12 +147,12 @@ test("removed groups and capture-protected web logs purge cached content and pen
     drafts: { deleted: "a", protected: "b", keep: "c" },
     outbox: [{ conversationId: "deleted" }, { conversationId: "protected" }, { conversationId: "keep" }],
   };
-  assert.deepEqual(invalidateDeletedHistory(state, [{ id: "protected", captureProtected: true }, { id: "keep" }]), ["deleted", "protected"]);
-  assert.deepEqual(state.histories, { keep: [3] });
-  assert.deepEqual(state.hashes, { keep: "c" });
-  assert.deepEqual(state.boxes, {});
-  assert.deepEqual(state.drafts, { keep: "c" });
-  assert.deepEqual(state.outbox, [{ conversationId: "keep" }]);
+  assert.deepEqual(invalidateDeletedHistory(state, [{ id: "protected", captureProtected: true }, { id: "keep" }]), ["deleted"]);
+  assert.deepEqual(state.histories, { protected: [2], keep: [3] });
+  assert.deepEqual(state.hashes, { protected: "b", keep: "c" });
+  assert.deepEqual(state.boxes, { protected: { box: "b", pendingBox: "b" } });
+  assert.deepEqual(state.drafts, { protected: "b", keep: "c" });
+  assert.deepEqual(state.outbox, [{ conversationId: "protected" }, { conversationId: "keep" }]);
   assert.deepEqual(invalidateDeletedHistory(state, []), ["deleted", "protected", "keep"]);
   assert.deepEqual(state.histories, {});
 });

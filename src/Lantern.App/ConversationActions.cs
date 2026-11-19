@@ -105,7 +105,7 @@ public partial class MainWindow
         var capture = new CheckBox { Content = "Chặn chụp và ghi màn hình", IsChecked = rules.CaptureProtected, IsEnabled = canEdit, Margin = new Thickness(0, 8, 0, 8) };
         var forward = new CheckBox { Content = "Cho phép chuyển tiếp tin nhắn và tệp", IsChecked = rules.ForwardAllowed, IsEnabled = canEdit, Margin = new Thickness(0, 8, 0, 12) };
         capture.SetResourceReference(Control.ForegroundProperty, "TextBrush"); forward.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(capture); panel.Children.Add(forward);
-        panel.Children.Add(Paragraph("Đồng bộ cho mọi người trong hội thoại. Chống chụp áp dụng cho cửa sổ đang mở log; không ngăn được camera bên ngoài hoặc mọi công cụ chụp. Bản web sẽ ẩn log được bảo vệ vì trình duyệt không có khả năng chặn chụp.", 12, muted: true));
+        panel.Children.Add(Paragraph("Đồng bộ cho mọi người trong hội thoại. Chống chụp áp dụng cho cửa sổ đang mở log; không ngăn được camera bên ngoài hoặc mọi công cụ chụp. PWA vẫn cho đọc và gửi tin nhưng không chặn được chụp màn hình; bản web sẽ hiện thông báo giới hạn này.", 12, muted: true));
         if (!canEdit) panel.Children.Add(Paragraph("Chỉ chủ nhóm được thay đổi các quyền này.", 12, muted: true));
         if (!ShowDialog("Quyền hội thoại", panel, canEdit ? "Lưu thay đổi" : "Đóng") || !canEdit) return;
         try { await node.SetConversationRulesAsync(id, capture.IsChecked == true, forward.IsChecked == true); renderKey = ""; Refresh(); } catch (Exception ex) { ShowError(ex); }

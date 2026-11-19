@@ -28,6 +28,7 @@ public class PcFlowTest {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         DeviceKeys.ensure();DeviceKeys.save(context,new JSONObject().put("pc",pin).put("name","QA PC").put("port",45854).put("addresses",new JSONArray().put("10.0.2.2")).put("nonce","q".repeat(43)));
         ConnectionService.selected="";
+        FlowLogin.authenticate(context);
         try(ActivityScenario<MainActivity> main=ActivityScenario.launch(MainActivity.class)){
             until(()->ConnectionService.connected&&ConnectionService.current.controlConnection()!=null);
             try(ActivityScenario<PcActivity> pc=ActivityScenario.launch(PcActivity.class)){
@@ -43,11 +44,16 @@ public class PcFlowTest {
                 onView(withText("Kiểm tra lại")).perform(inspectClick());
                 waitText(pc,"QA inspection error");
                 onView(withText("Kiểm tra lại")).check(matches(isEnabled())).perform(inspectClick());
-                pc.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);Thread.sleep(1700);pc.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+                pc.moveToState(androidx.lifecycle.Lifecycle.State.STARTED);Thread.sleep(1700);pc.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
                 waitText(pc,"Thao tác đã dừng khi rời màn hình");
                 onView(withText("Kiểm tra lại")).check(matches(isEnabled())).perform(inspectClick());
                 waitText(pc,"Claude · Đang làm việc");
                 pc.onActivity(a->{try{CompanionTest.snapshotCurrent(a,"android-pc-ai-status.png");}catch(Exception e){throw new AssertionError(e);}});
+                pc.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
+                assertFalse("Backgrounding locks account access",AppSession.unlocked());
+                assertNull(ConnectionService.current.controlConnection());
+                pc.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+                onView(withText("Đăng nhập Lantern")).check(matches(isDisplayed()));
             }
         }finally{context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);DeviceKeys.forget(context);ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}
     }

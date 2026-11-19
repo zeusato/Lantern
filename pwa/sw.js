@@ -1,4 +1,4 @@
-const VERSION = "lantern-web-conversations-v3";
+const VERSION = "lantern-web-capture-advisory-v4";
 const ASSETS = [
   "/",
   "/index.html",

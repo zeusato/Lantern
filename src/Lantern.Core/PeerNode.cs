@@ -38,7 +38,8 @@ public sealed partial class PeerNode : IAsyncDisposable
     private readonly SemaphoreSlim automaticImages = new(1, 1);
     public bool AutoReceiveImages { get; set; }
     private readonly ConcurrentDictionary<string, byte> sending = new();
-    private readonly ConcurrentDictionary<string, byte> replaying = new();
+    private sealed class ReplayState { public bool Running; public bool Pending; public bool IncludeReceipts; }
+    private readonly ConcurrentDictionary<string, ReplayState> replaying = new();
     private readonly ConcurrentDictionary<long, Task> tasks = new();
     private readonly ConcurrentDictionary<string, ContactSearch> contactSearches = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> lastLookup = new();
@@ -277,30 +278,49 @@ public sealed partial class PeerNode : IAsyncDisposable
     }
     private async Task Replay(string peerId, bool includeReceipts = true)
     {
-        if (!replaying.TryAdd(peerId, 0)) return;
+        var state = replaying.GetOrAdd(peerId, _ => new ReplayState());
+        lock (state)
+        {
+            state.Pending = true; state.IncludeReceipts |= includeReceipts;
+            if (state.Running) return;
+            state.Running = true;
+        }
         try
         {
-            if (!peers.TryGetValue(peerId, out var recipient) || !recipient.Trusted || recipient.Blocked) return;
-            await ReplayGroupActions(peerId);
-            foreach (var rules in Store.Restrictions().Where(p => p.Id == peerId && p.Actor == Identity.Id)) await SendRestrictions(peerId, rules);
-            if (includeReceipts) await SendTo(peerId, new WireMessage { Type = "profile", Name = Identity.Name, Data = Store.Avatar });
-            await SendTo(peerId, new WireMessage { Type = "presence", Data = Presence });
-            foreach (var group in Store.Groups().Where(g => g.OwnerId == Identity.Id && g.Members.Contains(peerId))) await SendTo(peerId, new WireMessage { Type = "group", Group = group });
-            foreach (var policy in Store.Policies().Where(p => p.Actor == Identity.Id && (p.Id == peerId || Store.Groups().Any(g => g.Id == p.Id && g.Members.Contains(peerId))))) await SendPolicy(peerId, policy);
-            foreach (var group in Store.Groups().Where(g => g.Members.Contains(peerId))) PrepareGroupHistory(group);
-            foreach (var msg in Store.Pending(peerId).Where(m => m.SenderId == Identity.Id && ConversationHasPeer(m, peerId) && (!m.ExpiresAt.HasValue || m.ExpiresAt > DateTimeOffset.UtcNow) && (m.DisappearAfterSeconds == 0 || peers[peerId].ProtocolVersion >= 2))) await SendTo(peerId, new WireMessage { Type = msg.Kind == "text" ? "message" : msg.Kind == "contact" ? "contact" : "offer", Message = ForRecipient(msg, peerId) });
-            // Replay only this machine's reaction, including removals. Revision numbers reject stale updates.
-            foreach (var msg in Store.Messages(limit: int.MaxValue).Where(m => m.Reactions.ContainsKey(Identity.Id) && ConversationHasPeer(m, peerId)))
-                await SendTo(peerId, new WireMessage { Type = "reaction", Id = msg.Id, Data = msg.Reactions[Identity.Id], Offset = msg.ReactionVersions.GetValueOrDefault(Identity.Id) });
-            foreach (var msg in Store.Messages(limit: int.MaxValue).Concat(Store.ExpiredMessages()).Where(m => m.ExpiresAt.HasValue && ConversationHasPeer(m, peerId)))
-                await SendTo(peerId, new WireMessage { Type = "expiry-start", Id = msg.Id, Offset = msg.ExpiresAt!.Value.ToUnixTimeMilliseconds() });
-            if (includeReceipts) foreach (var msg in Store.Messages(limit: 500).Where(m => !m.Outgoing && m.SenderId == peerId && m.Status == "read")) await SendTo(peerId, new WireMessage { Type = "read", Id = msg.Id });
+            while (true)
+            {
+                lock (state)
+                {
+                    if (!state.Pending) { state.Running = false; return; }
+                    state.Pending = false; includeReceipts = state.IncludeReceipts; state.IncludeReceipts = false;
+                }
+                await ReplayOnce(peerId, includeReceipts);
+            }
         }
-        finally { replaying.TryRemove(peerId, out _); }
+        catch { lock (state) state.Running = false; throw; }
+    }
+    private async Task ReplayOnce(string peerId, bool includeReceipts)
+    {
+        if (!peers.TryGetValue(peerId, out var recipient) || !recipient.Trusted || recipient.Blocked) return;
+        await ReplayGroupActions(peerId);
+        foreach (var rules in Store.Restrictions().Where(p => p.Id == peerId && p.Actor == Identity.Id)) await SendRestrictions(peerId, rules);
+        if (includeReceipts) await SendTo(peerId, new WireMessage { Type = "profile", Name = Identity.Name, Data = Store.Avatar });
+        await SendTo(peerId, new WireMessage { Type = "presence", Data = Presence });
+        foreach (var group in Store.Groups().Where(g => g.OwnerId == Identity.Id && g.Members.Contains(peerId))) await SendTo(peerId, new WireMessage { Type = "group", Group = group });
+        foreach (var policy in Store.Policies().Where(p => p.Actor == Identity.Id && (p.Id == peerId || Store.Groups().Any(g => g.Id == p.Id && g.Members.Contains(peerId))))) await SendPolicy(peerId, policy);
+        foreach (var group in Store.Groups().Where(g => g.Members.Contains(peerId))) PrepareGroupHistory(group);
+        foreach (var msg in Store.Pending(peerId).Where(m => m.SenderId == Identity.Id && ConversationHasPeer(m, peerId) && (!m.ExpiresAt.HasValue || m.ExpiresAt > DateTimeOffset.UtcNow) && (m.DisappearAfterSeconds == 0 || peers[peerId].ProtocolVersion >= 2))) await SendTo(peerId, new WireMessage { Type = msg.Kind == "text" ? "message" : msg.Kind == "contact" ? "contact" : "offer", Message = ForRecipient(msg, peerId) });
+        // Replay only this machine's reaction, including removals. Revision numbers reject stale updates.
+        await ReplayPolls(peerId);
+        foreach (var msg in Store.Messages(limit: int.MaxValue).Where(m => m.Reactions.ContainsKey(Identity.Id) && ConversationHasPeer(m, peerId)))
+            await SendTo(peerId, new WireMessage { Type = "reaction", Id = msg.Id, Data = msg.Reactions[Identity.Id], Offset = msg.ReactionVersions.GetValueOrDefault(Identity.Id) });
+        foreach (var msg in Store.Messages(limit: int.MaxValue).Concat(Store.ExpiredMessages()).Where(m => m.ExpiresAt.HasValue && ConversationHasPeer(m, peerId)))
+            await SendTo(peerId, new WireMessage { Type = "expiry-start", Id = msg.Id, Offset = msg.ExpiresAt!.Value.ToUnixTimeMilliseconds() });
+        if (includeReceipts) foreach (var msg in Store.Messages(limit: 500).Where(m => !m.Outgoing && m.SenderId == peerId && m.Status == "read")) await SendTo(peerId, new WireMessage { Type = "read", Id = msg.Id });
     }
     private static ChatMessage ForWire(ChatMessage value)
     {
-        var msg = Codec.Decode<ChatMessage>(Codec.Encode(value)); msg.FilePath = ""; msg.ExpiresAt = null; msg.Delivery.Clear(); msg.Reactions.Clear(); msg.ReactionVersions.Clear(); msg.Error = ""; msg.Status = ""; msg.Transferred = 0; return msg;
+        var msg = Codec.Decode<ChatMessage>(Codec.Encode(value)); msg.PendingPollVote = null; msg.FilePath = ""; msg.ExpiresAt = null; msg.Delivery.Clear(); msg.Reactions.Clear(); msg.ReactionVersions.Clear(); msg.Error = ""; msg.Status = ""; msg.Transferred = 0; return msg;
     }
     private List<string> Recipients(string conversationId)
     {
@@ -316,7 +336,7 @@ public sealed partial class PeerNode : IAsyncDisposable
         if (seconds > 0 && recipients.Any(id => peers[id].ProtocolVersion < 2)) throw new InvalidOperationException("Tin tự hủy yêu cầu tất cả thành viên dùng Lantern 1.1 trở lên.");
         return seconds;
     }
-    public async Task<ChatMessage> SendTextAsync(string conversationId, string text, string replyToId = "", string? stableId = null, bool deliverInBackground = false, bool forwarded = false)
+    public async Task<ChatMessage> SendTextAsync(string conversationId, string text, string replyToId = "", string? stableId = null, bool deliverInBackground = false, bool forwarded = false, RichTextContent? richText = null)
     {
         if (stableId is not null)
         {
@@ -325,11 +345,14 @@ public sealed partial class PeerNode : IAsyncDisposable
             var existing = Store.Message(stableId);
             if (existing is not null) { if (!existing.Outgoing || existing.ConversationId != conversationId) throw new ArgumentException("Mã tin nhắn trùng."); return existing; }
         }
-        text = text.Trim(); if (text.Length is < 1 or > 16000) throw new ArgumentException("Tin nhắn cần từ 1 đến 16.000 ký tự.");
+        richText?.Validate(text);
+        if (richText is null) text = text.Trim();
+        if (string.IsNullOrWhiteSpace(text) || text.Length > 16000) throw new ArgumentException("Tin nhắn cần từ 1 đến 16.000 ký tự.");
         var recipients = Recipients(conversationId);
         if (replyToId.Length > 0 && Store.Message(replyToId)?.ConversationId != conversationId) throw new ArgumentException("Tin được trích dẫn không thuộc hội thoại này.");
         var msg = new ChatMessage { ConversationId = conversationId, SenderId = Identity.Id, SenderName = Identity.Name, Text = text, Outgoing = true, GroupId = Store.Groups().Any(g => g.Id == conversationId) ? conversationId : "", Delivery = recipients.ToDictionary(id => id, _ => "queued") };
         msg.ReplyToId = replyToId;
+        msg.RichText = richText is null ? null : Codec.Decode<RichTextContent>(Codec.Encode(richText));
         msg.GroupRevision = GroupRevision(conversationId);
         msg.Forwarded = forwarded;
         if (stableId is not null) msg.Id = stableId;
@@ -544,6 +567,7 @@ public sealed partial class PeerNode : IAsyncDisposable
             });
             if (changed) Changed?.Invoke(); return;
         }
+        if (wire.Type is "poll-vote" or "poll-state" or "poll-sync") { await HandlePoll(peerId, wire); return; }
         if (wire.Type == "profile")
         {
             var name = ValidateDisplayName(wire.Name);
@@ -584,6 +608,7 @@ public sealed partial class PeerNode : IAsyncDisposable
                 return;
             }
             if (incoming.DisappearAfterSeconds != 0 && incoming.DisappearAfterSeconds is < 10 or > 604800) throw new InvalidDataException("Thời gian tự hủy không hợp lệ.");
+            incoming.PendingPollVote = null;
             incoming.Outgoing = false; incoming.ExpiresAt = history && incoming.DisappearAfterSeconds > 0 ? incoming.ExpiresAt : null; incoming.ConversationId = incoming.GroupId.Length > 0 ? incoming.GroupId : peerId;
             if (incoming.ExpiresAt <= DateTimeOffset.UtcNow) return;
             if (incoming.ExpiresAt > DateTimeOffset.UtcNow.AddSeconds(incoming.DisappearAfterSeconds + 30)) throw new InvalidDataException("Hạn tự hủy không hợp lệ.");
@@ -601,6 +626,7 @@ public sealed partial class PeerNode : IAsyncDisposable
             // Unread expiring history still needs a real read to start its timer.
             var unread = !history || incoming.DisappearAfterSeconds > 0 && !incoming.ExpiresAt.HasValue;
             if (Store.SaveIncomingMessage(incoming, unread)) { Changed?.Invoke(); if (!history) MessageReceived?.Invoke(incoming); }
+            if (incoming.Poll is not null) await SendTo(peerId, new WireMessage { Type = "poll-sync", Id = incoming.Id });
             if (incoming.Kind == "image") Track(ReceiveImagesAsync());
             if (wire.Type is "message" or "contact") await SendTo(peerId, new WireMessage { Type = "ack", Id = incoming.Id });
             return;

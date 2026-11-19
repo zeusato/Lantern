@@ -15,7 +15,7 @@ Trong LAN, điện thoại thử cổng companion 45854 trước (PC có thể c
 
 Relay chỉ chuyển bản ghi TLS mã hóa, không có khóa riêng hoặc chat dạng rõ. Hàng đợi giới hạn 32 gói mỗi chiều; gói quá 120 giây được dọn khi có truy cập. Tuyến hết hạn sau 7 ngày và được PC gia hạn.
 
-PC cần chạy Lantern, đăng nhập sau khởi động và không sleep. Chạy dưới tray vẫn được. Khóa app trên PC không thu hồi điện thoại đã ghép đôi; dùng **Gỡ thiết bị** để thu hồi. Khóa thủ công hội thoại trên PC cũng khóa hội thoại đó ở điện thoại. Khi PC mất kết nối, điện thoại tự thử nối lại và khóa các hội thoại được bảo vệ. Hội thoại không có mật khẩu vẫn đọc được lịch sử đã lưu. Cache lịch sử và ảnh xem trước dùng AES-GCM trong Android Keystore, giới hạn 100 MB, tách theo danh tính PC; tin tự hủy không được ghi vào cache bền vững.
+PC cần chạy Lantern, đăng nhập sau khởi động và không sleep. Chạy dưới tray vẫn được. Khóa app trên PC không thu hồi điện thoại đã ghép đôi; dùng **Gỡ thiết bị** để thu hồi. Khóa thủ công hội thoại trên PC cũng khóa hội thoại đó ở điện thoại. Android yêu cầu mật khẩu tài khoản Lantern trên PC mỗi khi mở app, quay lại từ nền hoặc mất phiên kết nối. PC xác minh mật khẩu qua TLS hai chiều trước khi trả danh sách hội thoại, nội dung và lệnh điều khiển PC; điện thoại không lưu mật khẩu hay phiên đăng nhập bền vững. Cần PC online để mở app, kể cả khi đã có lịch sử cache. Cache lịch sử và ảnh xem trước dùng AES-GCM trong Android Keystore, giới hạn 100 MB, tách theo danh tính PC; tin tự hủy không được ghi vào cache bền vững.
 
 ## Ghép đôi và bảo vệ
 
@@ -23,7 +23,8 @@ PC cần chạy Lantern, đăng nhập sau khởi động và không sleep. Ch�
 2. Tạo QR, quét bằng Lantern Android. QR chứa fingerprint PC, địa chỉ, nonce dùng một lần hết hạn sau 2 phút và quyền truy cập relay; không chứa mật khẩu hoặc khóa riêng PC. Không chia sẻ ảnh QR.
 3. Android tạo khóa ECDSA riêng trong Android Keystore, kiểm tra public key PC và kết nối TLS hai chiều. Đối chiếu sáu nhóm mã rồi chấp nhận trên PC.
 4. PC mã hóa danh sách thiết bị trong `mobile-devices.enc`. Android mã hóa cấu hình bằng khóa AES trong Keystore và tắt backup dữ liệu ghép đôi.
-5. Gỡ thiết bị trên PC đóng phiên và từ chối reconnect. Quên PC trên điện thoại xóa cấu hình, lịch sử cache và hàng đợi cục bộ; khi mất điện thoại cần gỡ trên PC. Tối đa 8 thiết bị.
+5. Nhập mật khẩu tài khoản Lantern trên PC để vào danh sách hội thoại. Cần cập nhật cả PC và Android hỗ trợ đăng nhập tài khoản; Android từ chối mở chat nếu PC chưa hỗ trợ. Ghép đôi chỉ cấp quyền kết nối, không thay cho đăng nhập. Mật khẩu riêng từng hội thoại vẫn là lớp khóa bổ sung.
+6. Gỡ thiết bị trên PC đóng phiên và từ chối reconnect. Quên PC trên điện thoại xóa cấu hình, lịch sử cache và hàng đợi cục bộ; khi mất điện thoại cần gỡ trên PC. Tối đa 8 thiết bị.
 
 Credential relay cá nhân không nằm trong Git, ZIP PC hoặc APK. Cấu hình riêng được DPAPI bảo vệ tại `%LOCALAPPDATA%\LanternRelay\relay-bootstrap.bin`, nhập vào vault sau đăng nhập. Từ 1.2.7, PC cài mới tự đăng ký relay công khai bằng khóa riêng lưu trong vault; không cần cấu hình thủ công. Cấu hình relay riêng và thiết bị từ bản cũ được giữ nguyên. Khóa đăng ký của PC không được đưa vào QR.
 
@@ -33,11 +34,11 @@ Credential relay cá nhân không nằm trong Git, ZIP PC hoặc APK. Cấu hìn
 - Danh bạ/nhóm đã có trên PC, presence và số chưa đọc; 50 tin gần nhất của hội thoại.
 - Gửi/nhận chữ, quote, react dưới danh tính PC. Tin vừa gửi hiển thị ngay; lưu hàng đợi mã hóa rồi chuyển về PC ở nền. Thử lại giữ nguyên ID qua các lần mở app; không tự gửi lại tin chưa xác nhận khi khởi động. Tin đã tự hủy có tombstone để không bị tạo lại. Hàng đợi tin tự hủy chỉ giữ trong bộ nhớ.
 - Ảnh, video, tệp tối đa 100 MB, truyền khối và kiểm tra SHA-256. Ảnh đến tối đa 10 MB tự tải xem trước; ảnh lớn hơn, video và tệp cần thao tác chủ động. Video mở bằng ứng dụng xem của Android.
-- PC chủ động đẩy cập nhật qua TLS khi có tin hoặc trạng thái mới. Android đọc phản hồi trên một luồng riêng, ghép phản hồi bằng request ID; lệnh chat có thể chạy đồng thời với tải ảnh. Gộp danh bạ/lịch sử/ACK trong một yêu cầu và dùng hash khi lịch sử không đổi. Giữ tương thích với PC cũ bằng polling.
+- PC chủ động đẩy cập nhật qua TLS khi có tin hoặc trạng thái mới. Android đọc phản hồi trên một luồng riêng, ghép phản hồi bằng request ID; lệnh chat có thể chạy đồng thời với tải ảnh. Gộp danh bạ/lịch sử/ACK trong một yêu cầu và dùng hash khi lịch sử không đổi. Polling vẫn là đường dự phòng cho đồng bộ, nhưng Android hiện tại bắt buộc PC hỗ trợ đăng nhập tài khoản.
 - Mật khẩu hội thoại được PC xác minh; mở trong phiên kết nối, reconnect cần mở lại. API lịch sử, gửi, react, đọc và tệp đều kiểm tra khóa.
 - Chỉ ACK các tin được hiển thị, ảnh ACK sau khi điện thoại tải xong. Tự hủy do PC quản lý; Android ẩn tin và bỏ ảnh cache khi tới hạn.
 - Foreground service `remoteMessaging` có thông báo thường trực. Android/nhà sản xuất vẫn có thể hạn chế mạng nền; chưa có FCM hoặc cam kết nhận tức thì khi Doze, chưa có toast tin mới riêng trên Android.
-- Chưa có resume tệp mobile, tìm lịch sử cũ, quản lý nhóm/đối tác, đổi cài đặt tự hủy hoặc khóa app Android riêng. Các thiết lập hội thoại thực hiện trên PC.
+- Có cài đặt tên riêng, tự hủy và xóa lịch sử hội thoại. Chưa có resume tệp mobile, tìm lịch sử cũ hoặc quản lý nhóm/đối tác. Soạn thảo rich text và thao tác bình chọn hiện thực hiện trên PC; Android đọc phần văn bản thay thế.
 
 ## Build và kiểm thử
 

@@ -40,7 +40,7 @@ public sealed partial class PeerNode
         if (!ConversationRules(original.ConversationId).ForwardAllowed) throw new InvalidOperationException("Hội thoại này không cho phép chuyển tiếp.");
         if (target == original.ConversationId) throw new ArgumentException("Chọn một hội thoại khác.");
         var recipients = Recipients(target);
-        if (original.Kind == "text") return await SendTextAsync(target, original.Text, forwarded: true);
+        if (original.Kind == "text") return await SendTextAsync(target, original.Text, forwarded: true, richText: original.RichText);
         if (original.Kind == "contact")
         {
             ValidateContact(original.Contact ?? throw new InvalidDataException("Liên hệ không hợp lệ."));

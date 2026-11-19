@@ -14,6 +14,11 @@ public partial class MainWindow
         var reply = new MenuItem { Header = "Trả lời" }; reply.Click += (_, _) => { BeginReply(message); FocusComposer(); }; menu.Items.Add(reply);
         var share = new MenuItem { Header = "Chia sẻ", IsEnabled = node.ConversationRules(message.ConversationId).ForwardAllowed }; share.Click += async (_, _) => await ForwardMessage(message); menu.Items.Add(share);
         var copy = new MenuItem { Header = "Copy tin nhắn" }; copy.Click += (_, _) => { if (!appLocking && !ConversationProtected) Clipboard.SetText(message.Kind == "text" ? message.Text : message.Kind == "contact" ? message.Contact?.Name ?? "" : message.FileName); }; menu.Items.Add(copy);
+        if (message.Kind == "image")
+        {
+            var copyImage = new MenuItem { Header = "Sao chép ảnh", IsEnabled = System.IO.File.Exists(message.FilePath), ToolTip = System.IO.File.Exists(message.FilePath) ? "Sao chép ảnh gốc vào clipboard" : "Ảnh cần tải xong trước khi sao chép" };
+            copyImage.Click += (_, _) => CopyChatImage(message.Id); menu.Items.Add(copyImage);
+        }
         var pins = store.PinnedMessages(message.ConversationId); bool pinned = pins.Contains(message.Id);
         var pin = new MenuItem { Header = pinned ? "Bỏ ghim tin nhắn" : "Ghim tin nhắn", IsEnabled = pinned || pins.Count < LocalStore.MaxPinnedMessages, ToolTip = !pinned && pins.Count >= LocalStore.MaxPinnedMessages ? "Tối đa 3 tin nhắn. Bỏ ghim một tin trước khi ghim thêm." : null };
         pin.Click += (_, _) => { if (appLocking || ConversationProtected) return; try { store.PinMessage(message.Id, !pinned); pinnedPreviewId = pinned ? "" : message.Id; renderKey = ""; RefreshConversation(); ShowToast(pinned ? "Đã bỏ ghim." : "Đã ghim tin nhắn lên đầu hội thoại."); } catch (Exception ex) { ShowError(ex); } }; menu.Items.Add(pin);
@@ -23,6 +28,19 @@ public partial class MainWindow
         var delete = new MenuItem { Header = "Xóa chỉ ở phía tôi" };
         delete.Click += async (_, _) => await ConfirmDeleteMessages(message.ConversationId, new HashSet<string> { message.Id }); menu.Items.Add(delete);
         return menu;
+    }
+    private void CopyChatImage(string messageId)
+    {
+        if (appLocking || ConversationProtected || captureUnavailable) return;
+        var message = store.Message(messageId);
+        if (message is null || message.Kind != "image" || message.ConversationId != selectedId || message.ExpiresAt <= DateTimeOffset.UtcNow) return;
+        try
+        {
+            if (!System.IO.File.Exists(message.FilePath)) { ShowToast("Ảnh chưa tải xong hoặc tệp không còn trên máy."); return; }
+            ClipboardImages.CopyLocal(message.FilePath); ShowToast("Đã sao chép ảnh.");
+        }
+        catch (System.Runtime.InteropServices.ExternalException) { ShowToast("Clipboard đang bận. Đại ca thử sao chép lại."); }
+        catch (Exception ex) { ShowError(ex); }
     }
     private void ResetMessageSelection() { messageSelection = false; selectionConversation = ""; selectedMessages.Clear(); SelectionBar.Visibility = Visibility.Collapsed; }
     private void UpdateSelectionCount() { SelectionCount.Text = $"Đã chọn {selectedMessages.Count} tin nhắn"; DeleteSelectedButton.IsEnabled = selectedMessages.Count > 0; }

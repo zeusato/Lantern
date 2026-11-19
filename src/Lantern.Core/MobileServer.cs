@@ -18,6 +18,7 @@ public sealed class MobileServer : IAsyncDisposable
     private readonly ConcurrentDictionary<long, Task> tasks = new(); private long taskId;
     private readonly ConcurrentDictionary<string, Client> clients = new();
     private readonly ConcurrentDictionary<string, byte> watching = new();
+    private readonly ConcurrentDictionary<string, DateTimeOffset> loginAttempts = new();
     private readonly SemaphoreSlim slots = new(12, 12), mutations = new(1, 1);
     private readonly object invitationGate = new(); private MobileInvitation? invitation;
     private TcpListener? listener;
@@ -34,6 +35,9 @@ public sealed class MobileServer : IAsyncDisposable
         public string Selected { get; set; } = "";
         public string Hash { get; set; } = "";
         public bool SupportsCaptureProtection { get; set; }
+        public bool IsWeb { get; init; }
+        public bool RequireAppPassword { get; set; }
+        public bool AccountAuthenticated { get; set; }
     }
     private sealed record Upload(string Id, string Conversation, string Path, long Size, string Hash);
     public MobileServer(PeerNode node, WorkspaceVault vault)
@@ -177,7 +181,7 @@ public sealed class MobileServer : IAsyncDisposable
     private async Task ServeAuthenticated(Stream ssl, string? routeId, string deviceId)
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(life.Token);
-        var client = new Client(stop);
+        var client = new Client(stop) { IsWeb = ssl is WebSecureStream };
         using var writes = new SemaphoreSlim(1, 1);
         using var updates = new SemaphoreSlim(0, 1);
         Task? pushing = null; Action? onChange = null; long serial = 0;
@@ -204,11 +208,13 @@ public sealed class MobileServer : IAsyncDisposable
                 }
                 var name = PeerNode.ValidateDisplayName(hello.Name);
                 if (ApprovePairing is null || !await ApprovePairing(new(deviceId, name, Identity.VerificationCode(node.Identity.Id, deviceId))).WaitAsync(TimeSpan.FromSeconds(90), stop.Token)) throw new AuthenticationException();
-                Registry.Add(new MobileDevice { Id = deviceId, Name = name, Route = pending.Route }); Changed?.Invoke();
+                Registry.Add(new MobileDevice { Id = deviceId, Name = name, Route = pending.Route, RequireAppPassword = known?.RequireAppPassword == true }); Changed?.Invoke();
             }
             else if (routeId is not null && known.Route?.Id != routeId) throw new AuthenticationException();
+            if (hello.Capabilities?.Contains("app-password-v1") == true) Registry.RequireAppPassword(deviceId);
+            client.RequireAppPassword = Registry.Snapshot().Devices.Single(d => d.Id == deviceId).RequireAppPassword;
             if (clients.TryGetValue(deviceId, out var old)) old.Stop.Cancel(); clients[deviceId] = client;
-            await MobileProtocol.WriteAsync(ssl, new MobilePacket { Type = "welcome", Name = node.Identity.Name, Id = node.Identity.Id, Capabilities = PcControl is null ? ["sync-v1", "push-v1", "conversation-settings-v1"] : ["sync-v1", "push-v1", "pc-v1", "conversation-settings-v1"] }, stop.Token);
+            await MobileProtocol.WriteAsync(ssl, new MobilePacket { Type = "welcome", Name = node.Identity.Name, Id = node.Identity.Id, Capabilities = PcControl is null ? ["sync-v1", "push-v1", "conversation-settings-v1", "app-password-v1"] : ["sync-v1", "push-v1", "pc-v1", "conversation-settings-v1", "app-password-v1"] }, stop.Token);
             if (hello.Capabilities?.Contains("push-v1") == true)
             {
                 onChange = () => { try { if (updates.CurrentCount == 0) updates.Release(); } catch (SemaphoreFullException) { } catch (ObjectDisposedException) { } };
@@ -240,6 +246,7 @@ public sealed class MobileServer : IAsyncDisposable
                 {
                     try
                     {
+                        if (client.RequireAppPassword && !client.AccountAuthenticated) throw new UnauthorizedAccessException("Đăng nhập bằng mật khẩu tài khoản Lantern trên PC trước khi tiếp tục.");
                         using var pcTimeout = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
                         pcTimeout.CancelAfter(TimeSpan.FromSeconds(15));
                         pcResponse = new() { Pc = await (PcControl ?? throw new InvalidOperationException("PC chưa hỗ trợ chức năng này.")).HandleAsync(deviceId, request.Pc ?? throw new ArgumentException("Thiếu yêu cầu PC."), pcTimeout.Token), Type = "pc" };
@@ -261,7 +268,7 @@ public sealed class MobileServer : IAsyncDisposable
         catch (Exception ex) when (ex is not OutOfMemoryException) { }
         finally { if (onChange is not null) { node.Changed -= onChange; Changed -= onChange; } stop.Cancel(); if (pushing is not null) try { await pushing; } catch (Exception) { } if (client.Upload is { } upload) { try { File.Delete(upload.Path); } catch (IOException) { } } if (clients.TryGetValue(deviceId, out var current) && ReferenceEquals(current, client)) clients.TryRemove(deviceId, out _); Changed?.Invoke(); }
     }
-    private bool Locked(Client client, string id) => node.ConversationRules(id).CaptureProtected && !client.SupportsCaptureProtection || vault.IsConversationLocked(id) && !client.Unlocked.ContainsKey(id);
+    private bool Locked(Client client, string id) => node.ConversationRules(id).CaptureProtected && !client.IsWeb && !client.SupportsCaptureProtection || vault.IsConversationLocked(id) && !client.Unlocked.ContainsKey(id);
     private void ValidateConversation(Client client, string id)
     {
         if (!(node.FindPeer(id) is { Trusted: true, Blocked: false }) && !node.Store.Groups().Any(g => g.Id == id && g.Members.Contains(node.Identity.Id))) throw new ArgumentException("Hội thoại không khả dụng.");
@@ -270,6 +277,24 @@ public sealed class MobileServer : IAsyncDisposable
     private async Task<MobilePacket> Handle(Client client, string deviceId, MobilePacket request, CancellationToken ct)
     {
         var reply = new MobilePacket { Type = "ok", Conversation = request.Conversation };
+        if (request.Type == "app-login")
+        {
+            if (loginAttempts.TryGetValue(deviceId, out var retryAt) && retryAt > DateTimeOffset.UtcNow) throw new UnauthorizedAccessException("Đại ca đợi vài giây rồi thử lại.");
+            if (!vault.VerifyAccountPassword(request.Password))
+            {
+                loginAttempts[deviceId] = DateTimeOffset.UtcNow.AddSeconds(2);
+                throw new UnauthorizedAccessException("Mật khẩu tài khoản Lantern chưa đúng.");
+            }
+            request.Password = ""; loginAttempts.TryRemove(deviceId, out _); client.AccountAuthenticated = true;
+            return new() { Type = "app-authenticated", Name = node.Identity.Name };
+        }
+        if (request.Type == "app-logout") { client.AccountAuthenticated = false; client.Unlocked.Clear(); client.Selected = ""; client.Hash = ""; return new() { Type = "app-locked" }; }
+        if (request.Type == "app-status") return new() { Type = client.AccountAuthenticated ? "app-authenticated" : "app-locked" };
+        if (client.RequireAppPassword && !client.AccountAuthenticated)
+        {
+            if (request.Type is "sync" or "list") return new() { Type = "app-locked" };
+            throw new UnauthorizedAccessException("Đăng nhập bằng mật khẩu tài khoản Lantern trên PC trước khi tiếp tục.");
+        }
         if (request.Type is "delete-messages" or "clear-history" or "conversation-rename" or "conversation-timer")
         {
             ValidateConversation(client, request.Conversation);

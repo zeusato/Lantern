@@ -32,3 +32,5 @@ ios/*.xcodeproj/
 pwa/node_modules/
 relay/dist/
 pwa/vendor/
+
+.tools/

@@ -48,6 +48,7 @@ public class CompanionFlowTest {
         try(InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(InstrumentationRegistry.getInstrumentation().getUiAutomation().executeShellCommand("pm grant vn.lantern.companion android.permission.POST_NOTIFICATIONS"))){while(in.read()!=-1){}}
         DeviceKeys.save(context,new JSONObject().put("pc",pin).put("name","QA PC").put("port",45854).put("addresses",new JSONArray().put("10.0.2.2")).put("nonce","q".repeat(43)));
         ConnectionService.selected="";String conversation="a".repeat(64),text="Send during image download";
+        FlowLogin.authenticate(context);
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             until(()->ConnectionService.connected&&ConnectionService.conversations.length()>0);
             onView(withText("QA contact")).perform(click());onView(withText("Mở khóa hội thoại")).perform(click());
@@ -83,14 +84,16 @@ public class CompanionFlowTest {
             assertEquals(1,countText(next));
             onView(withContentDescription("Soạn tin nhắn")).check(matches(hasFocus())).perform(typeTextIntoFocusedView("Draft after second send")).check(matches(withText("Draft after second send")));
             scenario.onActivity(activity->{ConnectionService.current.select("");ConnectionService.current.select(conversation);assertEquals("Cached history should be immediately available",1,countText(text));});
-            scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);Thread.sleep(1600);scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);until(()->countText(text)==1);
+
             scenario.onActivity(activity->{try{CompanionTest.snapshotCurrent(activity,"android-live-chat.png");}catch(Exception e){throw new AssertionError(e);}});
             ConnectionService stopped=ConnectionService.current;
             JSONObject lateSync=new JSONObject().put("serial",Long.MAX_VALUE).put("locked",false).put("conversations",new JSONArray(ConnectionService.conversations.toString())).put("messages",new JSONArray(ConnectionService.messages.toString()));
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);
+            assertFalse("Backgrounding locks the whole app",AppSession.unlocked());
             context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);
-            assertTrue(ConnectionService.conversations.getJSONObject(0).getBoolean("locked"));assertEquals(0,ConnectionService.messages.length());
+            assertEquals(0,ConnectionService.conversations.length());assertEquals(0,ConnectionService.messages.length());
             java.lang.reflect.Method apply=ConnectionService.class.getDeclaredMethod("applySync",String.class,JSONObject.class);apply.setAccessible(true);apply.invoke(stopped,conversation,lateSync);
-            assertTrue("Late sync must not reopen a stopped protected session",ConnectionService.conversations.getJSONObject(0).getBoolean("locked"));assertEquals(0,ConnectionService.messages.length());
+            assertEquals("Late sync must not reopen a stopped session",0,ConnectionService.conversations.length());assertEquals(0,ConnectionService.messages.length());
         }finally{context.stopService(new Intent(context,ConnectionService.class));until(()->ConnectionService.current==null);DeviceKeys.forget(context);ConnectionService.selected="";ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();}
     }
     private static int countText(String text){JSONArray messages=ConnectionService.messages;int count=0;for(int i=0;i<messages.length();i++)if(text.equals(messages.optJSONObject(i).optString("text")))count++;return count;}

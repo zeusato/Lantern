@@ -23,4 +23,7 @@ public static class Emoticons
     private static readonly Regex WhileTyping = new(Prefix + @"(?=\s|[!?,.])", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(200));
 
     public static string Replace(string text, bool includeTrailing = true) => (includeTrailing ? Complete : WhileTyping).Replace(text, match => match.Groups["face"].Success ? Replacements[match.Groups["face"].Value] : match.Value);
+    public static IReadOnlyList<(int Start, int Length, string Text)> Changes(string text, bool includeTrailing = true) =>
+        (includeTrailing ? Complete : WhileTyping).Matches(text).Cast<Match>().Where(m => m.Groups["face"].Success)
+        .Select(m => (m.Index, m.Length, Replacements[m.Groups["face"].Value])).ToArray();
 }

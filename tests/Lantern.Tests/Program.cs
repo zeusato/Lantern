@@ -6,6 +6,16 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Lantern.Core;
 
+if (args.FirstOrDefault() == "--mobile-login-only")
+{
+    await MobileAppLoginTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-login-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
+}
+
+if (args.FirstOrDefault() == "--rich-polls-only")
+{
+    await RichPollTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-rich-polls-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
+}
+
 if (args.FirstOrDefault() == "--pins-emoji-only")
 {
     PinEmojiTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-pins-emoji-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
@@ -312,4 +322,6 @@ await GroupMembershipTests.Run(root, Check);
 await GroupLifecycleTests.Run(root, Check);
 MessageLinkTests.Run(Check);
 PinEmojiTests.Run(root, Check);
+await RichPollTests.Run(Path.Combine(root, "rich-polls"), Check);
+await MobileAppLoginTests.Run(Path.Combine(root, "mobile-login"), Check);
 Console.WriteLine($"\n{passed} checks passed. Test data: {root}");

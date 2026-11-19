@@ -34,7 +34,6 @@ export function invalidateDeletedHistory(state, conversations) {
   const visible = new Set(conversations.map(c => c.id));
   const blocked = new Set([
     ...state.conversations.filter(c => !visible.has(c.id)).map(c => c.id),
-    ...conversations.filter(c => c.captureProtected).map(c => c.id),
   ]);
   for (const id of blocked) {
     delete state.histories[id];
