@@ -1,156 +1,249 @@
 {
   "Id": "zalo-58",
-  "Name": "Zalo · 58",
+  "Name": "Bunnie",
   "Stickers": [
     {
       "Id": "zalo-1275",
-      "Name": "Sticker 1275",
-      "File": "7e2da45aaf4a292c8602804a88d2728411449e402ba68be801e39bbe9669f366.gif"
+      "Name": "Bó tay",
+      "File": "7e2da45aaf4a292c8602804a88d2728411449e402ba68be801e39bbe9669f366.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1276",
-      "Name": "Sticker 1276",
-      "File": "d956b0e4a29cf884e490b22dbf6a42f3b9a9d4a9e627240aec1dcf0f5402a740.gif"
+      "Name": "Cười gian",
+      "File": "d956b0e4a29cf884e490b22dbf6a42f3b9a9d4a9e627240aec1dcf0f5402a740.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1277",
-      "Name": "Sticker 1277",
-      "File": "7ae995823737f726d804a289260a94ee254f1c92c4c64909d60e6ce85a319747.gif"
+      "Name": "Nhớ nhung",
+      "File": "7ae995823737f726d804a289260a94ee254f1c92c4c64909d60e6ce85a319747.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1278",
-      "Name": "Sticker 1278",
-      "File": "15628763cfbc908d5a679810052ea4d047ca8cf81ecca81ed9ba5ff363572ebb.gif"
+      "Name": "Vui ca hát",
+      "File": "15628763cfbc908d5a679810052ea4d047ca8cf81ecca81ed9ba5ff363572ebb.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1279",
-      "Name": "Sticker 1279",
-      "File": "0e2fdc97c0e5178a9bdd1c26140ce93906bb5758cb4d2e49b5a0840517ff374c.gif"
+      "Name": "Xấu hổ",
+      "File": "0e2fdc97c0e5178a9bdd1c26140ce93906bb5758cb4d2e49b5a0840517ff374c.gif",
+      "Keywords": [
+        "xấu hổ",
+        "ngại",
+        "mắc cỡ"
+      ]
     },
     {
       "Id": "zalo-1280",
-      "Name": "Sticker 1280",
-      "File": "2d425f3ec8c0f99035c2c18fdb102d65162d4e6bcb1a44077db517a2c96ab515.gif"
+      "Name": "Ngạc nhiên",
+      "File": "2d425f3ec8c0f99035c2c18fdb102d65162d4e6bcb1a44077db517a2c96ab515.gif",
+      "Keywords": [
+        "ngạc nhiên",
+        "hả",
+        "wow",
+        "ồ"
+      ]
     },
     {
       "Id": "zalo-1281",
-      "Name": "Sticker 1281",
-      "File": "a7a221bb04fef861592a31901fd9344c0e959869a3228f4fdfedec01c5d81709.gif"
+      "Name": "Choáng váng",
+      "File": "a7a221bb04fef861592a31901fd9344c0e959869a3228f4fdfedec01c5d81709.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1282",
-      "Name": "Sticker 1282",
-      "File": "cdb4dbd23fe9787a46cef8be01efb1ebdae6beae01742bad571057c29b458814.gif"
+      "Name": "Khóc hu hu",
+      "File": "cdb4dbd23fe9787a46cef8be01efb1ebdae6beae01742bad571057c29b458814.gif",
+      "Keywords": [
+        "khóc",
+        "hu hu",
+        "huhu"
+      ]
     },
     {
       "Id": "zalo-1283",
-      "Name": "Sticker 1283",
-      "File": "ab2460ec66860887f8a601b5ff4af17f2266624de693842675f816ba401dc518.gif"
+      "Name": "Yêu quá",
+      "File": "ab2460ec66860887f8a601b5ff4af17f2266624de693842675f816ba401dc518.gif",
+      "Keywords": [
+        "yêu",
+        "yêu bạn",
+        "thương",
+        "love",
+        "i love you"
+      ]
     },
     {
       "Id": "zalo-1284",
-      "Name": "Sticker 1284",
-      "File": "602005ae12c8880ff35ba975623819a6495dd4c5b12b289e0b12c7bc47934bd7.gif"
+      "Name": "Hoảng hốt",
+      "File": "602005ae12c8880ff35ba975623819a6495dd4c5b12b289e0b12c7bc47934bd7.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1285",
-      "Name": "Sticker 1285",
-      "File": "009e1e9c8d01fd0855ca3f872e29569a8e3eda4924643489092674a403bae0db.gif"
+      "Name": "Thiên thần",
+      "File": "009e1e9c8d01fd0855ca3f872e29569a8e3eda4924643489092674a403bae0db.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1286",
-      "Name": "Sticker 1286",
-      "File": "b698992ac48fb4e577f959061507500bbb262b5d134e2f2ad3431dc077a7c6cb.gif"
+      "Name": "Chờ tin nhắn",
+      "File": "b698992ac48fb4e577f959061507500bbb262b5d134e2f2ad3431dc077a7c6cb.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1287",
-      "Name": "Sticker 1287",
-      "File": "c6a1b2cbbdef9495dcf655ae33cecbb434cd54f43c773cf1f5421ac62752e7f8.gif"
+      "Name": "Đang học",
+      "File": "c6a1b2cbbdef9495dcf655ae33cecbb434cd54f43c773cf1f5421ac62752e7f8.gif",
+      "Keywords": [
+        "học",
+        "đang học"
+      ]
     },
     {
       "Id": "zalo-1288",
-      "Name": "Sticker 1288",
-      "File": "232c62dbe4e34ff4bf695ae73c24401a6a43bb549c0df05f7defa93e136fa08b.gif"
+      "Name": "Nhõng nhẽo",
+      "File": "232c62dbe4e34ff4bf695ae73c24401a6a43bb549c0df05f7defa93e136fa08b.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1289",
-      "Name": "Sticker 1289",
-      "File": "1720da2ac34312ecc2652980da4f3542642bac7dfe552098580ce9a9b00eae93.gif"
+      "Name": "Điên rồi",
+      "File": "1720da2ac34312ecc2652980da4f3542642bac7dfe552098580ce9a9b00eae93.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1290",
-      "Name": "Sticker 1290",
-      "File": "44b76446e3214721530c8fe110f3ec8ba78446475ecf5eee3d4bda11fb50d0b9.gif"
+      "Name": "Giận dữ",
+      "File": "44b76446e3214721530c8fe110f3ec8ba78446475ecf5eee3d4bda11fb50d0b9.gif",
+      "Keywords": [
+        "giận",
+        "tức",
+        "bực mình"
+      ]
     },
     {
       "Id": "zalo-1291",
-      "Name": "Sticker 1291",
-      "File": "a6c85481a17de1a5ed16ddd45d1603ff7feb5cf3ca3f1fb144b72f8fa87b4699.gif"
+      "Name": "Ngáp buồn ngủ",
+      "File": "a6c85481a17de1a5ed16ddd45d1603ff7feb5cf3ca3f1fb144b72f8fa87b4699.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1292",
-      "Name": "Sticker 1292",
-      "File": "c540b80df4a92c85b48a4f735d2885fb05033c150a38529e4c37c53456743661.gif"
+      "Name": "Trung thu",
+      "File": "c540b80df4a92c85b48a4f735d2885fb05033c150a38529e4c37c53456743661.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1293",
-      "Name": "Sticker 1293",
-      "File": "2eaee47958de7e38cf26054eef968e65be4d2e388f2746d7a4160d5e30529aa0.gif"
+      "Name": "Khóc tủi thân",
+      "File": "2eaee47958de7e38cf26054eef968e65be4d2e388f2746d7a4160d5e30529aa0.gif",
+      "Keywords": [
+        "khóc",
+        "hu hu",
+        "huhu"
+      ]
     },
     {
       "Id": "zalo-1294",
-      "Name": "Sticker 1294",
-      "File": "a62645ad735d8c1ce111bca0f232207a407736f2aaec1ded619f139e8e5aa48b.gif"
+      "Name": "Ăn bánh",
+      "File": "a62645ad735d8c1ce111bca0f232207a407736f2aaec1ded619f139e8e5aa48b.gif",
+      "Keywords": [
+        "ăn",
+        "ăn ngon",
+        "đói"
+      ]
     },
     {
       "Id": "zalo-1295",
-      "Name": "Sticker 1295",
-      "File": "24f90dc467a50a3d0b41d837f37a52ff939c70692c06bef6d544f43f7fa3a1c1.gif"
+      "Name": "Buồn bã",
+      "File": "24f90dc467a50a3d0b41d837f37a52ff939c70692c06bef6d544f43f7fa3a1c1.gif",
+      "Keywords": [
+        "buồn",
+        "chán",
+        "buồn quá"
+      ]
     },
     {
       "Id": "zalo-1296",
-      "Name": "Sticker 1296",
-      "File": "1a29e4496b9085ccbdb79087f8f44f0b11f889ca1463a41e0219f9c0b51acab5.gif"
+      "Name": "Cười há há",
+      "File": "1a29e4496b9085ccbdb79087f8f44f0b11f889ca1463a41e0219f9c0b51acab5.gif",
+      "Keywords": [
+        "haha",
+        "ha ha",
+        "cười",
+        "vui",
+        "vui quá"
+      ]
     },
     {
       "Id": "zalo-1297",
-      "Name": "Sticker 1297",
-      "File": "fd9f0dc5cb79f3db91cb4a4b54aebf6bbe8fa613136bbed254ad75519c307608.gif"
+      "Name": "Hờn dỗi",
+      "File": "fd9f0dc5cb79f3db91cb4a4b54aebf6bbe8fa613136bbed254ad75519c307608.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1298",
-      "Name": "Sticker 1298",
-      "File": "0158a39cab3c5f3460754ce7c3fd306d941827015789bec82ec5a724358f45fe.gif"
+      "Name": "Cái gì cũng ăn",
+      "File": "0158a39cab3c5f3460754ce7c3fd306d941827015789bec82ec5a724358f45fe.gif",
+      "Keywords": [
+        "ăn",
+        "ăn ngon",
+        "đói"
+      ]
     },
     {
       "Id": "zalo-1299",
-      "Name": "Sticker 1299",
-      "File": "cc7bf551297099cba7fd2e1e506327a7ee16def062842455311b2e4c77ce57b7.gif"
+      "Name": "Thả diều",
+      "File": "cc7bf551297099cba7fd2e1e506327a7ee16def062842455311b2e4c77ce57b7.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1300",
-      "Name": "Sticker 1300",
-      "File": "3844e08034c51f9d346611f4886a7f979667804a27b10b0383ddf8b3fbf0006a.gif"
+      "Name": "Tức giận",
+      "File": "3844e08034c51f9d346611f4886a7f979667804a27b10b0383ddf8b3fbf0006a.gif",
+      "Keywords": [
+        "giận",
+        "tức",
+        "bực mình"
+      ]
     },
     {
       "Id": "zalo-1301",
-      "Name": "Sticker 1301",
-      "File": "536a059eae530ff2463d4a86cf9370f70ea166526e5fa6e9ee363f11d16bbdbe.gif"
+      "Name": "Băn khoăn",
+      "File": "536a059eae530ff2463d4a86cf9370f70ea166526e5fa6e9ee363f11d16bbdbe.gif",
+      "Keywords": [
+        "không hiểu",
+        "hỏi",
+        "sao",
+        "bối rối"
+      ]
     },
     {
       "Id": "zalo-1302",
-      "Name": "Sticker 1302",
-      "File": "efacdc2cbc7bd653f9d14f0582cdfb9f12ca7c50916648d3f2e370e92e1c5d51.gif"
+      "Name": "Cười nghiêng ngả",
+      "File": "efacdc2cbc7bd653f9d14f0582cdfb9f12ca7c50916648d3f2e370e92e1c5d51.gif",
+      "Keywords": [
+        "haha",
+        "ha ha",
+        "cười",
+        "vui",
+        "vui quá"
+      ]
     },
     {
       "Id": "zalo-1303",
-      "Name": "Sticker 1303",
-      "File": "b5e6495f0d3c5a50b1cb05e1824d3e7efe4d931de99f2694a0d3f0037aa2ff70.gif"
+      "Name": "Đi vệ sinh",
+      "File": "b5e6495f0d3c5a50b1cb05e1824d3e7efe4d931de99f2694a0d3f0037aa2ff70.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-1304",
-      "Name": "Sticker 1304",
-      "File": "b88a25f70288dc3ade1810321619e8428d6ab9381e7811954a3544c3939b54f3.gif"
+      "Name": "Nôn ói",
+      "File": "b88a25f70288dc3ade1810321619e8428d6ab9381e7811954a3544c3939b54f3.gif",
+      "Keywords": []
     }
   ]
 }

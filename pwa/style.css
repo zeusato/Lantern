@@ -456,6 +456,10 @@ small,
 .message.mine {
   align-items: flex-end;
 }
+.message:not(.mine){padding-left:42px}
+.message:not(.mine) .bubble{max-width:100%}
+.message-avatar{position:absolute;left:0;top:0;width:32px;height:32px;border-radius:50%;overflow:hidden;background:var(--accent-soft,#dff1ed);color:var(--accent);display:grid;place-items:center;font-size:14px;font-weight:650}
+.message-avatar img{width:100%;height:100%;object-fit:cover}
 .bubble {
   position: relative;
   max-width: 88%;
@@ -1041,3 +1045,7 @@ dialog::backdrop {
 .emoji-grid button{display:flex;flex-direction:column;align-items:center;min-width:0;padding:8px 2px;gap:4px}
 .emoji-grid img{width:32px;height:32px;object-fit:contain}
 .emoji-grid small{max-width:100%;overflow:hidden;text-overflow:ellipsis;font-size:11px;white-space:nowrap}
+
+.message.sticker-message .bubble{background:transparent;border:0;box-shadow:none;padding:0}
+.chat-sticker{display:block;width:160px;height:160px;max-width:100%;object-fit:contain;user-select:none}
+.sticker-loading{display:grid;place-items:center;width:160px;height:160px;color:var(--muted);font-size:12px}

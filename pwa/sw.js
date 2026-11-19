@@ -1,7 +1,7 @@
 importScripts("/emoji-precache.js");
-const VERSION = "lantern-web-1.2.19";
+const VERSION = "lantern-web-1.2.20";
 const ASSETS = [
-  "/emoji.js", "/emoji-data.js", "/emoji-precache.js", ...self.LANTERN_EMOJI_FILES,
+  "/avatars.js", "/emoji.js", "/emoji-data.js", "/emoji-precache.js", ...self.LANTERN_EMOJI_FILES,
   "/",
   "/index.html",
   "/style.css",

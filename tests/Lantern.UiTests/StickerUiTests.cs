@@ -51,10 +51,11 @@ internal sealed partial class UiHarness
             }
             Check(checkedImages == 1993 && animated == 1404, "Every bundled image decodes and all 1404 animations satisfy playback bounds");
             void CheckFrames(List<(BitmapSource Bitmap, int Delay)> frames) { if (frames.Count < 2 || frames.Any(f => f.Delay < 20 || f.Bitmap.PixelWidth < 1)) throw new Exception("Invalid animation"); }
-            var own = library.Create("Bộ kiểm thử"); var ownItem = library.Add(own, "Vui vẻ", StickerImaging.Png(outlined));
+            var own = library.Create("Bộ kiểm thử"); var ownItem = library.Add(own, "Bông hoa kiểm thử", StickerImaging.Png(outlined));
             var picker = new StickerPalette(library, (_, _) => { }, () => { });
-            Preview(picker, 382, 460, "sticker-picker-empty.png");
-            Visuals<TextBox>(picker).Single().Text = "vui ve"; Preview(picker, 382, 460, "sticker-picker-search.png");
+            Preview(picker, 382, 440, "sticker-picker-ready.png");
+            Check(Visuals<StickerImage>(picker).Any() && !Visuals<ComboBox>(picker).Any(), "Picker immediately shows usable stickers and thumbnail pack navigation without a dropdown");
+            Visuals<TextBox>(picker).Single().Text = "bong hoa kiem thu"; Preview(picker, 382, 460, "sticker-picker-search.png");
             Check(Visuals<StickerImage>(picker).Count() == 1, "Picker finds named stickers with accent-insensitive search across packs");
             var workshop = new StickerWorkshop(window, library, null); Field<ComboBox>(workshop, "packs").SelectedItem = Field<ComboBox>(workshop, "packs").Items.Cast<StickerPack>().First(p => p.Id == "zalo-0"); Preview(workshop, 728, 720, "sticker-workshop.png");
             var editor = new StickerEditor(source); Preview(editor, 740, 680, "sticker-editor.png");
@@ -63,6 +64,13 @@ internal sealed partial class UiHarness
             var message = new ChatMessage { ConversationId = peer, SenderId = peer, Kind = "image", FilePath = library.PathFor(itemWithAnimation.Pack, itemWithAnimation.Sticker), FileName = "sticker.gif", Status = "received", Sticker = new StickerReference(itemWithAnimation.Pack.Id, itemWithAnimation.Pack.Name, itemWithAnimation.Sticker.Id, itemWithAnimation.Sticker.Name) };
             var bubble = (FrameworkElement)Call(window, "MessageBubble", message, false, false)!; Preview(bubble, 280, 250, "sticker-chat.png");
             Check(Visuals<StickerImage>(bubble).Count() == 1 && Visuals<Border>(bubble).First(b => b.Name == "MessageSurface").Background == Brushes.Transparent, "Chat renders stickers without file cards or a colored message background");
+            Check(!Visuals<Button>(bubble).Any(b => b.Content as string == "Lưu sticker"), "Sticker bubbles have no inline save button");
+            var menu = (ContextMenu)Call(window, "MessageMenu", message)!;
+            Check(menu.Items.OfType<MenuItem>().Any(m => m.Header as string == "Lưu sticker" && m.IsEnabled), "Save sticker is available in the context menu");
+            Check(Visuals<Border>(bubble).Count(b => b.Name == "MessageAvatar") == 1, "Incoming sticker starts with an avatar");
+            Check(!Visuals<Border>((FrameworkElement)Call(window, "MessageBubble", message, true, false)!).Any(b => b.Name == "MessageAvatar"), "Consecutive incoming bubbles reserve space without repeating the avatar");
+            message.Outgoing = true; Check(!Visuals<Border>((FrameworkElement)Call(window, "MessageBubble", message, false, false)!).Any(b => b.Name == "MessageAvatar"), "Own messages have no avatar"); message.Outgoing = false;
+            var matches = new StickerSearch(packs).Suggest("Chúc ngủ ngon"); Check(matches.Count >= 3 && matches.All(x => x.Sticker.Keywords.Contains("ngủ ngon")), "Typing a Vietnamese phrase suggests relevant bundled stickers");
             var animatedImage = new StickerImage(message.FilePath, 130); var host = new Grid(); host.Children.Add(animatedImage); host.Measure(new Size(150, 150)); host.Arrange(new Rect(0, 0, 150, 150));
             // A loaded/unloaded route must release the animation timer and cached frames.
             animatedImage.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent)); animatedImage.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));

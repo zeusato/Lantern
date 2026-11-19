@@ -4,7 +4,7 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $projectRoot
 $fixture = $null
 try {
-    & $Node --test pwa/tests/model.test.mjs pwa/tests/emoji.test.mjs pwa/tests/pc.test.mjs pwa/tests/qr-scanner.test.mjs pwa/tests/calculator.test.mjs pwa/tests/calculator-lock.test.mjs pwa/tests/camouflage.test.mjs relay/tests/relay.test.mjs
+    & $Node --test pwa/tests/avatars.test.mjs pwa/tests/model.test.mjs pwa/tests/emoji.test.mjs pwa/tests/pc.test.mjs pwa/tests/qr-scanner.test.mjs pwa/tests/calculator.test.mjs pwa/tests/calculator-lock.test.mjs pwa/tests/camouflage.test.mjs relay/tests/relay.test.mjs
     if ($LASTEXITCODE -ne 0) { throw 'Web unit/relay checks failed.' }
     & $DotNet build tests/WebInteropFixture -c Release --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Web fixture build failed.' }

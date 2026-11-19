@@ -407,7 +407,14 @@ public sealed class MobileServer : IAsyncDisposable
     }
     private void FillHistory(MobilePacket reply, string previousHash)
     {
-        reply.Messages = MobileProtocol.BoundedHistory(node.Store.Messages(reply.Conversation, limit: 50));
+        var history = node.Store.Messages(reply.Conversation, limit: 50);
+        var authors = new HashSet<string>();
+        foreach (var message in history.AsEnumerable().Reverse())
+        {
+            message.SenderAvatar = null;
+            if (!message.Outgoing && authors.Add(message.SenderId)) message.SenderAvatar = node.FindPeer(message.SenderId)?.Avatar ?? "";
+        }
+        reply.Messages = MobileProtocol.BoundedHistory(history);
         reply.Hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(reply.Messages, MobileProtocol.Json)));
         if (reply.Hash == previousHash) { reply.Type = "unchanged"; reply.Messages = []; }
     }

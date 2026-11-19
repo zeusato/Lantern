@@ -1,7 +1,7 @@
 {
   "source": "Zalo PC local sticker cache",
   "spriteFrameMilliseconds": 100,
-  "packNames": "Source IDs retained where display names are unavailable",
+  "packNames": "243 names recovered from the local Zalo category cache; 17 source IDs retained where names are unavailable",
   "packs": [
     {
       "id": "zalo-0",
@@ -1304,5 +1304,6 @@
       "animated": 0
     }
   ],
-  "errors": []
+  "errors": [],
+  "stickerNames": "191 image descriptions and common Vietnamese/English suggestion keywords assigned after visual inspection; these are Lantern annotations, not an export of the Zalo suggestion service"
 }

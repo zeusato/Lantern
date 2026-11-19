@@ -1,86 +1,149 @@
 {
   "Id": "zalo-11786",
-  "Name": "Zalo · 11786",
+  "Name": "Ami Bụng Bự",
   "Stickers": [
     {
       "Id": "zalo-43516",
-      "Name": "Sticker 43516",
-      "File": "053b706368da6403112ed1c1883f951628b2eb4d9e9006d5d16600c43e23a563.gif"
+      "Name": "Đang làm việc",
+      "File": "053b706368da6403112ed1c1883f951628b2eb4d9e9006d5d16600c43e23a563.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-43517",
-      "Name": "Sticker 43517",
-      "File": "221d8046e58b17299a8d10f1db41427efda97ab9d106a99d90d63c90954e7875.gif"
+      "Name": "Ngủ ngon",
+      "File": "221d8046e58b17299a8d10f1db41427efda97ab9d106a99d90d63c90954e7875.gif",
+      "Keywords": [
+        "ngủ ngon",
+        "chúc ngủ ngon",
+        "buồn ngủ",
+        "đi ngủ",
+        "good night",
+        "goodnight"
+      ]
     },
     {
       "Id": "zalo-43518",
-      "Name": "Sticker 43518",
-      "File": "d44d0f2f42b81893dc2c0636a7e74bf6e1727954b0904cfe1cd200e10ebb4a17.gif"
+      "Name": "Cười nhếch mép",
+      "File": "d44d0f2f42b81893dc2c0636a7e74bf6e1727954b0904cfe1cd200e10ebb4a17.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-43519",
-      "Name": "Sticker 43519",
-      "File": "52d405dd3921bf2d7ae38aafa0ac7dbd003c77f69105abf9bd408bf4ff02a1f7.gif"
+      "Name": "Đồng ý",
+      "File": "52d405dd3921bf2d7ae38aafa0ac7dbd003c77f69105abf9bd408bf4ff02a1f7.gif",
+      "Keywords": [
+        "ok",
+        "okay",
+        "đồng ý",
+        "được",
+        "ừ",
+        "dạ"
+      ]
     },
     {
       "Id": "zalo-43520",
-      "Name": "Sticker 43520",
-      "File": "39f2d3e44959411cb0efd33f085b38f1d2d123557e51fa221f1ae9e1b5382075.gif"
+      "Name": "Suy nghĩ",
+      "File": "39f2d3e44959411cb0efd33f085b38f1d2d123557e51fa221f1ae9e1b5382075.gif",
+      "Keywords": [
+        "suy nghĩ",
+        "nghĩ"
+      ]
     },
     {
       "Id": "zalo-43521",
-      "Name": "Sticker 43521",
-      "File": "49b915da24c25dd8c62a68066f45aa6b8e656dd0dd7b80ee559744472eb46ae5.gif"
+      "Name": "Nhìn sang bên",
+      "File": "49b915da24c25dd8c62a68066f45aa6b8e656dd0dd7b80ee559744472eb46ae5.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-43522",
-      "Name": "Sticker 43522",
-      "File": "95d533630e6cd349056246f4706d4f2054bc3f848991fdc4f7994c712d6bee1d.gif"
+      "Name": "Năn nỉ",
+      "File": "95d533630e6cd349056246f4706d4f2054bc3f848991fdc4f7994c712d6bee1d.gif",
+      "Keywords": [
+        "xin",
+        "năn nỉ",
+        "cầu xin"
+      ]
     },
     {
       "Id": "zalo-43523",
-      "Name": "Sticker 43523",
-      "File": "292a80c5d2d1f2a526d7008fac2bd158786e8798d5267ae035f46336d929840a.gif"
+      "Name": "Nghi ngờ",
+      "File": "292a80c5d2d1f2a526d7008fac2bd158786e8798d5267ae035f46336d929840a.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-43524",
-      "Name": "Sticker 43524",
-      "File": "5ba35d79452db95fb4239940af78160f0d68a53e35522abeb39fc08bd48397e3.gif"
+      "Name": "Hờn dỗi",
+      "File": "5ba35d79452db95fb4239940af78160f0d68a53e35522abeb39fc08bd48397e3.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-43525",
-      "Name": "Sticker 43525",
-      "File": "440bf872978961ad133181131c73514f1c41c1bb3a329fb4e498dda82da57cd0.gif"
+      "Name": "Cầu xin",
+      "File": "440bf872978961ad133181131c73514f1c41c1bb3a329fb4e498dda82da57cd0.gif",
+      "Keywords": [
+        "xin",
+        "năn nỉ",
+        "cầu xin"
+      ]
     },
     {
       "Id": "zalo-43526",
-      "Name": "Sticker 43526",
-      "File": "11f4800e37f5ef54bbcdcd3772a1e6a6f451eeb5ef104ed6c14ecb740ec7560d.gif"
+      "Name": "Yêu quá",
+      "File": "11f4800e37f5ef54bbcdcd3772a1e6a6f451eeb5ef104ed6c14ecb740ec7560d.gif",
+      "Keywords": [
+        "yêu",
+        "yêu bạn",
+        "thương",
+        "love",
+        "i love you"
+      ]
     },
     {
       "Id": "zalo-43527",
-      "Name": "Sticker 43527",
-      "File": "3f46c32687ea4bb2ad5c78cceda878d9ff434cfe408f5976ee56ddb98278c6bf.gif"
+      "Name": "Cúi chào",
+      "File": "3f46c32687ea4bb2ad5c78cceda878d9ff434cfe408f5976ee56ddb98278c6bf.gif",
+      "Keywords": []
     },
     {
       "Id": "zalo-43528",
-      "Name": "Sticker 43528",
-      "File": "7724d6d6357c828744e54e24fc9320c7557dd70b8111235497656081de6fa731.gif"
+      "Name": "Cười ha ha",
+      "File": "7724d6d6357c828744e54e24fc9320c7557dd70b8111235497656081de6fa731.gif",
+      "Keywords": [
+        "haha",
+        "ha ha",
+        "cười",
+        "vui",
+        "vui quá"
+      ]
     },
     {
       "Id": "zalo-43529",
-      "Name": "Sticker 43529",
-      "File": "f65f46ab1754b669ef50e73e19f72efb8ca5ccf2c7f4184d3e895adfefa93d91.gif"
+      "Name": "Giận dữ",
+      "File": "f65f46ab1754b669ef50e73e19f72efb8ca5ccf2c7f4184d3e895adfefa93d91.gif",
+      "Keywords": [
+        "giận",
+        "tức",
+        "bực mình"
+      ]
     },
     {
       "Id": "zalo-43530",
-      "Name": "Sticker 43530",
-      "File": "47fd050eebb83cd47cabe461c74b93456b987b50bafbe2fc8a8bdb95e413eee1.gif"
+      "Name": "Cười lớn",
+      "File": "47fd050eebb83cd47cabe461c74b93456b987b50bafbe2fc8a8bdb95e413eee1.gif",
+      "Keywords": [
+        "haha",
+        "ha ha",
+        "cười",
+        "vui",
+        "vui quá"
+      ]
     },
     {
       "Id": "zalo-43531",
-      "Name": "Sticker 43531",
-      "File": "27540cd90b25f984b1e3532577ea4ee3de36370722f54e299146f59ff2473dff.gif"
+      "Name": "Ngầu",
+      "File": "27540cd90b25f984b1e3532577ea4ee3de36370722f54e299146f59ff2473dff.gif",
+      "Keywords": []
     }
   ]
 }

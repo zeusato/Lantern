@@ -44,17 +44,7 @@ public partial class MainWindow
             var palette = new StickerPalette(Stickers, async (pack, sticker) =>
             {
                 popup.IsOpen = false;
-                if (!Composer.IsEnabled || appLocking || ConversationProtected) return;
-                var target = selectedId;
-                try
-                {
-                    await node.OfferFileAsync(target, Stickers.PathFor(pack, sticker), uiLifetime.Token,
-                        displayFileName: Protocol.SafeFileName(sticker.Name) + Path.GetExtension(sticker.File),
-                        sticker: new StickerReference(pack.Id, pack.Name, sticker.Id, sticker.Name));
-                    string key = pack.Id + "/" + sticker.Id; App.Settings.RecentStickers.Remove(key); App.Settings.RecentStickers.Insert(0, key);
-                    App.Settings.RecentStickers = App.Settings.RecentStickers.Take(40).ToList(); App.SaveSettings();
-                }
-                catch (Exception ex) { ShowError(ex); }
+                await SendStickerAsync(pack, sticker, conversation);
             }, () => { popup.IsOpen = false; OpenStickerWorkshop(); });
             var border = new Border { Child = palette, Padding = new Thickness(16), CornerRadius = new CornerRadius(16), BorderThickness = new Thickness(1) };
             border.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush"); border.SetResourceReference(Border.BorderBrushProperty, "LineBrush"); popup.Child = border;
@@ -80,6 +70,7 @@ public partial class MainWindow
                 finally { File.Delete(path); Directory.Delete(directory); }
             }
             ShowDialog("Xưởng chế tác sticker", new StickerWorkshop(this, Stickers, canShare ? Share : null), "Đóng", width: 760);
+            stickerSearch = null; ScheduleStickerSuggestions();
         }
         catch (Exception ex) { ShowError(ex); }
     }
@@ -92,7 +83,7 @@ public partial class MainWindow
             var current = store.Message(message.Id); if (current is null || current.ExpiresAt <= DateTimeOffset.UtcNow || !File.Exists(current.FilePath)) return;
             if (!ShowDialog("Thêm bộ sticker", new TextBlock { Text = "Thêm một bản sao của bộ sticker này vào thư viện trên máy?", TextWrapping = TextWrapping.Wrap }, "Thêm bộ")) return;
             if (appLocking || ConversationProtected || store.Message(message.Id) is not { } fresh || fresh.ExpiresAt <= DateTimeOffset.UtcNow) return;
-            var pack = Stickers.Import(fresh.FilePath); ShowToast($"Đã thêm {pack.Stickers.Count} sticker vào bộ {pack.Name}.");
+            var pack = Stickers.Import(fresh.FilePath); stickerSearch = null; ShowToast($"Đã thêm {pack.Stickers.Count} sticker vào bộ {pack.Name}.");
         }
         catch (Exception ex) { ShowError(ex); }
     }
@@ -106,7 +97,7 @@ public partial class MainWindow
             var pack = Stickers.Packs().FirstOrDefault(p => p.Id == reference.PackId) ?? new StickerPack { Id = reference.PackId, Name = reference.PackName };
             if (pack.Stickers.Any(s => s.Id == reference.StickerId)) { ShowToast("Sticker đã có trong thư viện."); return; }
             var bytes = StickerImage.ValidateFile(current.FilePath);
-            var item = Stickers.Add(pack, reference.Name, bytes); item.Id = reference.StickerId; Stickers.Save(pack);
+            var item = Stickers.Add(pack, reference.Name, bytes); item.Id = reference.StickerId; Stickers.Save(pack); stickerSearch = null;
             ShowToast("Đã lưu sticker vào bộ " + pack.Name + ".");
         }
         catch (Exception ex) { ShowError(ex); }

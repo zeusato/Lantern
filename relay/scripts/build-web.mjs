@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const names = [
-  "emoji.js", "emoji-data.js", "emoji-precache.js",
+  "avatars.js", "emoji.js", "emoji-data.js", "emoji-precache.js",
   "index.html",
   "style.css",
   "app.js",

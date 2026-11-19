@@ -1,3 +1,4 @@
+import {senderAvatars, avatarHtml} from "./avatars.js";
 import {catalog, emojiHtml, emojiUrl, emojiSearchKey, insertEmoji, replaceEmoticons} from "./emoji.js";
 import {
   createIdentity,
@@ -544,7 +545,7 @@ async function lockApp() {
 function settingsSheet() {
   showSheet(
     "Cài đặt",
-    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.19</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-expression" class="secondary">Đổi phép tính mở khóa</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
+    `<div class="setting"><div><strong>${esc(state.name || "Lantern trên điện thoại")}</strong><small>Bản web · 1.2.20</small></div><img src="/icon.svg" width="45" height="45" alt=""></div><label class="setting"><span>Đổi ký hiệu thành emoji<small>Ví dụ :) thành 🙂 khi gửi</small></span><input id="setting-emoji" type="checkbox" ${state.settings.emoticons ? "checked" : ""}></label><label class="setting"><span>Báo tin trong ứng dụng<small>Chỉ khi Lantern đang mở</small></span><input id="setting-notice" type="checkbox" ${state.settings.inAppNotice ? "checked" : ""}></label><div><p>Bảng màu</p><div class="theme-grid">${colorThemes.map((t) => `<button data-theme="${t.id}" aria-pressed="${(state.settings.colorTheme || "jade") === t.id}"><span style="background:${t.accent}"></span>${t.name}</button>`).join("")}</div></div><button id="settings-calculator" class="secondary">Mở máy tính</button><button id="settings-expression" class="secondary">Đổi phép tính mở khóa</button><button id="settings-lock" class="secondary">Khóa ứng dụng</button><button id="settings-update" class="text-action">${window.lanternUpdate?.waiting ? "Cài bản web mới" : "Kiểm tra cập nhật"}</button><button id="settings-reset" class="text-action">Tạo lại bản lưu trên điện thoại</button><p>Lịch sử mở từ bản đã lưu và đồng bộ khi PC kết nối. Khi iPhone dừng app, các tin mới sẽ được nhận ở lần mở tiếp theo.</p><p class="app-version">Lantern · Riêng tư, gần gũi, luôn kết nối.</p>`,
   );
   for (const b of sheet.querySelectorAll("[data-theme]"))
     b.onclick = () => {
@@ -745,7 +746,7 @@ async function download(m, automatic = false) {
       m.kind === "image"
         ? m.fileName?.toLowerCase().endsWith(".png")
           ? "image/png"
-          : "image/jpeg"
+          : m.fileName?.toLowerCase().endsWith(".gif") ? "image/gif" : "image/jpeg"
         : m.kind === "video"
           ? "video/mp4"
           : "application/octet-stream";
@@ -1499,6 +1500,7 @@ function renderMessages(bottom = false) {
     return;
   }
   const items = messages(),
+    avatars = senderAvatars(items),
     key = JSON.stringify(items);
   if (key === lastRender && !bottom) return;
   lastRender = key;
@@ -1508,6 +1510,7 @@ function renderMessages(bottom = false) {
   box.innerHTML = items.length
     ? items
         .map((m, i) => {
+          const sticker = m.kind === "image" && !!m.sticker;
           const next = items[i + 1],
             prev = items[i - 1],
             grouped = joins(prev, m),
@@ -1538,13 +1541,14 @@ function renderMessages(bottom = false) {
                 : `<div class="file-card"><span class="file-symbol">${m.kind === "image" ? "🖼️" : m.kind === "video" ? "🎬" : "📄"}</span><div><strong>${esc(m.fileName)}</strong><small>${sizeText(m.fileSize || 0)}</small></div></div><button class="file-action" data-action="${["offered", "offering"].includes(m.status) && !m.outgoing && m.kind === "file" ? "accept" : "media"}" data-id="${m.id}">${["offered", "offering"].includes(m.status) && !m.outgoing && m.kind === "file" ? "Nhận tệp" : "Mở"}</button>`;
           if (m.kind === "image" && media.has(m.id))
             content = `<button data-action="media" data-id="${m.id}"><img class="media-preview" src="${media.get(m.id).url}" alt="${esc(m.fileName)}"></button>`;
+          if (sticker) content = media.has(m.id) ? `<img class="chat-sticker" src="${media.get(m.id).url}" alt="${esc(m.sticker.name || "Sticker")}" draggable="false">` : `<span class="sticker-loading" role="status">Đang tải sticker…</span>`;
           const date =
             !prev ||
             new Date(prev.time).toDateString() !==
               new Date(m.time).toDateString()
               ? `<div class="day">${new Date(m.time).toLocaleDateString("vi-VN", { day: "numeric", month: "long" })}</div>`
               : "";
-          return `${date}<article class="message ${m.outgoing ? "mine" : ""} ${grouped ? "join" : ""}" data-message="${m.id}"><div class="bubble" data-id="${m.id}">${!m.outgoing && contact(current)?.isGroup && !grouped ? `<div class="sender">${esc(m.senderName)}</div>` : ""}${m.replyToId ? `<div class="quote"><strong>${esc(quoted?.senderName || "Trả lời tin nhắn")}</strong>${esc(quoted?.text || quoted?.fileName || "Tin nhắn trước đó")}</div>` : ""}${content}${tail || m._pending ? `<div class="stamp"><time>${esc(clock(m.time))}</time>${m.outgoing ? `<span>${esc(status)}</span>` : ""}</div>` : ""}${m.expiresAt ? `<div class="stamp">Tự hủy · ${Math.max(1, Math.ceil((Date.parse(m.expiresAt) - Date.now()) / 1000))}s</div>` : ""}</div>${counts ? `<button class="reaction-count" data-action="react" data-id="${m.id}">${emojiHtml(counts)}</button>` : ""}${m._failed ? `<button class="retry" data-action="retry" data-id="${m.id}">Chạm để thử gửi lại</button>` : ""}</article>`;
+          return `${date}<article class="message ${m.outgoing ? "mine" : ""} ${sticker ? "sticker-message" : ""} ${grouped ? "join" : ""}" data-message="${m.id}">${!m.outgoing&&!grouped?avatarHtml(m.senderName||contact(current)?.name,avatars.get(m.senderId)):""}<div class="bubble" data-id="${m.id}">${!m.outgoing && contact(current)?.isGroup && !grouped ? `<div class="sender">${esc(m.senderName)}</div>` : ""}${m.replyToId ? `<div class="quote"><strong>${esc(quoted?.senderName || "Trả lời tin nhắn")}</strong>${esc(quoted?.text || quoted?.fileName || "Tin nhắn trước đó")}</div>` : ""}${content}${tail || m._pending ? `<div class="stamp"><time>${esc(clock(m.time))}</time>${m.outgoing ? `<span>${esc(status)}</span>` : ""}</div>` : ""}${m.expiresAt ? `<div class="stamp">Tự hủy · ${Math.max(1, Math.ceil((Date.parse(m.expiresAt) - Date.now()) / 1000))}s</div>` : ""}</div>${counts ? `<button class="reaction-count" data-action="react" data-id="${m.id}">${emojiHtml(counts)}</button>` : ""}${m._failed ? `<button class="retry" data-action="retry" data-id="${m.id}">Chạm để thử gửi lại</button>` : ""}</article>`;
         })
         .join("")
     : '<div class="empty">Chưa có tin nhắn. Gửi lời chào nhé.</div>';

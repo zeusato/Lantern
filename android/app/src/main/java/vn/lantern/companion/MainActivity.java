@@ -29,6 +29,7 @@ public final class MainActivity extends Activity {
     private static final int BG=Color.rgb(16,26,33),SURFACE=Color.rgb(28,43,53),TEXT=Color.rgb(234,243,246),MUTED=Color.rgb(153,174,186),ACCENT=Color.rgb(45,185,167);
     private LinearLayout root,body,messagesBox,composerBar;private TextView subtitle,title,quote,actionStatus;private EditText composer;private ScrollView scroll;private ImageButton sendButton;private boolean sending;
     private record MessageRow(String key,View view){}
+    private final MessageAvatars messageAvatars=new MessageAvatars();
     private final java.util.Map<String,MessageRow> messageRows=new java.util.HashMap<>();
     private long nextExpiry=Long.MAX_VALUE;private int renderGeneration;
     private record Draft(String text,int start,int end,String reply,boolean focused,boolean keyboard){}
@@ -118,18 +119,21 @@ public final class MainActivity extends Activity {
         }catch(Exception ignored){}
         String signature=visibleMessages.toString()+ConnectionService.images.toString();if(signature.equals(renderKey))return;renderKey=signature;
         int previousY=scroll.getScrollY();boolean bottom=previousY+scroll.getHeight()>=messagesBox.getHeight()-dp(120),composing=composer.hasFocus();
+        java.util.Map<String,String> avatars=new java.util.HashMap<>();for(JSONObject item:visibleMessages)if(!item.optBoolean("outgoing")&&item.has("senderAvatar")&&!item.isNull("senderAvatar"))avatars.put(item.optString("senderId"),item.optString("senderAvatar"));
         java.util.List<View> rows=new java.util.ArrayList<>();java.util.Set<String> retained=new java.util.HashSet<>();
         for(int i=0;i<visibleMessages.size();i++)try{
             JSONObject message=visibleMessages.get(i);
             boolean joinsPrevious=i>0&&MessageGrouping.joins(visibleMessages.get(i-1),message),joinsNext=i+1<visibleMessages.size()&&MessageGrouping.joins(message,visibleMessages.get(i+1));
             String id=message.getString("id"),replyId=message.optString("replyToId"),replyText="";for(JSONObject candidate:visibleMessages)if(replyId.equals(candidate.optString("id")))replyText=candidate.toString();
-            String rowKey=message.toString()+joinsPrevious+joinsNext+replyText+ConnectionService.images.get(id);retained.add(id);MessageRow cached=messageRows.get(id);if(cached!=null&&cached.key().equals(rowKey)){rows.add(cached.view());continue;}
-            boolean own=message.optBoolean("outgoing");LinearLayout row=new LinearLayout(this);row.setTag(id);row.setGravity(own?Gravity.RIGHT:Gravity.LEFT);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(joinsPrevious?4:12);row.setLayoutParams(rp);rows.add(row);messageRows.put(id,new MessageRow(rowKey,row));
-            LinearLayout bubble=column();bubble.setPadding(dp(12),dp(10),dp(12),dp(8));bubble.setBackground(shape(own?Color.rgb(29,77,72):SURFACE,16));row.addView(bubble,new LinearLayout.LayoutParams(-2,-2));int max=getResources().getDisplayMetrics().widthPixels-dp(100);
+            String avatar=avatars.getOrDefault(message.optString("senderId"),"");String rowKey=message.toString()+joinsPrevious+joinsNext+replyText+avatar+ConnectionService.images.get(id);retained.add(id);MessageRow cached=messageRows.get(id);if(cached!=null&&cached.key().equals(rowKey)){rows.add(cached.view());continue;}
+            boolean own=message.optBoolean("outgoing"),sticker="image".equals(message.optString("kind"))&&message.optJSONObject("sticker")!=null;LinearLayout row=new LinearLayout(this);row.setTag(id);row.setGravity(own?Gravity.RIGHT:Gravity.LEFT);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(joinsPrevious?4:12);row.setLayoutParams(rp);rows.add(row);messageRows.put(id,new MessageRow(rowKey,row));
+            if(!own){if(!joinsPrevious)row.addView(messageAvatars.create(this,message.optString("senderName"),avatar));else row.addView(new View(this),new LinearLayout.LayoutParams(dp(40),1));}
+            LinearLayout bubble=column();bubble.setPadding(dp(12),dp(10),dp(12),dp(8));bubble.setBackground(sticker?null:shape(own?Color.rgb(29,77,72):SURFACE,16));if(sticker)bubble.setPadding(0,0,0,0);row.addView(bubble,new LinearLayout.LayoutParams(-2,-2));int max=getResources().getDisplayMetrics().widthPixels-dp(100);
             if(!own&&!joinsPrevious&&ConversationSettings.contact(ConnectionService.selected)!=null&&ConversationSettings.contact(ConnectionService.selected).optBoolean("isGroup")){TextView sender=text(message.optString("senderName"),12,ACCENT);sender.setMaxWidth(max);bubble.addView(sender);}
             String reply=message.optString("replyToId");if(!reply.isEmpty()){String snippet="Tin được trích dẫn";for(JSONObject q:visibleMessages){if(q!=null&&reply.equals(q.optString("id")))snippet=q.optString("text",q.optString("fileName"));}TextView q=text("↳ "+snippet,12,MUTED);q.setMaxWidth(max);q.setMaxLines(2);bubble.addView(q);}
             String kind=message.optString("kind");if("text".equals(kind)){TextView content=text("",16,TEXT);content.setText(EmojiCatalog.get(this).render(message.optString("text"),content.getTextSize()));content.setMaxWidth(max);content.setTextIsSelectable(true);bubble.addView(content);}
             else if("contact".equals(kind)){JSONObject contact=message.optJSONObject("contact");bubble.addView(text("👤 "+(contact==null?"Liên hệ":contact.optString("name")),16,TEXT));}
+            else if(sticker){File file=ConnectionService.images.get(id);String name=message.optJSONObject("sticker").optString("name","Sticker");if(file!=null)bubble.addView(new StickerView(this,file,name));else {TextView loading=text("Đang tải sticker…",13,MUTED);loading.setContentDescription("Sticker "+name);bubble.addView(loading);}}
             else {
                 File file=ConnectionService.images.get(message.optString("id"));if(file!=null){BitmapFactory.Options options=new BitmapFactory.Options();options.inJustDecodeBounds=true;BitmapFactory.decodeFile(file.getPath(),options);options.inSampleSize=Math.max(1,Math.max(options.outWidth,options.outHeight)/1000);options.inJustDecodeBounds=false;Bitmap bitmap=BitmapFactory.decodeFile(file.getPath(),options);if(bitmap!=null){ImageView image=new ImageView(this);image.setImageBitmap(bitmap);image.setAdjustViewBounds(true);image.setMaxWidth(max);image.setMaxHeight(dp(250));bubble.addView(image);}}
                 TextView name=text(("video".equals(kind)?"▶ ":"image".equals(kind)?"▧ ":"📎 ")+message.optString("fileName"),14,TEXT);name.setMaxWidth(max);name.setMaxLines(3);bubble.addView(name);

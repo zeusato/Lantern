@@ -65,6 +65,9 @@ public sealed class ChatMessage
     public string ConversationId { get; set; } = "";
     public string SenderId { get; set; } = "";
     public string SenderName { get; set; } = "";
+    // Mobile history carries the current profile once per sender, on their newest message.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? SenderAvatar { get; set; }
     public string Text { get; set; } = "";
     public RichTextContent? RichText { get; set; }
     public ChatPoll? Poll { get; set; }

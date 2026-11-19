@@ -32,6 +32,13 @@ internal static class StickerTests
         check(receiving.Packs().Count == 1, "Failed imports leave no partial pack");
         var seed = new StickerLibrary(Path.Combine(root, "seed")); seed.InstallBundled(pack, _ => png); seed.Delete(pack); seed.InstallBundled(pack, _ => throw new Exception("Should not reinstall"));
         check(seed.Packs().Count == 0, "Deleted bundled packs stay deleted after restart");
+        var metadataPack = new StickerPack { Id = "zalo-99", Name = "Zalo · 99", Stickers = [new() { Id = "zalo-9", Name = "Sticker 9", File = item.File }] };
+        seed.InstallBundled(metadataPack, _ => png); metadataPack.Name = "Tên bộ chính xác"; metadataPack.Stickers[0].Name = "Ngủ ngon"; metadataPack.Stickers[0].Keywords = ["ngủ ngon", "good night"];
+        seed.InstallBundled(metadataPack, _ => throw new Exception("Must not reload media")); var upgraded = seed.Packs().Single();
+        check(upgraded.Name == metadataPack.Name && upgraded.Stickers[0].Name == "Ngủ ngon", "Bundled metadata upgrades existing placeholder names without copying images");
+        upgraded.Name = "Tên riêng"; upgraded.Stickers[0].Name = "Tên sticker riêng"; seed.Save(upgraded); seed.InstallBundled(metadataPack, _ => png);
+        check(seed.Packs().Single().Name == "Tên riêng" && seed.Packs().Single().Stickers[0].Name == "Tên sticker riêng", "Metadata updates preserve user names");
+        var search = new StickerSearch(seed.Packs()); check(search.Suggest("Chúc NGU NGON!").Count == 1 && search.Suggest("good night").Count == 1 && search.Suggest("người").Count == 0 && search.Suggest("").Count == 0, "Suggestions match normalized trailing phrases with word boundaries");
         var nullItem = Codec.Decode<StickerPack>("{\"Id\":\"valid\",\"Name\":\"Valid\",\"Stickers\":[null]}"); Invalid(() => receiving.Save(nullItem), "Malformed null manifest items are rejected");
 
         var identities = Enumerable.Range(0, 3).Select(i => new Identity(Path.Combine(root, "peer" + i), "Sticker peer " + i)).ToArray();

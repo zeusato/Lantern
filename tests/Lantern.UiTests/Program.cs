@@ -51,6 +51,7 @@ internal sealed partial class UiHarness : Application
     // Isolated fixture host: production startup/password handling is not altered or shipped with a bypass.
     protected override async void OnStartup(StartupEventArgs e)
     {
+        if (e.Args.FirstOrDefault() == "--composer-menus") { await RunComposerMenus(); return; }
         if (e.Args.FirstOrDefault() == "--stickers") { await RunStickerUi(e.Args.ElementAtOrDefault(1)); return; }
         if (e.Args.FirstOrDefault() == "--rich-polls") { await RunRichPollUi(e.Args.ElementAtOrDefault(1)); return; }
         if (e.Args.FirstOrDefault() == "--pins-emoji") { await RunPinsAndEmoji(e.Args.ElementAtOrDefault(1)); return; }
@@ -248,13 +249,13 @@ internal sealed partial class UiHarness : Application
             var shortView = Sample("OK", false, true); var ownView = Sample("Em nhận rồi 👍", true, true); var emojiView = Sample("👍", false);
             var multilineView = Sample("Một dòng\nDòng thứ hai dài hơn", true); var longView = Sample(string.Concat(Enumerable.Repeat("Tin dài sẽ tự xuống dòng, không làm rộng cả bong bóng. ", 8)), false);
             var galleryWindow = new Window { Owner = window, Width = 640, Height = 680, Content = new ScrollViewer { Content = gallery, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } }; galleryWindow.Show(); galleryWindow.UpdateLayout();
-            Border Bubble(FrameworkElement view) => (Border)((StackPanel)view).Children.OfType<Grid>().Single().Children[0];
+            Border Bubble(FrameworkElement view) => Visuals<Border>(view).Single(b => b.Name == "MessageSurface");
             var shortBubble = Bubble(shortView); var ownBubble = Bubble(ownView); var longBubble = Bubble(longView);
             Check(shortBubble.ActualWidth < 160 && ownBubble.ActualWidth < 190 && Bubble(emojiView).ActualWidth < 160, "Short and emoji-only bubbles fit content plus the internal timestamp instead of filling the row");
             Check(shortBubble.ActualHeight < 75 && ownBubble.ActualHeight < 75 && Bubble(multilineView).ActualHeight < 100, "Text and metadata remain compact without accidental wrapping");
-            Check(Visuals<TextBlock>(shortBubble).Any(view => view.Name == "MessageFooter") && !((StackPanel)shortView).Children.OfType<TextBlock>().Any(), "Time and delivery state live inside the bubble");
+            Check(Visuals<TextBlock>(shortBubble).Any(view => view.Name == "MessageFooter") && shortBubble.IsAncestorOf(Visuals<TextBlock>(shortView).Single(v => v.Name == "MessageFooter")), "Time and delivery state live inside the bubble");
             var incomingLeft = shortBubble.TranslatePoint(new Point(), gallery).X; var outgoingRight = ownBubble.TranslatePoint(new Point(ownBubble.ActualWidth, 0), gallery).X;
-            Check(incomingLeft < 1 && Math.Abs(outgoingRight - gallery.ActualWidth) < 1, "Incoming bubbles align left and outgoing bubbles align right");
+            Check(Math.Abs(incomingLeft - 44) < 1 && Math.Abs(outgoingRight - gallery.ActualWidth) < 1, "Incoming bubbles leave room for the avatar and outgoing bubbles align right");
             Check(longBubble.ActualWidth <= 560 && longBubble.ActualHeight > ownBubble.ActualHeight * 2 && Bubble(multilineView).ActualHeight > ownBubble.ActualHeight, "Long text wraps at the maximum width and explicit newlines remain visible");
             var dock = Visuals<MessageReactions>(shortView).Single(); var dockPosition = dock.TranslatePoint(new Point(), shortBubble);
             Check(dockPosition.Y < shortBubble.ActualHeight && dockPosition.Y + dock.ActualHeight > shortBubble.ActualHeight && dock.Parent is Canvas, "Reaction count and picker sit on the lower bubble edge without a separate row");
@@ -281,6 +282,17 @@ internal sealed partial class UiHarness : Application
             messageView.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent }); window.UpdateLayout(); Check(messageView.ActualHeight == heightBefore, "Hover toolbar overlays the message without adding a row");
             ((ScrollViewer)window.FindName("ChatScroll")).ScrollToHome(); await Task.Delay(80); Snapshot(window, Path.Combine(root, "chat-hover.png"));
             Call(window, "EmojiClick", window, new RoutedEventArgs()); await Task.Delay(100); var popup = Field<Popup>(window, "emojiPopup"); Check(popup.IsOpen, "Emoji picker opens"); Snapshot((FrameworkElement)popup.Child, Path.Combine(root, "emoji-picker.png")); popup.IsOpen = false;
+            composer.Text = "Kiểm tra menu"; composer.SelectAll();
+            var formatting = (Panel)window.FindName("FormattingToolbar"); if (formatting.Visibility != Visibility.Visible) Call(window, "FormatClick", window, new RoutedEventArgs());
+            var controls = Field<Dictionary<string, Button>>(window, "formatControls");
+            foreach (var name in new[] { "size", "color" })
+            {
+                composer.Focus(); composer.SelectAll(); controls[name].RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); await Task.Delay(150);
+                Call(window, "Refresh"); await Task.Delay(150);
+                Check(controls[name].ContextMenu.IsOpen, "Formatting " + name + " menu stays open after click and refresh");
+                var choice = controls[name].ContextMenu.Items.OfType<MenuItem>().ElementAt(name == "size" ? 2 : 1); choice.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent)); controls[name].ContextMenu.IsOpen = false;
+                Check(name == "size" ? Equals(composer.Selection.GetPropertyValue(System.Windows.Documents.TextElement.FontSizeProperty), 18d) : (composer.Selection.GetPropertyValue(System.Windows.Documents.TextElement.ForegroundProperty) as SolidColorBrush)?.Color == (Color)ColorConverter.ConvertFromString("#D64242"), "Formatting " + name + " selection applies to the original text selection");
+            }
             ApplyTheme("dark"); Call(window, "Refresh"); window.UpdateLayout();
             var visibleDocument = Visuals<RichTextBox>(chatPanel).First().Document;
             Check(((SolidColorBrush)visibleDocument.Foreground).Color == ((SolidColorBrush)Resources["TextBrush"]).Color, "Message document foreground follows dark theme"); Snapshot(window, Path.Combine(root, "chat-dark.png")); ApplyTheme("light"); Call(window, "Refresh");

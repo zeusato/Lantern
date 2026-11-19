@@ -279,7 +279,7 @@ public partial class MainWindow : Window
         WelcomeTitle.Text = hasChat ? "Bắt đầu bằng\nmột lời chào." : "Một lời chào,\nngay trong mạng của bạn.";
         WelcomeBody.Text = hasChat ? "Gửi một tin nhắn, một tấm ảnh\nhay điều bạn muốn chia sẻ." : "Chat, gửi ảnh và chia sẻ tệp trực tiếp.\nMọi thứ ở lại trên máy của bạn.";
         WelcomeAction.Visibility = hasChat ? Visibility.Collapsed : Visibility.Visible;
-        var key = selectedId + "|" + node.ConversationRules(selectedId).ForwardAllowed + "|" + string.Join(',', store.PinnedMessages(selectedId).Order()) + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + Codec.Encode(m.Reactions) + Codec.Encode(m.Poll) + m.Poll?.IsClosed + Codec.Encode(m.PendingPollVote) + string.Join(',', m.Delivery.Values)));
+        var key = selectedId + "|" + node.ConversationRules(selectedId).ForwardAllowed + "|" + string.Join(',', store.PinnedMessages(selectedId).Order()) + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + node.FindPeer(m.SenderId)?.Avatar + Codec.Encode(m.Reactions) + Codec.Encode(m.Poll) + m.Poll?.IsClosed + Codec.Encode(m.PendingPollVote) + string.Join(',', m.Delivery.Values)));
         RefreshSharedContent();
         if (key == renderKey) return;
         renderKey = key; hasTimedPolls = false;
@@ -365,7 +365,6 @@ public partial class MainWindow : Window
         {
             var sticker = new StickerImage(msg.FilePath, 160) { ToolTip = msg.Sticker.Name, ContextMenu = messageMenu };
             content.Children.Add(sticker);
-            AddButton(content, "Lưu sticker", () => SaveReceivedSticker(msg));
         }
         else
         {
@@ -414,7 +413,23 @@ public partial class MainWindow : Window
             expiry.Margin = new Thickness(0, 3, 0, 0); content.Children.Add(expiry);
             if (msg.ExpiresAt.HasValue) expiryLabels[msg.Id] = (expiry, msg.ExpiresAt.Value);
         }
-        return outer;
+        if (msg.Outgoing) return outer;
+        var row = new Grid { HorizontalAlignment = HorizontalAlignment.Left, MaxWidth = 604, Tag = msg.Id, Margin = outer.Margin }; outer.Margin = new Thickness(0);
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(outer, 1); row.Children.Add(outer);
+        if (!joinsPrevious)
+        {
+            var peer = node.FindPeer(msg.SenderId);
+            var name = peer?.DisplayName ?? msg.SenderName;
+            var photo = AvatarImages.Get(peer?.Avatar ?? "");
+            var avatar = new Border { Name = "MessageAvatar", Width = 34, Height = 34, CornerRadius = new CornerRadius(17), VerticalAlignment = VerticalAlignment.Top, HorizontalAlignment = HorizontalAlignment.Left, ToolTip = name };
+            avatar.SetResourceReference(Border.BackgroundProperty, "AccentSoftBrush");
+            if (photo is not null) avatar.Background = new ImageBrush(photo) { Stretch = Stretch.UniformToFill };
+            else { var initial = Paragraph(string.IsNullOrWhiteSpace(name) ? "?" : System.Globalization.StringInfo.GetNextTextElement(name.Trim()).ToUpperInvariant(), 14, true); initial.Margin = new Thickness(0); initial.HorizontalAlignment = HorizontalAlignment.Center; initial.VerticalAlignment = VerticalAlignment.Center; avatar.Child = initial; }
+            System.Windows.Automation.AutomationProperties.SetName(avatar, "Ảnh đại diện " + name); row.Children.Add(avatar);
+        }
+        return row;
     }
     private async Task ToggleReaction(string id, string emoji)
     {
@@ -532,7 +547,7 @@ public partial class MainWindow : Window
         if (refreshing || ContactsList.SelectedItem is not ContactRow row) return;
         if (selectedId.Length > 0) drafts[selectedId] = Composer.Export();
         if (selectedId != row.Id) { CloseMediaViews(); if (emojiPopup is not null) emojiPopup.IsOpen = false; }
-        selectedId = row.Id; RestoreComposerDraft(selectedId); MessageSearch.Clear(); messageLimit = 150; renderKey = ""; RefreshConversation(); ChatScroll.ScrollToEnd();
+        ClearStickerSuggestions(); selectedId = row.Id; RestoreComposerDraft(selectedId); MessageSearch.Clear(); messageLimit = 150; renderKey = ""; RefreshConversation(); ChatScroll.ScrollToEnd();
         if (ConversationProtected) TryUnlockConversation();
         MarkSelectedRead();
         FocusComposer();
@@ -591,6 +606,7 @@ public partial class MainWindow : Window
     }
     private void ComposerTextChanged(object sender, TextChangedEventArgs e)
     {
+        ScheduleStickerSuggestions();
         if (replaceEmoticons || e.UndoAction is UndoAction.Undo or UndoAction.Redo || !App.Settings.AutoEmoticons || Composer is null) return;
         replaceEmoticons = true;
         try { Composer.ReplaceEmoticons(false); }

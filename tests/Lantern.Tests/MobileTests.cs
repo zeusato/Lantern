@@ -107,6 +107,12 @@ internal static class MobileTests
             for (int i = 0; i < 100 && store.Message(unseen.Id) is null; i++) await Task.Delay(30);
             await Call(new() { Type = "read", Conversation = otherId.Id, VisibleIds = [shown.Id] });
             check(store.Message(shown.Id)?.Status == "read" && store.Message(unseen.Id)?.Status != "read", "Mobile read acknowledgements exclude messages not displayed on the phone");
+            var author = node.FindPeer(otherId.Id)!; author.Avatar = GroupAvatarFixture.Image; store.SavePeer(author);
+            foreach (var body in new[] { "Avatar first", "Avatar second" }) store.SaveMessage(new ChatMessage { ConversationId = otherId.Id, SenderId = otherId.Id, SenderName = "Đối tác", Text = body, Kind = "text" });
+            var photos = await Call(new() { Type = "history", Conversation = otherId.Id });
+            check(photos.Messages.Count(m => m.SenderAvatar == GroupAvatarFixture.Image) == 1 && photos.Messages.Where(m => m.Outgoing).All(m => m.SenderAvatar is null), "Mobile history carries a profile once per incoming author and no own avatar");
+            author.Avatar = ""; store.SavePeer(author); var noPhoto = await Call(new() { Type = "history", Conversation = otherId.Id, Hash = photos.Hash });
+            check(noPhoto.Type == "ok" && noPhoto.Hash != photos.Hash && noPhoto.Messages.Any(m => m.SenderId == otherId.Id && m.SenderAvatar == ""), "Removing a profile invalidates mobile history and clears the avatar");
             var bytes = RandomNumberGenerator.GetBytes(40000); var hash = Convert.ToHexString(SHA256.HashData(bytes));
             await Call(new() { Type = "upload-start", Id = Guid.NewGuid().ToString("N"), Conversation = otherId.Id, FileName = "qa.bin", Size = bytes.Length, Hash = hash });
             check((await Call(new() { Type = "upload-chunk", Conversation = otherId.Id, Offset = 1, Data = Convert.ToBase64String(bytes[..32768]) })).Type == "error", "Out-of-order upload is rejected");

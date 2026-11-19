@@ -5,6 +5,9 @@ import { resolve } from "node:path";
 import assert from "node:assert/strict";
 const { chromium } = await import(process.env.LANTERN_PLAYWRIGHT || "playwright");
 const root = resolve(import.meta.dirname, "..");
+const stickerPack=JSON.parse(await readFile(resolve(root,"../src/Lantern.App/Assets/Stickers/zalo-10529/pack.json"),"utf8"));
+const stickerFile=stickerPack.Stickers.find(x=>x.Id==="zalo-24525").File;
+const stickerBytes=(await readFile(resolve(root,"../src/Lantern.App/Assets/Stickers/zalo-10529",stickerFile))).toString("base64");
 const fixture = `
 initializeCalculator();
 vault = { key: null };
@@ -21,6 +24,7 @@ window.qa = {
   unlock: () => { sessionKeys.set(qaId, {}); renderMessages(); },
   outbox: () => state.outbox,
   group: value => {contact(qaId).isGroup=value;lastRender='';renderMessages();},
+  stickers: () => { const image=new Blob([un64('${stickerBytes}')],{type:'image/gif'});state.histories[qaId]=[false,false,true].map((outgoing,i)=>{const id=String(i+3).repeat(32);media.set(id,{url:URL.createObjectURL(image),blob:image,conversation:qaId});return {id,conversationId:qaId,senderId:outgoing?'b'.repeat(64):qaId,senderName:'Người gửi thử',kind:'image',fileName:'sticker-test.gif',sticker:{name:'Ngủ ngon'},outgoing,time:new Date().toISOString(),status:'received'};});lastRender='';renderMessages(true); },
   emoji: () => {state.histories[qaId][0].text='Chào :) ❤️👍';lastRender='';renderMessages();},
 };
 `;
@@ -85,6 +89,17 @@ try {
   await page.locator('#emoji-search').fill('Mỉm cười');
   await page.locator('#emoji-grid button').filter({has:page.locator('img[alt=":)"]')}).first().click();
   assert.equal(await page.locator('#draft').inputValue(),'abc :) def');
+  await page.evaluate(()=>{qa.group(true);qa.stickers();});
+  await page.waitForFunction(()=>[...document.querySelectorAll('.chat-sticker')].length===3&&[...document.querySelectorAll('.chat-sticker')].every(x=>x.complete&&x.naturalWidth>0));
+  assert.equal(await page.locator('#timeline .message-avatar').count(),1);
+  assert.equal(await page.locator('#timeline .mine .message-avatar').count(),0);
+  assert.equal(await page.locator('#timeline .sender').count(),1);
+  assert.equal(await page.locator('#timeline .file-card, #timeline .file-action').count(),0);
+  assert.ok((await page.locator('#timeline').innerText()).includes('sticker-test.gif')===false);
+  assert.deepEqual(await page.locator('.sticker-message .bubble').first().evaluate(x=>[getComputedStyle(x).backgroundColor,getComputedStyle(x).borderWidth]),['rgba(0, 0, 0, 0)','0px']);
+  assert.equal(await page.locator('.chat-sticker').first().evaluate(x=>x.getBoundingClientRect().width),160);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  if(process.env.LANTERN_UI_SCREENSHOT)await page.screenshot({path:process.env.LANTERN_UI_SCREENSHOT.replace('.png','-stickers.png')});
   assert.deepEqual(errors, []);
   console.log("PASS PWA chat UI: readable capture-protected chat, editable persistent draft, back/reopen, send, info, password lock/unlock redraw and 390px layout");
 } finally { await browser.close(); await new Promise(r => server.close(r)); }

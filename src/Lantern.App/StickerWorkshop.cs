@@ -58,7 +58,7 @@ internal sealed class StickerWorkshop : StackPanel
     private void Render()
     {
         items.Children.Clear(); if (Selected is not { } pack) { status.Text = "Chưa có bộ sticker. Bấm Import ảnh hoặc Tạo sticker để bắt đầu."; return; }
-        string query = StickerLibrary.SearchKey(search.Text); var matches = pack.Stickers.Where(s => StickerLibrary.SearchKey(s.Name).Contains(query)).ToArray();
+        string query = StickerLibrary.SearchKey(search.Text); var matches = pack.Stickers.Where(s => StickerLibrary.SearchKey(s.Name + " " + string.Join(" ", s.Keywords)).Contains(query)).ToArray();
         page = Math.Clamp(page, 0, Math.Max(0, (matches.Length - 1) / 40));
         foreach (var sticker in matches.Skip(page * 40).Take(40))
         {
@@ -121,10 +121,12 @@ internal sealed class StickerWorkshop : StackPanel
         {
             var panel = Form(); panel.Children.Add(new StickerImage(library.PathFor(pack, item), 150));
             var name = new TextBox { Text = item.Name, MaxLength = 100, Margin = new Thickness(0, 10, 0, 8) }; panel.Children.Add(name);
+            panel.Children.Add(new TextBlock { Text = "Từ khóa gợi ý (ngăn cách bằng dấu phẩy)" }); var keywords = new TextBox { Text = string.Join(", ", item.Keywords), MaxLength = 2000, Margin = new Thickness(0, 4, 0, 8) }; panel.Children.Add(keywords);
             panel.Children.Add(new TextBlock { Text = "Vị trí trong bộ" }); var position = new ComboBox { ItemsSource = Enumerable.Range(1, pack.Stickers.Count).ToArray(), SelectedIndex = pack.Stickers.IndexOf(item), Margin = new Thickness(0, 4, 0, 8) }; panel.Children.Add(position);
             var remove = new CheckBox { Content = "Xóa sticker này khỏi bộ" }; panel.Children.Add(remove);
             if (!InAppDialog.Show(owner, "Sửa sticker", panel, "Lưu", () => remove.IsChecked == true || !string.IsNullOrWhiteSpace(name.Text) && !name.Text.Any(char.IsControl))) return;
-            pack.Stickers.Remove(item); if (remove.IsChecked != true) { item.Name = name.Text.Trim(); pack.Stickers.Insert(Math.Clamp(position.SelectedIndex, 0, pack.Stickers.Count), item); } library.Save(pack); Render();
+            var terms = keywords.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().ToList(); if (terms.Count > 40) throw new InvalidDataException("Tối đa 40 từ khóa."); foreach (var term in terms) StickerLibrary.CheckName(term);
+            pack.Stickers.Remove(item); if (remove.IsChecked != true) { item.Name = name.Text.Trim(); item.Keywords = terms; pack.Stickers.Insert(Math.Clamp(position.SelectedIndex, 0, pack.Stickers.Count), item); } library.Save(pack); Render();
         }
         catch (Exception ex) { status.Text = ex.Message; }
     }
@@ -134,32 +136,50 @@ internal sealed class StickerPalette : StackPanel
 {
     internal StickerPalette(StickerLibrary library, Action<StickerPack, StickerItem> send, Action workshop)
     {
-        SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "TextBrush");
-        Width = 350;
-        var heading = new Button { Content = "Xưởng chế tác sticker", Margin = new Thickness(0, 0, 0, 8) }; heading.Click += (_, _) => workshop(); Children.Add(heading);
-        Children.Add(new TextBlock { Text = "Tìm sticker hoặc bộ", Margin = new Thickness(0, 0, 0, 4) });
-        var search = new TextBox { ToolTip = "Tìm theo tên sticker hoặc bộ, có thể gõ không dấu", Margin = new Thickness(0, 0, 0, 8) }; Children.Add(search);
-        var packs = library.Packs(); var choose = new ComboBox { Margin = new Thickness(0, 0, 0, 8) }; StickerPackPresentation.Configure(choose, library); choose.Items.Add("Dùng gần đây"); foreach (var pack in packs) choose.Items.Add(pack); choose.SelectedIndex = 0; Children.Add(choose);
-        var all = packs.SelectMany(p => p.Stickers.Select(s => (Pack: p, Sticker: s))).ToArray(); var grid = new WrapPanel(); Children.Add(new ScrollViewer { Content = grid, Height = 260, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
-        var status = new TextBlock { Margin = new Thickness(0, 6, 0, 0), TextWrapping = TextWrapping.Wrap }; Children.Add(status);
-        var controls = new WrapPanel(); var previous = new Button { Content = "‹", Width = 40 }; var next = new Button { Content = "›", Width = 40 }; controls.Children.Add(previous); controls.Children.Add(next); Children.Add(controls); int page = 0;
-        System.Windows.Automation.AutomationProperties.SetName(search, "Tìm sticker"); System.Windows.Automation.AutomationProperties.SetName(choose, "Chọn bộ sticker");
+        SetResourceReference(System.Windows.Documents.TextElement.ForegroundProperty, "TextBrush"); Width = 350;
+        Children.Add(new TextBlock { Text = "Sticker", FontSize = 18, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
+        var search = new TextBox { ToolTip = "Tìm sticker, tên bộ hoặc từ khóa", MinHeight = 32, Height = 34, Padding = new Thickness(8, 4, 8, 4), Margin = new Thickness(0, 0, 0, 8) }; Children.Add(search);
+        System.Windows.Automation.AutomationProperties.SetName(search, "Tìm sticker");
+        var packs = library.Packs(); var all = packs.SelectMany(p => p.Stickers.Select(s => (Pack: p, Sticker: s))).ToArray();
+        var heading = new TextBlock { Margin = new Thickness(0, 0, 0, 4), TextTrimming = TextTrimming.CharacterEllipsis }; Children.Add(heading);
+        var grid = new WrapPanel(); var scroll = new ScrollViewer { Content = grid, Height = 264, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }; Children.Add(scroll);
+        var empty = new TextBlock { TextWrapping = TextWrapping.Wrap }; Children.Add(empty);
+        var strip = new DockPanel { Margin = new Thickness(0, 8, 0, 0) }; Children.Add(strip);
+        var recent = new Button { Content = "◷", Width = 36, Height = 40, Padding = new Thickness(0), ToolTip = "Dùng gần đây" }; DockPanel.SetDock(recent, Dock.Left); strip.Children.Add(recent);
+        var manage = new Button { Content = "+", Width = 32, Height = 40, Padding = new Thickness(0), ToolTip = "Quản lý và chế tác sticker" }; DockPanel.SetDock(manage, Dock.Right); strip.Children.Add(manage); manage.Click += (_, _) => workshop();
+        var tabs = new ListBox { ItemsSource = packs, Height = 48, BorderThickness = new Thickness(0), Padding = new Thickness(0) };
+        tabs.SetResourceReference(Control.BackgroundProperty, "SurfaceBrush");
+        var itemsPanel = new FrameworkElementFactory(typeof(VirtualizingStackPanel)); itemsPanel.SetValue(VirtualizingStackPanel.OrientationProperty, Orientation.Horizontal); tabs.ItemsPanel = new ItemsPanelTemplate(itemsPanel);
+        VirtualizingStackPanel.SetIsVirtualizing(tabs, true); VirtualizingStackPanel.SetVirtualizationMode(tabs, VirtualizationMode.Recycling);
+        ScrollViewer.SetCanContentScroll(tabs, true); ScrollViewer.SetHorizontalScrollBarVisibility(tabs, ScrollBarVisibility.Hidden); ScrollViewer.SetVerticalScrollBarVisibility(tabs, ScrollBarVisibility.Disabled);
+        var cover = new FrameworkElementFactory(typeof(Image)); cover.SetValue(FrameworkElement.WidthProperty, 32d); cover.SetValue(FrameworkElement.HeightProperty, 32d); cover.SetBinding(Image.SourceProperty, new Binding { Converter = new StickerPackPresentation(library, true) }); cover.SetBinding(FrameworkElement.ToolTipProperty, new Binding("Name"));
+        tabs.ItemTemplate = new DataTemplate { VisualTree = cover }; strip.Children.Add(tabs);
+        System.Windows.Automation.AutomationProperties.SetName(tabs, "Chọn bộ sticker"); System.Windows.Automation.AutomationProperties.SetName(manage, "Quản lý sticker"); System.Windows.Automation.AutomationProperties.SetName(recent, "Sticker dùng gần đây");
+        var container = new Style(typeof(ListBoxItem)); container.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(3))); container.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, new Binding("Name"))); container.Setters.Add(new Setter(System.Windows.Automation.AutomationProperties.NameProperty, new Binding("Name"))); tabs.ItemContainerStyle = container;
+        tabs.PreviewMouseWheel += (_, e) => { int index = Math.Clamp(tabs.SelectedIndex + (e.Delta < 0 ? 1 : -1), 0, Math.Max(0, packs.Count - 1)); if (packs.Count > 0) { tabs.SelectedIndex = index; tabs.ScrollIntoView(tabs.SelectedItem); } e.Handled = true; };
+        bool showingRecent = App.Settings.RecentStickers.Any(key => all.Any(x => key == x.Pack.Id + "/" + x.Sticker.Id));
+        (StickerPack Pack, StickerItem Sticker)[] matches = []; int shown = 0;
+        void More()
+        {
+            foreach (var (pack, sticker) in matches.Skip(shown).Take(40))
+            {
+                var button = new Button { Content = new StickerImage(library.PathFor(pack, sticker), 68, true), Width = 80, Height = 80, Padding = new Thickness(3), BorderThickness = new Thickness(0), Background = Brushes.Transparent, ToolTip = sticker.Name + " · " + pack.Name };
+                System.Windows.Automation.AutomationProperties.SetName(button, "Gửi sticker " + sticker.Name); button.Click += (_, _) => send(pack, sticker); grid.Children.Add(button); shown++;
+            }
+        }
         void Render()
         {
-            grid.Children.Clear(); string query = StickerLibrary.SearchKey(search.Text);
-            var matches = all.Where(x => query.Length > 0 ? StickerLibrary.SearchKey(x.Sticker.Name + " " + x.Pack.Name).Contains(query) : choose.SelectedItem is StickerPack pack ? x.Pack.Id == pack.Id : App.Settings.RecentStickers.Contains(x.Pack.Id + "/" + x.Sticker.Id));
-            if (query.Length == 0 && choose.SelectedIndex == 0) matches = matches.OrderBy(x => App.Settings.RecentStickers.IndexOf(x.Pack.Id + "/" + x.Sticker.Id));
-            var result = matches.ToArray(); page = Math.Clamp(page, 0, Math.Max(0, (result.Length - 1) / 40));
-            foreach (var (pack, sticker) in result.Skip(page * 40).Take(40))
-            {
-                var button = new Button { Content = new StickerImage(library.PathFor(pack, sticker), 68, true), Width = 80, Height = 80, Padding = new Thickness(3), ToolTip = sticker.Name + " · " + pack.Name };
-                System.Windows.Automation.AutomationProperties.SetName(button, "Gửi sticker " + sticker.Name); button.Click += (_, _) => send(pack, sticker); grid.Children.Add(button);
-            }
-            status.Text = result.Length == 0 ? "Chưa có sticker. Chọn một bộ hoặc mở xưởng để thêm." : $"{result.Length} sticker · Trang {page + 1}/{(result.Length + 39) / 40}";
-            previous.IsEnabled = page > 0; next.IsEnabled = (page + 1) * 40 < result.Length;
+            grid.Children.Clear(); shown = 0; string query = StickerLibrary.SearchKey(search.Text.Trim());
+            var result = all.Where(x => query.Length > 0 ? StickerLibrary.SearchKey(x.Sticker.Name + " " + x.Pack.Name + " " + string.Join(" ", x.Sticker.Keywords)).Contains(query) : showingRecent ? App.Settings.RecentStickers.Contains(x.Pack.Id + "/" + x.Sticker.Id) : tabs.SelectedItem is StickerPack p && p.Id == x.Pack.Id);
+            if (query.Length == 0 && showingRecent) result = result.OrderBy(x => App.Settings.RecentStickers.IndexOf(x.Pack.Id + "/" + x.Sticker.Id));
+            matches = result.ToArray(); heading.Text = query.Length > 0 ? "Kết quả tìm kiếm" : showingRecent ? "Dùng gần đây" : (tabs.SelectedItem as StickerPack)?.Name ?? "Sticker";
+            empty.Text = matches.Length > 0 ? "" : showingRecent && query.Length == 0 ? "Chọn một bộ bên dưới để gửi sticker." : "Không tìm thấy sticker phù hợp."; empty.Visibility = matches.Length > 0 ? Visibility.Collapsed : Visibility.Visible;
+            More(); scroll.ScrollToTop();
         }
-        previous.Click += (_, _) => { page--; Render(); }; next.Click += (_, _) => { page++; Render(); };
-        search.TextChanged += (_, _) => { page = 0; Render(); }; choose.SelectionChanged += (_, _) => { page = 0; Render(); }; Render();
+        scroll.ScrollChanged += (_, e) => { if (e.VerticalChange > 0 && scroll.VerticalOffset + scroll.ViewportHeight >= scroll.ExtentHeight - 80 && shown < matches.Length) More(); };
+        recent.Click += (_, _) => { showingRecent = true; tabs.SelectedIndex = -1; search.Clear(); Render(); };
+        tabs.SelectionChanged += (_, _) => { if (tabs.SelectedIndex < 0) return; showingRecent = false; search.Clear(); Render(); };
+        search.TextChanged += (_, _) => Render(); if (!showingRecent && packs.Count > 0) tabs.SelectedIndex = 0; Render();
     }
 }
 

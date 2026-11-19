@@ -19,6 +19,11 @@ public partial class MainWindow
             var copyImage = new MenuItem { Header = "Sao chép ảnh", IsEnabled = System.IO.File.Exists(message.FilePath), ToolTip = System.IO.File.Exists(message.FilePath) ? "Sao chép ảnh gốc vào clipboard" : "Ảnh cần tải xong trước khi sao chép" };
             copyImage.Click += (_, _) => CopyChatImage(message.Id); menu.Items.Add(copyImage);
         }
+        if (message.Sticker is not null)
+        {
+            var saveSticker = new MenuItem { Header = "Lưu sticker", IsEnabled = System.IO.File.Exists(message.FilePath) && node.ConversationRules(message.ConversationId).ForwardAllowed };
+            saveSticker.Click += (_, _) => SaveReceivedSticker(message); menu.Items.Add(saveSticker);
+        }
         var pins = store.PinnedMessages(message.ConversationId); bool pinned = pins.Contains(message.Id);
         var pin = new MenuItem { Header = pinned ? "Bỏ ghim tin nhắn" : "Ghim tin nhắn", IsEnabled = pinned || pins.Count < LocalStore.MaxPinnedMessages, ToolTip = !pinned && pins.Count >= LocalStore.MaxPinnedMessages ? "Tối đa 3 tin nhắn. Bỏ ghim một tin trước khi ghim thêm." : null };
         pin.Click += (_, _) => { if (appLocking || ConversationProtected) return; try { store.PinMessage(message.Id, !pinned); pinnedPreviewId = pinned ? "" : message.Id; renderKey = ""; RefreshConversation(); ShowToast(pinned ? "Đã bỏ ghim." : "Đã ghim tin nhắn lên đầu hội thoại."); } catch (Exception ex) { ShowError(ex); } }; menu.Items.Add(pin);

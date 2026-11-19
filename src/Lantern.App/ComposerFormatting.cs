@@ -50,7 +50,7 @@ public partial class MainWindow
         {
             var button = new Button { Content = text, ToolTip = label, Focusable = false, Padding = new Thickness(5, 2, 5, 2), MinHeight = 30, MinWidth = 30, Margin = new Thickness(1), BorderThickness = new Thickness(0), FontSize = 14 };
             AutomationProperties.SetName(button, label);
-            button.Click += (_, _) => { if (!Composer.IsEnabled) return; action(); Composer.Focus(); ComposerSelectionChanged(Composer, new RoutedEventArgs()); };
+            button.Click += (_, _) => { if (!Composer.IsEnabled) return; action(); if (button.ContextMenu?.IsOpen != true) Composer.Focus(); ComposerSelectionChanged(Composer, new RoutedEventArgs()); };
             FormattingToolbar.Children.Add(button); formatControls[id] = button; return button;
         }
         void Execute(RoutedCommand command) { if (command.CanExecute(null, Composer)) command.Execute(null, Composer); }
@@ -88,7 +88,7 @@ public partial class MainWindow
     }
     private void OpenFormatMenu(string key)
     {
-        var control = formatControls[key]; control.ContextMenu.PlacementTarget = control; control.ContextMenu.IsOpen = true;
+        var control = formatControls[key]; control.ContextMenu.PlacementTarget = control; control.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top; control.ContextMenu.IsOpen = true;
     }
     private void ChangeIndent(int delta)
     {

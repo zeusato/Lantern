@@ -11,6 +11,7 @@ public sealed class StickerItem
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string File { get; set; } = "";
+    public List<string> Keywords { get; set; } = [];
 }
 
 public sealed class StickerPack
@@ -69,7 +70,7 @@ public sealed class StickerLibrary
         CheckId(pack.Id); CheckName(pack.Name);
         if (pack.Stickers is null || pack.Stickers.Count > MaxStickers) throw new InvalidDataException("Mỗi bộ tối đa 500 sticker.");
         var ids = new HashSet<string>();
-        foreach (var item in pack.Stickers) { if (item is null) throw new InvalidDataException("Sticker trống."); CheckId(item.Id); CheckName(item.Name); CheckFile(item.File); if (!ids.Add(item.Id)) throw new InvalidDataException("Mã sticker bị trùng."); }
+        foreach (var item in pack.Stickers) { if (item is null) throw new InvalidDataException("Sticker trống."); CheckId(item.Id); CheckName(item.Name); CheckFile(item.File); if (item.Keywords is null || item.Keywords.Count > 40) throw new InvalidDataException("Tối đa 40 từ khóa mỗi sticker."); foreach (var keyword in item.Keywords) CheckName(keyword); if (!ids.Add(item.Id)) throw new InvalidDataException("Mã sticker bị trùng."); }
     }
     public void Save(StickerPack pack)
     {
@@ -196,8 +197,24 @@ public sealed class StickerLibrary
     public void InstallBundled(StickerPack pack, Func<string, byte[]> read)
     {
             Validate(pack); var receipt = Path.Combine(root, pack.Id + ".installed");
-            if (System.IO.File.Exists(receipt)) return;
             var dir = DirectoryFor(pack.Id);
+            if (System.IO.File.Exists(receipt))
+            {
+                // Upgrade metadata only. Preserve removed packs/items and names edited by the user.
+                var manifest = Path.Combine(dir, "pack.json");
+                if (!System.IO.File.Exists(manifest)) return;
+                var current = ReadManifest(manifest); bool changed = false;
+                if (current.Name == "Zalo · " + pack.Id.Replace("zalo-", "") && current.Name != pack.Name) { current.Name = pack.Name; changed = true; }
+                foreach (var item in current.Stickers)
+                {
+                    var source = pack.Stickers.FirstOrDefault(s => s.Id == item.Id && s.File == item.File); if (source is null) continue;
+                    if (item.Name == "Sticker " + item.Id.Replace("zalo-", "") && item.Name != source.Name) { item.Name = source.Name; changed = true; }
+                    var keywords = item.Keywords.Union(source.Keywords).Take(40).ToList();
+                    if (!item.Keywords.SequenceEqual(keywords)) { item.Keywords = keywords; changed = true; }
+                }
+                if (changed) Save(current);
+                return;
+            }
             if (!Directory.Exists(dir))
             {
                 Directory.CreateDirectory(dir);
