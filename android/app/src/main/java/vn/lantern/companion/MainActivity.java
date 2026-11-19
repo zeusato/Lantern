@@ -28,7 +28,7 @@ import java.time.format.DateTimeFormatter;
 public final class MainActivity extends Activity {
     private static final int BG=Color.rgb(16,26,33),SURFACE=Color.rgb(28,43,53),TEXT=Color.rgb(234,243,246),MUTED=Color.rgb(153,174,186),ACCENT=Color.rgb(45,185,167);
     private LinearLayout root,body,messagesBox,composerBar;private TextView subtitle,title,quote,actionStatus;private EditText composer;private ScrollView scroll;private ImageButton sendButton;private boolean sending;
-    private record MessageRow(String key,View view){}
+    private record MessageRow(String key,String avatar,View view){}
     private final MessageAvatars messageAvatars=new MessageAvatars();
     private final java.util.Map<String,MessageRow> messageRows=new java.util.HashMap<>();
     private long nextExpiry=Long.MAX_VALUE;private int renderGeneration;
@@ -125,8 +125,8 @@ public final class MainActivity extends Activity {
             JSONObject message=visibleMessages.get(i);
             boolean joinsPrevious=i>0&&MessageGrouping.joins(visibleMessages.get(i-1),message),joinsNext=i+1<visibleMessages.size()&&MessageGrouping.joins(message,visibleMessages.get(i+1));
             String id=message.getString("id"),replyId=message.optString("replyToId"),replyText="";for(JSONObject candidate:visibleMessages)if(replyId.equals(candidate.optString("id")))replyText=candidate.toString();
-            String avatar=avatars.getOrDefault(message.optString("senderId"),"");String rowKey=message.toString()+joinsPrevious+joinsNext+replyText+avatar+ConnectionService.images.get(id);retained.add(id);MessageRow cached=messageRows.get(id);if(cached!=null&&cached.key().equals(rowKey)){rows.add(cached.view());continue;}
-            boolean own=message.optBoolean("outgoing"),sticker="image".equals(message.optString("kind"))&&message.optJSONObject("sticker")!=null;LinearLayout row=new LinearLayout(this);row.setTag(id);row.setGravity(own?Gravity.RIGHT:Gravity.LEFT);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(joinsPrevious?4:12);row.setLayoutParams(rp);rows.add(row);messageRows.put(id,new MessageRow(rowKey,row));
+            String avatar=avatars.getOrDefault(message.optString("senderId"),"");String rowKey=message.toString()+joinsPrevious+joinsNext+replyText+ConnectionService.images.get(id);retained.add(id);MessageRow cached=messageRows.get(id);if(cached!=null&&cached.key().equals(rowKey)&&cached.avatar().equals(avatar)){rows.add(cached.view());continue;}
+            boolean own=message.optBoolean("outgoing"),sticker="image".equals(message.optString("kind"))&&message.optJSONObject("sticker")!=null;LinearLayout row=new LinearLayout(this);row.setTag(id);row.setGravity(own?Gravity.RIGHT:Gravity.LEFT);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(joinsPrevious?4:12);row.setLayoutParams(rp);rows.add(row);messageRows.put(id,new MessageRow(rowKey,avatar,row));
             if(!own){if(!joinsPrevious)row.addView(messageAvatars.create(this,message.optString("senderName"),avatar));else row.addView(new View(this),new LinearLayout.LayoutParams(dp(40),1));}
             LinearLayout bubble=column();bubble.setPadding(dp(12),dp(10),dp(12),dp(8));bubble.setBackground(sticker?null:shape(own?Color.rgb(29,77,72):SURFACE,16));if(sticker)bubble.setPadding(0,0,0,0);row.addView(bubble,new LinearLayout.LayoutParams(-2,-2));int max=getResources().getDisplayMetrics().widthPixels-dp(100);
             if(!own&&!joinsPrevious&&ConversationSettings.contact(ConnectionService.selected)!=null&&ConversationSettings.contact(ConnectionService.selected).optBoolean("isGroup")){TextView sender=text(message.optString("senderName"),12,ACCENT);sender.setMaxWidth(max);bubble.addView(sender);}

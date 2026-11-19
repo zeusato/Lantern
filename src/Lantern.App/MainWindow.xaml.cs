@@ -214,6 +214,7 @@ public partial class MainWindow : Window
         try { await node.MarkReadAsync(selectedId); } catch (Exception ex) when (ex is IOException or ObjectDisposedException) { }
         finally { markingRead = false; if (!closing) { tray?.UpdateUnread(store.UnreadCount()); if (readAgain) { readAgain = false; refreshPending = true; } } }
     }
+    private Dictionary<string, string> renderedSenderAvatars = [];
     private void RefreshConversation()
     {
         if (selectedId.Length == 32 && !store.Groups().Any(g => g.Id == selectedId))
@@ -279,7 +280,10 @@ public partial class MainWindow : Window
         WelcomeTitle.Text = hasChat ? "Bắt đầu bằng\nmột lời chào." : "Một lời chào,\nngay trong mạng của bạn.";
         WelcomeBody.Text = hasChat ? "Gửi một tin nhắn, một tấm ảnh\nhay điều bạn muốn chia sẻ." : "Chat, gửi ảnh và chia sẻ tệp trực tiếp.\nMọi thứ ở lại trên máy của bạn.";
         WelcomeAction.Visibility = hasChat ? Visibility.Collapsed : Visibility.Visible;
-        var key = selectedId + "|" + node.ConversationRules(selectedId).ForwardAllowed + "|" + string.Join(',', store.PinnedMessages(selectedId).Order()) + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + node.FindPeer(m.SenderId)?.Avatar + Codec.Encode(m.Reactions) + Codec.Encode(m.Poll) + m.Poll?.IsClosed + Codec.Encode(m.PendingPollVote) + string.Join(',', m.Delivery.Values)));
+        var senderAvatars = messages.Where(m => !m.Outgoing).Select(m => m.SenderId).Distinct().ToDictionary(id => id, id => node.FindPeer(id)?.Avatar ?? "");
+        if (senderAvatars.Count != renderedSenderAvatars.Count || senderAvatars.Any(pair => !renderedSenderAvatars.TryGetValue(pair.Key, out var old) || old != pair.Value)) renderKey = "";
+        renderedSenderAvatars = senderAvatars;
+        var key = selectedId + "|" + node.ConversationRules(selectedId).ForwardAllowed + "|" + string.Join(',', store.PinnedMessages(selectedId).Order()) + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + Codec.Encode(m.Reactions) + Codec.Encode(m.Poll) + m.Poll?.IsClosed + Codec.Encode(m.PendingPollVote) + string.Join(',', m.Delivery.Values)));
         RefreshSharedContent();
         if (key == renderKey) return;
         renderKey = key; hasTimedPolls = false;

@@ -76,6 +76,10 @@ internal sealed partial class UiHarness
             animatedImage.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent)); animatedImage.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
             Check(!Field<DispatcherTimer>(animatedImage, "timer").IsEnabled, "Unloading a sticker stops its animation timer");
             Call(window, "Refresh"); var contacts = (ListBox)window.FindName("ContactsList"); contacts.SelectedItem = contacts.Items.OfType<ContactRow>().First(c => c.Id == peer);
+            var composer = (RichComposer)window.FindName("Composer"); composer.Text = "chúc ngủ ngon";
+            await Until(() => ((Panel)window.FindName("StickerSuggestions")).Children.Count >= 3, "Composer sticker suggestions");
+            Check(((ScrollViewer)window.FindName("StickerSuggestionBar")).Visibility == Visibility.Visible, "Typing a phrase opens the inline sticker row");
+            composer.Text = "nội dung không có gợi ý"; Check(((ScrollViewer)window.FindName("StickerSuggestionBar")).Visibility == Visibility.Collapsed, "Changing the draft immediately removes stale suggestions");
             Vault.SetConversationPassword(peer, "synthetic password"); Call(window, "RefreshConversation");
             Check(!((Button)window.FindName("StickerButton")).IsEnabled, "Locked conversations disable sending stickers");
             Console.WriteLine($"{passed} sticker UI checks passed. Artifacts: {root}");
