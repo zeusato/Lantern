@@ -17,6 +17,9 @@ public class EmojiTest {
         assertEquals("x :)",catalog.replace("x :)",false));
         assertEquals("x 🙂 ",catalog.replace("x :) ",false));
         assertEquals("https://site/:heart: `:)`",catalog.replace("https://site/:heart: `:)`",true));
+        assertEquals("```\n:)\n``` a:) C:\\folder\\:heart: 🙂",catalog.replace("```\n:)\n``` a:) C:\\folder\\:heart: :)",true));
+        String plain="Tin nhắn thông thường không chứa emoji. ".repeat(100);
+        assertEquals(plain,catalog.render(plain,16).toString());
         Spanned rendered=(Spanned)catalog.render("x :) ❤️👍",16);
         assertEquals("x :) ❤️👍",rendered.toString());
         assertEquals(3,rendered.getSpans(0,rendered.length(),ImageSpan.class).length);

@@ -23,7 +23,10 @@ final class EmojiCatalog {
     private final Map<String,Entry> tokens=new HashMap<>();
     private final Map<String,String> replacements=new HashMap<>();
     private final android.util.LruCache<String,Drawable.ConstantState> pictures=new android.util.LruCache<>(160);
-    private final Pattern pattern;
+    private static final Pattern LITERAL=Pattern.compile("```[\\s\\S]*?(?:```|$)|`[^`\\r\\n]*(?:`|$)|(?:https?://|www\\.|[a-z]:\\\\)\\S+",Pattern.CASE_INSENSITIVE);
+    private static final class TokenNode {final Map<Character,TokenNode> next=new HashMap<>();boolean terminal,ascii;}
+    private record Hit(int start,int end,String text){}
+    private final TokenNode root=new TokenNode();
     static synchronized EmojiCatalog get(Context c){if(instance==null)try{instance=new EmojiCatalog(c.getApplicationContext());}catch(Exception e){throw new IllegalStateException("Không đọc được thư viện emoji",e);}return instance;}
     private String read(String file)throws IOException{try(InputStream input=context.getAssets().open(file)){ByteArrayOutputStream bytes=new ByteArrayOutputStream();byte[] buffer=new byte[8192];int count;while((count=input.read(buffer))!=-1)bytes.write(buffer,0,count);return new String(bytes.toByteArray(),StandardCharsets.UTF_8);}}
     private EmojiCatalog(Context c)throws Exception{
@@ -36,15 +39,25 @@ final class EmojiCatalog {
         JSONObject codes=new JSONObject(read("emoji-shortcodes.json"));Iterator<String> keys=codes.keys();while(keys.hasNext()){String key=keys.next();replacements.put(key.toLowerCase(Locale.ROOT),codes.getString(key));}
         String[][] fallback={{":-)","🙂"},{":-d","😃"},{";)","😉"},{":-(","🙁"},{":-p","😛"},{":-o","😮"},{":'(","😢"},{":-|","😐"},{"<3","❤️"},{"</3","💔"}};
         for(String[] pair:fallback){replacements.putIfAbsent(pair[0],pair[1]);Entry item=tokens.get(pair[1].toLowerCase(Locale.ROOT));if(item!=null)tokens.putIfAbsent(pair[0],item);}
-        List<String> ascii=new ArrayList<>(),unicode=new ArrayList<>();for(String key:tokens.keySet())(key.chars().allMatch(n->n<128)?ascii:unicode).add(key);
-        Comparator<String> longest=Comparator.comparingInt(String::length).reversed();ascii.sort(longest);unicode.sort(longest);
-        pattern=Pattern.compile("(```[\\s\\S]*?(?:```|$)|`[^`\\r\\n]*(?:`|$)|(?:https?://|www\\.|[a-z]:\\\\)\\S+)|((?<!\\S)(?:"+String.join("|",ascii.stream().map(Pattern::quote).collect(java.util.stream.Collectors.toList()))+")(?=$|\\s|[!?,.])|(?:"+String.join("|",unicode.stream().map(Pattern::quote).collect(java.util.stream.Collectors.toList()))+"))",Pattern.CASE_INSENSITIVE|Pattern.UNICODE_CASE);
+        for(String key:tokens.keySet()){TokenNode node=root;for(int i=0;i<key.length();i++)node=node.next.computeIfAbsent(key.charAt(i),ignored->new TokenNode());node.terminal=true;node.ascii=key.chars().allMatch(n->n<128);}
+    }
+    // Prefix lookup avoids testing thousands of regex alternatives at every ordinary letter.
+    private List<Hit> matches(CharSequence text){
+        List<Hit> hits=new ArrayList<>();Matcher literal=LITERAL.matcher(text);boolean hasLiteral=literal.find();
+        for(int i=0;i<text.length();){
+            if(hasLiteral&&i>=literal.start()){i=literal.end();hasLiteral=literal.find();continue;}
+            TokenNode node=root;int end=-1;
+            for(int j=i;j<text.length()&&(!hasLiteral||j<literal.start());j++){
+                node=node.next.get(Character.toLowerCase(text.charAt(j)));if(node==null)break;
+                if(node.terminal&&(!node.ascii||((i==0||Character.isWhitespace(text.charAt(i-1)))&&(j+1==text.length()||Character.isWhitespace(text.charAt(j+1))||"!?,.".indexOf(text.charAt(j+1))>=0))))end=j+1;
+            }
+            if(end>i){hits.add(new Hit(i,end,text.subSequence(i,end).toString()));i=end;}else i++;
+        }return hits;
     }
     String replace(String text,boolean trailing){
-        Matcher matcher=pattern.matcher(text);StringBuffer result=new StringBuffer();while(matcher.find()){
-            String replacement=matcher.group(2)==null?matcher.group():replacements.getOrDefault(matcher.group().toLowerCase(Locale.ROOT),matcher.group());
-            if(!trailing&&matcher.end()==text.length())replacement=matcher.group();matcher.appendReplacement(result,Matcher.quoteReplacement(replacement));
-        }matcher.appendTail(result);return result.toString();
+        StringBuilder result=new StringBuilder();int last=0;for(Hit hit:matches(text)){
+            result.append(text,last,hit.start());result.append(!trailing&&hit.end()==text.length()?hit.text():replacements.getOrDefault(hit.text().toLowerCase(Locale.ROOT),hit.text()));last=hit.end();
+        }return result.append(text,last,text.length()).toString();
     }
     Drawable image(Entry item,int size){
         try{
@@ -58,12 +71,12 @@ final class EmojiCatalog {
     }
     private void apply(Spannable text,int size){
         for(ImageSpan span:text.getSpans(0,text.length(),ImageSpan.class))text.removeSpan(span);
-        Matcher matcher=pattern.matcher(text);while(matcher.find())if(matcher.group(2)!=null){Entry item=tokens.get(matcher.group().toLowerCase(Locale.ROOT));if(item==null)continue;Drawable picture=image(item,size);if(picture!=null)text.setSpan(new ImageSpan(picture,ImageSpan.ALIGN_BOTTOM),matcher.start(),matcher.end(),Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}
+        for(Hit hit:matches(text)){Entry item=tokens.get(hit.text().toLowerCase(Locale.ROOT));if(item==null)continue;Drawable picture=image(item,size);if(picture!=null)text.setSpan(new ImageSpan(picture,ImageSpan.ALIGN_BOTTOM),hit.start(),hit.end(),Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}
     }
     void watch(EditText editor){editor.addTextChangedListener(new TextWatcher(){boolean updating;
         public void beforeTextChanged(CharSequence s,int start,int count,int after){}
         public void onTextChanged(CharSequence s,int start,int before,int count){}
-        public void afterTextChanged(Editable value){if(updating||BaseInputConnection.getComposingSpanStart(value)>=0)return;updating=true;try{Matcher matcher=pattern.matcher(value);List<int[]> edits=new ArrayList<>();List<String> values=new ArrayList<>();while(matcher.find())if(matcher.group(2)!=null&&matcher.end()<value.length()){String replacement=replacements.get(matcher.group().toLowerCase(Locale.ROOT));if(replacement!=null&&!replacement.equals(matcher.group())){edits.add(new int[]{matcher.start(),matcher.end()});values.add(replacement);}}for(int i=edits.size()-1;i>=0;i--)value.replace(edits.get(i)[0],edits.get(i)[1],values.get(i));apply(value,(int)(editor.getTextSize()*1.45f));}finally{updating=false;}}
+        public void afterTextChanged(Editable value){if(updating||BaseInputConnection.getComposingSpanStart(value)>=0)return;updating=true;try{List<Hit> hits=matches(value);for(int i=hits.size()-1;i>=0;i--){Hit hit=hits.get(i);String replacement=replacements.get(hit.text().toLowerCase(Locale.ROOT));if(hit.end()<value.length()&&replacement!=null&&!replacement.equals(hit.text()))value.replace(hit.start(),hit.end(),replacement);}apply(value,(int)(editor.getTextSize()*1.45f));}finally{updating=false;}}
     });}
     void picker(EditText editor){
         Context activity=editor.getContext();float density=activity.getResources().getDisplayMetrics().density;
