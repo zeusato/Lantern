@@ -44,7 +44,7 @@ public class PcFlowTest {
                 onView(withText("Kiểm tra lại")).perform(inspectClick());
                 waitText(pc,"QA inspection error");
                 onView(withText("Kiểm tra lại")).check(matches(isEnabled())).perform(inspectClick());
-                pc.moveToState(androidx.lifecycle.Lifecycle.State.STARTED);Thread.sleep(1700);pc.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+                pc.moveToState(androidx.lifecycle.Lifecycle.State.CREATED);Thread.sleep(1700);pc.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
                 waitText(pc,"Thao tác đã dừng khi rời màn hình");
                 onView(withText("Kiểm tra lại")).check(matches(isEnabled())).perform(inspectClick());
                 waitText(pc,"Claude · Đang làm việc");
