@@ -9,6 +9,7 @@ internal sealed partial class UiHarness
 {
     private async Task RunNetworkBackupUi(string? output)
     {
+        using var watchdog = new System.Threading.Timer(_ => { Console.Error.WriteLine("Network/backup UI fixture timed out."); Environment.Exit(1); }, null, TimeSpan.FromMinutes(2), System.Threading.Timeout.InfiniteTimeSpan);
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         var root = Path.GetFullPath(output ?? Path.Combine(Path.GetTempPath(), "Lantern-network-ui-" + Guid.NewGuid().ToString("N"))); Directory.CreateDirectory(root);
         var workspace = Path.Combine(root, "workspace");
@@ -24,8 +25,27 @@ internal sealed partial class UiHarness
             Check(((ColumnDefinition)window.FindName("DetailsColumn")).Width.Value == 0, "Details sidebar starts hidden on a wide window");
             var contacts = (ListBox)window.FindName("ContactsList"); contacts.SelectedIndex = 0;
             Check(((ColumnDefinition)window.FindName("DetailsColumn")).Width.Value == 0, "Selecting a conversation keeps details hidden");
-            Call(window, "DetailsClick", window, new RoutedEventArgs());
-            Check(((ColumnDefinition)window.FindName("DetailsColumn")).Width.Value > 0, "Information button explicitly opens details");
+            void CheckDetailsOpen()
+            {
+                if (window.ActualWidth >= 1150)
+                {
+                    Call(window, "DetailsClick", window, new RoutedEventArgs());
+                    Check(((ColumnDefinition)window.FindName("DetailsColumn")).Width.Value > 0, "Information button explicitly opens details");
+                    return;
+                }
+                // Hosted runners can constrain even a requested 1300px window to
+                // a smaller desktop. The compact information view is modal.
+                bool opened = false;
+                _ = Dispatcher.InvokeAsync(() =>
+                {
+                    var dialog = window.OwnedWindows.Cast<Window>().Single(w => w.Title == "Thông tin hội thoại");
+                    opened = dialog.IsVisible; dialog.Close();
+                });
+                Call(window, "DetailsClick", window, new RoutedEventArgs());
+                Check(opened, "Information button opens and closes the compact details dialog");
+            }
+            CheckDetailsOpen();
+            window.Width = 900; window.UpdateLayout(); CheckDetailsOpen();
             contacts.SelectedIndex = 1;
             Check(((ColumnDefinition)window.FindName("DetailsColumn")).Width.Value == 0, "Switching conversations closes details again");
             Check(Visuals<Button>(window).Any(b => System.Windows.Automation.AutomationProperties.GetName(b) == "Sao chép IP của tôi"), "Copy IP button is present beside manual connection");
