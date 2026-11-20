@@ -15,6 +15,8 @@ Bản phát hành tự chứa .NET runtime. Không cần cài SDK, Visual Studio
 
 ## Chức năng
 
+- **Game đối kháng trên PC**: bấm 🎮 trong chat riêng để mời chơi Caro, Bắn tàu hoặc Nối chữ. Khi chấp nhận, chat bên trái và game bên phải chia đều 1/1. Ván được lưu và tiếp tục sau mất kết nối; có xin hòa, đầu hàng và tái đấu. Android không hỗ trợ game và không nhận dữ liệu bàn chơi theo lượt. Xem [luật chơi và cách dùng](docs/CHAT-GAMES.md).
+
 - **Xưởng chế tác sticker trên PC**: mở bằng nút sticker cạnh emoji hoặc trong Hồ sơ và cài đặt. Nhập nhiều PNG/GIF, đặt tên bộ và từng sticker; tìm kiếm không dấu, dùng gần đây, đổi tên/xóa/đổi thứ tự sticker. Tạo PNG trong suốt bằng vùng chọn chữ nhật hoặc vẽ tự do, xóa nền đơn sắc và thêm viền trắng. Gửi sticker động trong chat riêng/nhóm; xuất, gửi và nhập cả bộ qua tệp `.lanternstickers`. Thư viện đóng gói có 260 bộ/1.993 sticker lấy từ cache Zalo trên máy nguồn, gồm 1.404 ảnh động; các bộ chỉ có ảnh xem trước trong cache có thể chưa đầy đủ. Xem [chi tiết sticker](docs/STICKERS.md).
 
 - Soạn thảo PC có thanh công cụ ngang; bấm **A✎** hoặc **Ctrl+Shift+X** để mở thanh định dạng phía dưới: đậm, nghiêng, gạch chân/ngang, cỡ/màu chữ, danh sách, thụt lề, hoàn tác/làm lại. Nút mở rộng tăng vùng nhập; ẩn thanh công cụ vẫn giữ định dạng. Rich text được giữ trong nháp theo hội thoại, lịch sử, gửi/nhận và chuyển tiếp trên PC; thiết bị chưa hỗ trợ vẫn đọc phần chữ thuần.

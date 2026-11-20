@@ -20,7 +20,6 @@ public final class ConnectionService extends Service {
     static volatile String problem="";
     static volatile boolean connected;
     static volatile JSONArray conversations=new JSONArray(),messages=new JSONArray();
-    static final Map<String,JSONObject> games=new ConcurrentHashMap<>();
     record ReadState(String conversation,Set<String> ids){}
     static volatile ReadState displayed=new ReadState("",Collections.emptySet());
     static final ConcurrentHashMap<String,File> images=new ConcurrentHashMap<>();
@@ -63,7 +62,7 @@ public final class ConnectionService extends Service {
     }
     void lockAccount(){
         visible=false;displayed=new ReadState("",Collections.emptySet());
-        synchronized(stateGate){conversations=new JSONArray();messages=new JSONArray();games.clear();clearMedia();}
+        synchronized(stateGate){conversations=new JSONArray();messages=new JSONArray();clearMedia();}
         PcConnection active=pc;if(active!=null)active.close();notifyUi();
     }
     private void notifyUi(){ui.post(()->{if(changed!=null)changed.run();});}
@@ -84,7 +83,7 @@ public final class ConnectionService extends Service {
                 status="Đang nối với PC…";notifyUi(); pc=new PcConnection(config,value->{if(!stopping){status=value;notifyUi();}});if(stopping){pc.close();break;}
                 config.put("nonce","");DeviceKeys.save(this,config);account=config.optString("name","Lantern");connected=true;problem="";status="Đã kết nối qua "+pc.transport()+" · "+account;lastSerial=0;lastSync=0;lastRead="";
                 PcConnection active=pc;active.onPush=response->{if(stopping||pc!=active||!connected||!AppSession.unlocked())return;try{applySync(response.optString("conversation"),response);}catch(Exception ignored){active.close();}};notifyUi();
-                active.onDisconnect=()->{if(stopping||pc!=active)return;AppSession.invalidate();connected=false;problem="Kết nối bị gián đoạn";status="Đang kết nối lại · "+problem;synchronized(stateGate){conversations=new JSONArray();messages=new JSONArray();games.clear();clearMedia();}work.offer(new Work(connection->{},ignored->{},false));notifyUi();};
+                active.onDisconnect=()->{if(stopping||pc!=active)return;AppSession.invalidate();connected=false;problem="Kết nối bị gián đoạn";status="Đang kết nối lại · "+problem;synchronized(stateGate){conversations=new JSONArray();messages=new JSONArray();clearMedia();}work.offer(new Work(connection->{},ignored->{},false));notifyUi();};
                 long wait=0;
                 while(!stopping){
                     Work task=work.poll(wait,TimeUnit.MILLISECONDS);boolean requested=task!=null;if(task!=null)perform(task,pc);
@@ -93,7 +92,7 @@ public final class ConnectionService extends Service {
                     if(visible&&!selected.isEmpty()&&!selectedLocked())autoImage(selected);
                     wait=visible?350:1500;
                 }
-            }catch(Exception error){if(stopping)break;AppSession.invalidate();connected=false;problem=connectionError(error);status="Đang kết nối lại · "+problem;historyHashes.clear();conversations=new JSONArray();messages=new JSONArray();games.clear();clearMedia();notifyUi();}
+            }catch(Exception error){if(stopping)break;AppSession.invalidate();connected=false;problem=connectionError(error);status="Đang kết nối lại · "+problem;historyHashes.clear();conversations=new JSONArray();messages=new JSONArray();clearMedia();notifyUi();}
             finally{if(current==this)connected=false;PcConnection connection=pc;pc=null;if(connection!=null)connection.close();Work task;while((task=work.poll())!=null){Work dropped=task;ui.post(()->dropped.done.accept("Mất kết nối. Thao tác này chưa được gửi tới PC."));}}
             if(!stopping)try{Thread.sleep(1000);}catch(InterruptedException ignored){}
         }
@@ -116,14 +115,14 @@ public final class ConnectionService extends Service {
     private void applyContacts(JSONObject response){synchronized(stateGate){if(stopping)return;JSONArray contacts=response.optJSONArray("conversations");if(contacts!=null){
         Set<String> remaining=new HashSet<>();for(int i=0;i<contacts.length();i++){JSONObject c=contacts.optJSONObject(i);if(c!=null)remaining.add(c.optString("id"));}
         for(int i=0;i<conversations.length();i++){JSONObject c=conversations.optJSONObject(i);if(c==null)continue;String id=c.optString("id");if(remaining.contains(id))continue;
-            games.remove(id);JSONArray previous=snapshots.remove(id);if(previous==null&&cache!=null)previous=cache.messages(id);clearCachedFiles(previous);historyHashes.remove(id);
+            JSONArray previous=snapshots.remove(id);if(previous==null&&cache!=null)previous=cache.messages(id);clearCachedFiles(previous);historyHashes.remove(id);
             outbox.values().removeIf(m->id.equals(m.optString("conversationId")));try{persistOutbox();}catch(Exception ignored){}
             if(id.equals(selected)){messages=new JSONArray();clearMedia();}
             if(cache!=null)save(()->{try{cache.clearConversation(id);}catch(Exception ignored){}});
         }
-        for(int i=0;i<contacts.length();i++){JSONObject c=contacts.optJSONObject(i);if(c==null)continue;String id=c.optString("id");if(c.optBoolean("locked",true))games.remove(id);if(c.optLong("historyVersion")!=historyVersion(id)){
+        for(int i=0;i<contacts.length();i++){JSONObject c=contacts.optJSONObject(i);if(c==null)continue;String id=c.optString("id");if(c.optLong("historyVersion")!=historyVersion(id)){
             JSONArray previous=snapshots.get(id);if(previous==null&&cache!=null)previous=cache.messages(id);clearCachedFiles(previous);
-            games.remove(id);snapshots.put(id,new JSONArray());historyHashes.remove(id);if(id.equals(selected))clearMedia();
+            snapshots.put(id,new JSONArray());historyHashes.remove(id);if(id.equals(selected))clearMedia();
             if(cache!=null)save(()->{try{cache.clearConversation(id);}catch(Exception ignored){}});
         }}
         conversations=contacts;String signature=contacts.toString();if(cache!=null&&!signature.equals(savedContacts)){savedContacts=signature;save(()->{try{cache.saveConversations(contacts);}catch(Exception ignored){}});}
@@ -133,10 +132,10 @@ public final class ConnectionService extends Service {
         if(previous==null)return;Set<String> ids=new HashSet<>();for(int i=0;i<previous.length();i++){JSONObject m=previous.optJSONObject(i);if(m!=null&&m.optString("id").matches("[A-Fa-f0-9]{32,64}")){String id=m.optString("id");ids.add(id);new File(getCacheDir(),"preview-"+id).delete();}}
         File[] files=new File(getCacheDir(),"attachments").listFiles();if(files!=null)for(File file:files)for(String id:ids)if(file.getName().startsWith(id+"_")||file.getName().startsWith(id+".")){file.delete();break;}
     }
-    private void applySync(String conversation,JSONObject response)throws Exception{synchronized(stateGate){if(stopping||!AppSession.unlocked())return;if("app-locked".equals(response.optString("type"))){AppSession.invalidate();conversations=new JSONArray();messages=new JSONArray();games.clear();notifyUi();return;}long serial=response.optLong("serial");if(serial>0&&serial<=lastSerial)return;lastSerial=serial;applyContacts(response);if(!conversation.isEmpty()&&!response.optBoolean("locked",true)&&response.has("messages"))applyHistory(conversation,response);else restoreSelected();if(selectedLocked())clearMedia();}notifyUi();}
+    private void applySync(String conversation,JSONObject response)throws Exception{synchronized(stateGate){if(stopping||!AppSession.unlocked())return;if("app-locked".equals(response.optString("type"))){AppSession.invalidate();conversations=new JSONArray();messages=new JSONArray();notifyUi();return;}long serial=response.optLong("serial");if(serial>0&&serial<=lastSerial)return;lastSerial=serial;applyContacts(response);if(!conversation.isEmpty()&&!response.optBoolean("locked",true)&&response.has("messages"))applyHistory(conversation,response);else restoreSelected();if(selectedLocked())clearMedia();}notifyUi();}
     private void save(Runnable task){if(!stopping)try{disk.execute(task);}catch(RejectedExecutionException ignored){}}
     private void applyHistory(String conversation,JSONObject history)throws Exception{
-        synchronized(stateGate){if(stopping||!AppSession.unlocked())return;JSONObject game=history.optJSONObject("game");if(!"unchanged".equals(history.optString("type"))){if(game==null)games.remove(conversation);else games.put(conversation,game);}if(!"unchanged".equals(history.optString("type"))){JSONArray batch=history.getJSONArray("messages");snapshots.put(conversation,batch);historyHashes.put(conversation,history.optString("hash"));boolean reconciled=false;for(int i=0;i<batch.length();i++)if(outbox.remove(batch.getJSONObject(i).getString("id"))!=null)reconciled=true;persistMessages(conversation,batch);if(reconciled)persistOutbox();}if(selected.equals(conversation))restoreSelected();}
+        synchronized(stateGate){if(stopping)return;if(!"unchanged".equals(history.optString("type"))){JSONArray batch=history.getJSONArray("messages");snapshots.put(conversation,batch);historyHashes.put(conversation,history.optString("hash"));boolean reconciled=false;for(int i=0;i<batch.length();i++)if(outbox.remove(batch.getJSONObject(i).getString("id"))!=null)reconciled=true;persistMessages(conversation,batch);if(reconciled)persistOutbox();}if(selected.equals(conversation))restoreSelected();}
     }
     private void persistMessages(String conversation,JSONArray batch){if(cache!=null)save(()->{try{cache.saveMessages(conversation,batch);}catch(Exception ignored){}});}
     private JSONArray pendingSnapshot()throws Exception{JSONArray result=new JSONArray();for(JSONObject m:outbox.values())result.put(new JSONObject(m.toString()));return result;}
@@ -168,8 +167,7 @@ public final class ConnectionService extends Service {
     private static JSONObject checked(JSONObject response)throws Exception{if("error".equals(response.optString("type")))throw new RemoteError(response.optString("text","PC từ chối thao tác"));return response;}
     void submit(JSONObject request,Consumer<String> done){enqueue(connection->{
         JSONObject response=checked(connection.request(request));String type=request.optString("type"),conversation=request.optString("conversation");
-        if("unlock".equals(type)||"lock".equals(type)){synchronized(stateGate){if(stopping)return;long serial=response.optLong("serial");if(serial>0&&serial<lastSerial)return;lastSerial=Math.max(lastSerial,serial);JSONArray copy=new JSONArray(conversations.toString());for(int i=0;i<copy.length();i++)if(conversation.equals(copy.getJSONObject(i).optString("id")))copy.getJSONObject(i).put("locked","lock".equals(type));conversations=copy;if("unlock".equals(type)&&response.has("hash")&&!response.optString("hash").isEmpty())applyHistory(conversation,response);else{games.remove(conversation);if(conversation.equals(selected))clearMedia();restoreSelected();}}notifyUi();}
-        else if(type.startsWith("game-")){synchronized(stateGate){long serial=response.optLong("serial");if(serial>0&&serial<lastSerial)return;lastSerial=Math.max(lastSerial,serial);applyHistory(conversation,response);restoreSelected();}notifyUi();}
+        if("unlock".equals(type)||"lock".equals(type)){synchronized(stateGate){if(stopping)return;long serial=response.optLong("serial");if(serial>0&&serial<lastSerial)return;lastSerial=Math.max(lastSerial,serial);JSONArray copy=new JSONArray(conversations.toString());for(int i=0;i<copy.length();i++)if(conversation.equals(copy.getJSONObject(i).optString("id")))copy.getJSONObject(i).put("locked","lock".equals(type));conversations=copy;if("unlock".equals(type)&&response.has("hash")&&!response.optString("hash").isEmpty())applyHistory(conversation,response);else{if(conversation.equals(selected))clearMedia();restoreSelected();}}notifyUi();}
         else if(Set.of("conversation-rename","conversation-timer","delete-messages","clear-history").contains(type)){
             boolean deleting=type.equals("delete-messages")||type.equals("clear-history");
             if(deleting)synchronized(stateGate){Set<String> ids=new HashSet<>();JSONArray requested=request.optJSONArray("messageIds");if(requested!=null)for(int i=0;i<requested.length();i++)ids.add(requested.optString(i));outbox.values().removeIf(m->conversation.equals(m.optString("conversationId"))&&(type.equals("clear-history")||ids.contains(m.optString("id"))));persistOutbox();}
@@ -222,7 +220,7 @@ public final class ConnectionService extends Service {
     @Override public void onTaskRemoved(Intent rootIntent){AppSession.lock();stopSelf();super.onTaskRemoved(rootIntent);}
     public void onDestroy(){
         AppSession.invalidate();
-        synchronized(stateGate){stopping=true;connected=false;status="Đã ngắt kết nối · Lịch sử đã lưu trên máy";conversations=new JSONArray();messages=new JSONArray();games.clear();clearMedia();}
+        synchronized(stateGate){stopping=true;connected=false;status="Đã ngắt kết nối · Lịch sử đã lưu trên máy";conversations=new JSONArray();messages=new JSONArray();clearMedia();}
         PcConnection connection=pc;if(connection!=null)connection.close();if(worker!=null)worker.interrupt();
         // Publish service shutdown only after the protected view has been locked.
         if(current==this)current=null;notifyUi();disk.shutdown();commands.shutdown();super.onDestroy();

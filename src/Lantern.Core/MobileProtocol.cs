@@ -30,8 +30,6 @@ public sealed class MobilePacket
     public List<string> MessageIds { get; set; } = [];
     public List<string> Capabilities { get; set; } = [];
     public PcPacket? Pc { get; set; }
-    public GameView? Game { get; set; }
-    public int GameRevision { get; set; } = -1;
 }
 public sealed record MobileConversation(string Id, string Name, string Presence, int Unread, bool Locked, bool IsGroup, bool Protected = false, int DisappearSeconds = 0, long HistoryVersion = 0, string Alias = "", string OriginalName = "", bool CaptureProtected = false, bool ForwardAllowed = true);
 public static class MobileProtocol
@@ -40,9 +38,9 @@ public static class MobileProtocol
     public const int MaxFrame = 2 * 1024 * 1024;
     public const long MaxMobileFile = 100 * 1024 * 1024;
     public static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true, MaxDepth = 20 };
-    public static List<ChatMessage> BoundedHistory(IEnumerable<ChatMessage> messages, int additionalBytes = 0)
+    public static List<ChatMessage> BoundedHistory(IEnumerable<ChatMessage> messages)
     {
-        var result = new List<ChatMessage>(); int bytes = 4096 + additionalBytes;
+        var result = new List<ChatMessage>(); int bytes = 4096;
         foreach (var message in messages.Reverse())
         {
             message.FilePath = ""; message.Error = "";

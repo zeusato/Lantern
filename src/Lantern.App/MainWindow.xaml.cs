@@ -71,6 +71,7 @@ public partial class MainWindow : Window
         store = new LocalStore(App.DataDirectory, App.Vault); node = new PeerNode(identity, store) { AutoReceiveImages = true };
         InitializeMobile();
         node.Changed += QueueRefresh;
+        node.GamesChanged += QueueRefresh;
         node.MessageReceived += message => Dispatcher.BeginInvoke(() => NotifyMessage(message));
         node.Notice += message => Dispatcher.BeginInvoke(() => ShowToast(message));
         node.TransferProgress += update => Dispatcher.BeginInvoke(() =>

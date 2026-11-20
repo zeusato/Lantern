@@ -2,6 +2,7 @@ namespace Lantern.Core;
 
 public sealed partial class PeerNode
 {
+    public event Action? GamesChanged;
     private readonly SemaphoreSlim gameChanges = new(1, 1);
     public GameView? CurrentGame(string conversation, string? gameId = null)
     {
@@ -24,7 +25,7 @@ public sealed partial class PeerNode
             signed = SignedGameCommand.Sign(Identity, command); record = new() { State = GameRules.Apply(new(), signed), Events = [signed] }; PersistGame(record);
         }
         finally { gameChanges.Release(); }
-        Changed?.Invoke(); await SendGameEvent(conversation, signed); return record.State.Id;
+        GamesChanged?.Invoke(); await SendGameEvent(conversation, signed); return record.State.Id;
     }
     public async Task GameActionAsync(string id, string type, int cell = -1, string text = "", int[]? board = null, int? expectedRevision = null)
     {
@@ -60,7 +61,7 @@ public sealed partial class PeerNode
             PersistGame(record);
         }
         finally { gameChanges.Release(); }
-        Changed?.Invoke();
+        GamesChanged?.Invoke();
         if (host) await SendGameEvent(peer, signed); else await SendTo(peer, new WireMessage { Type = "game-request", Id = id, Data = Codec.Encode(signed) });
     }
     private void PersistGame(GameRecord record)
@@ -171,7 +172,7 @@ public sealed partial class PeerNode
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException) { throw new InvalidDataException("Sự kiện game không hợp lệ.", ex); }
         finally { gameChanges.Release(); }
-        if (changed) Changed?.Invoke();
+        if (changed) GamesChanged?.Invoke();
         foreach (var response in outgoing) await SendTo(peer, response);
         await DriveGame(wire.Id);
     }

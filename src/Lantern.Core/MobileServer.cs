@@ -348,25 +348,6 @@ public sealed class MobileServer : IAsyncDisposable
         }
         if (request.Type == "lock") { client.Unlocked.TryRemove(request.Conversation, out _); return reply; }
         ValidateConversation(client, request.Conversation);
-        if (request.Type is "game-invite" or "game-action")
-        {
-            if (request.Type == "game-invite")
-            {
-                var previous = node.CurrentGame(request.Conversation);
-                var starter = previous is { State.Finished: true } && previous.State.Kind == request.Name ? previous.State.Other(previous.State.Starter) : null;
-                reply.MessageId = await node.InviteGameAsync(request.Conversation, request.Name, starter);
-            }
-            else
-            {
-                var game = node.CurrentGame(request.Conversation, request.MessageId) ?? throw new ArgumentException("Ván không còn trong hội thoại này.");
-                if (request.GameRevision < 0 || request.Offset is < -1 or > 224 || request.Name is not ("accept" or "decline" or "cancel" or "move" or "shot" or "fleet" or "word" or "word-propose" or "word-approve" or "word-reject" or "resign" or "draw" or "draw-decline")) throw new ArgumentException("Thao tác game không hợp lệ.");
-                int[]? board = null;
-                if (request.Name == "fleet") { if (request.Data.Length > 500) throw new ArgumentException("Bàn tàu quá lớn."); board = Codec.Decode<int[]>(request.Data); GameFleet.Validate(board); }
-                var action = request.Name == "word" && !WordChain.Contains(request.Text) ? "word-propose" : request.Name;
-                await node.GameActionAsync(game.State.Id, action, (int)request.Offset, request.Text, board, request.GameRevision);
-            }
-            FillHistory(reply, ""); return reply;
-        }
         if (request.Type == "upload-start")
         {
             if (request.Size is < 0 or > MobileProtocol.MaxMobileFile || !Guid.TryParseExact(request.Id, "N", out _) || request.Hash.Length != 64 || !request.Hash.All(Uri.IsHexDigit)) throw new ArgumentException("Tệp không hợp lệ hoặc vượt 100 MB.");
@@ -433,9 +414,8 @@ public sealed class MobileServer : IAsyncDisposable
             message.SenderAvatar = null;
             if (!message.Outgoing && authors.Add(message.SenderId)) message.SenderAvatar = node.FindPeer(message.SenderId)?.Avatar ?? "";
         }
-        reply.Game = node.CurrentGame(reply.Conversation);
-        reply.Messages = MobileProtocol.BoundedHistory(history, JsonSerializer.SerializeToUtf8Bytes(reply.Game, MobileProtocol.Json).Length);
-        reply.Hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { reply.Messages, reply.Game }, MobileProtocol.Json)));
+        reply.Messages = MobileProtocol.BoundedHistory(history);
+        reply.Hash = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(reply.Messages, MobileProtocol.Json)));
         if (reply.Hash == previousHash) { reply.Type = "unchanged"; reply.Messages = []; }
     }
     public async ValueTask DisposeAsync()

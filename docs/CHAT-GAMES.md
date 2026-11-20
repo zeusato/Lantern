@@ -1,12 +1,12 @@
 # Game trong chat riêng
 
-PC và Android companion hỗ trợ Caro, Bắn tàu và Nối chữ. Hai PC cần bản hỗ trợ game (peer protocol 6); Android dùng kết nối với PC đã ghép đôi. Chưa triển khai Cờ lật hoặc Đoán mã.
+Game chỉ hỗ trợ trên PC: Caro, Bắn tàu và Nối chữ. Hai PC cần bản hỗ trợ game (peer protocol 6). Android không có bàn chơi, không nhận trạng thái game hoặc dữ liệu đội tàu. Chưa triển khai Cờ lật hoặc Đoán mã.
 
 ## Trải nghiệm
 
 - Bấm 🎮 trong chat riêng, chọn game và gửi lời mời. Mỗi hội thoại có tối đa một lời mời hoặc ván đang chơi.
 - Chấp nhận lời mời mới chia vùng hội thoại thành hai cột bằng nhau: chat bên trái, game bên phải. Thanh thông tin ẩn; vẫn gửi tin và tệp bình thường.
-- Thu gọn bàn chơi khôi phục chiều rộng chat; mở lại bằng 🎮. Đổi hội thoại không hủy ván. Trên Android, bàn cờ có kéo ngang và phóng to; xoay ngang có thêm không gian.
+- Thu gọn bàn chơi khôi phục chiều rộng chat; mở lại bằng 🎮. Đổi hội thoại không hủy ván.
 - Có đầu hàng, đề nghị hòa, từ chối hòa và tái đấu đổi người đi trước. Các ván không giới hạn thời gian lượt.
 - Khi mất kết nối, ván được lưu. Lượt đang gửi chờ xác nhận và được gửi lại sau kết nối; không tính thua vì mất mạng.
 
@@ -22,11 +22,10 @@ PC và Android companion hỗ trợ Caro, Bắn tàu và Nối chữ. Hai PC c�
 
 Người mời điều phối thứ tự sự kiện. Mỗi sự kiện có chữ ký của người thực hiện, số phiên bản và hash sự kiện trước; cả hai PC kiểm tra luật. Lượt trùng không được áp dụng lại. Bắn tàu dùng cam kết SHA-256 cho từng ô với salt ngẫu nhiên; chỉ công bố bằng chứng ô đã bắn, toàn bộ đội tàu được kiểm chứng cuối ván.
 
-SQLite lưu lịch sử sự kiện, lượt chờ và đội tàu riêng trong dữ liệu được mã hóa bằng vault. Export/import workspace đã bao gồm dữ liệu này. Xóa thẻ game cũng xóa dữ liệu ván cục bộ; tombstone ngăn đồng bộ làm sống lại ván. Hội thoại khóa che bàn chơi trên cả PC và điện thoại. Android nhận trạng thái và đội tàu của chính mình; không nhận salt riêng hoặc vị trí tàu chưa bắn của đối thủ.
+SQLite lưu lịch sử sự kiện, lượt chờ và đội tàu riêng trong dữ liệu được mã hóa bằng vault. Export/import workspace đã bao gồm dữ liệu này. Xóa thẻ game cũng xóa dữ liệu ván cục bộ; tombstone ngăn đồng bộ làm sống lại ván. Hội thoại khóa che bàn chơi trên PC. Sự kiện game dùng kênh thông báo riêng trong ứng dụng, không kích hoạt push đồng bộ chat tới điện thoại theo từng lượt. Android chỉ có thể thấy dòng lời mời dạng tin nhắn thông thường trong lịch sử chat.
 
 ## Kiểm thử
 
 - `dotnet run --project tests/Lantern.Tests -- --games-only`: hai PC TLS thật, luật ba game, ký sự kiện, ẩn đội tàu, trận hoàn chỉnh, lưu/khôi phục và gửi lại sau mất kết nối.
-- `dotnet run --project tests/Lantern.Tests -- --mobile-only`: game qua giao thức companion, kiểm tra revision, khóa hội thoại và dữ liệu đội tàu.
+- `dotnet run --project tests/Lantern.Tests -- --mobile-only`: xác nhận lượt game PC không làm đổi dữ liệu lịch sử điện thoại, không có trạng thái game và không chấp nhận thao tác game từ điện thoại.
 - `dotnet run --project tests/Lantern.UiTests -- --games`: tỷ lệ 1/1, chat đồng thời, đổi hội thoại, thu gọn, khóa và ảnh ba game.
-- Android instrumentation `ChatGamesTest`: chia đôi, giữ bản nháp khi dựng lại Activity, bàn tàu/phóng to và khóa.
