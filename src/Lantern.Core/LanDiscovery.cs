@@ -33,6 +33,35 @@ internal sealed record LanInterface(IPAddress Address, int PrefixLength)
 
 internal static class LanDiscovery
 {
+    public static IPAddress[] ParseRanges(string ranges, IEnumerable<IPAddress> localAddresses)
+    {
+        var local = localAddresses.ToHashSet(); var result = new HashSet<IPAddress>();
+        foreach (var part in ranges.Split([' ', ',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pieces = part.Split('/');
+            if (pieces.Length == 1)
+            {
+                var octets = part.TrimEnd('.').Split('.');
+                if (octets.Length is 2 or 3 && octets.All(s => byte.TryParse(s, out _)))
+                    pieces = [string.Join(".", octets.Concat(Enumerable.Repeat("0", 4 - octets.Length))), (octets.Length * 8).ToString()];
+            }
+            if (pieces.Length > 2 || pieces[0].Split('.').Length != 4 || !IPAddress.TryParse(pieces[0], out var address) || address.AddressFamily != AddressFamily.InterNetwork ||
+                !int.TryParse(pieces.Length == 1 ? "32" : pieces[1], out var prefix) || prefix is < 16 or > 32)
+                throw new ArgumentException("Nhập tiền tố như 10.10 hoặc 10.10.14, IPv4 đầy đủ hoặc CIDR từ /16 đến /32. Tối đa 65.536 địa chỉ mỗi lượt.");
+            var host = BinaryPrimitives.ReadUInt32BigEndian(address.GetAddressBytes()); var mask = uint.MaxValue << (32 - prefix);
+            ulong first = host & mask, last = host | ~mask;
+            if (prefix < 31) { first++; last--; }
+            for (var value = first; value <= last; value++)
+            {
+                byte[] bytes = new byte[4]; BinaryPrimitives.WriteUInt32BigEndian(bytes, (uint)value); var ip = new IPAddress(bytes);
+                if (!PeerNode.IsLanAddress(ip) || IPAddress.IsLoopback(ip)) throw new ArgumentException("Chỉ quét địa chỉ IPv4 trong mạng LAN riêng.");
+                if (!local.Contains(ip)) result.Add(ip);
+                if (result.Count > 65536) throw new ArgumentException("Tối đa 65.536 địa chỉ mỗi lượt quét; hãy chia nhỏ dải mạng.");
+            }
+        }
+        if (result.Count == 0) throw new ArgumentException("Dải quét chưa có địa chỉ máy khác.");
+        return result.ToArray();
+    }
     public static LanInterface[] Interfaces()
     {
         var result = new List<LanInterface>();

@@ -66,8 +66,11 @@ final class EmojiCatalog {
         }catch(IOException e){return null;}
     }
     CharSequence render(String text,float textSize){
+        return render(text,textSize,true);
+    }
+    CharSequence render(String text,float textSize,boolean enlargeStandalone){
         List<Hit> hits=matches(text);if(hits.isEmpty())return text;
-        SpannableStringBuilder result=new SpannableStringBuilder(text);Entry alone=tokens.get(text.trim().toLowerCase(Locale.ROOT));int size=(int)(alone==null?textSize*1.45f:48*context.getResources().getDisplayMetrics().density);
+        SpannableStringBuilder result=new SpannableStringBuilder(text);Entry alone=tokens.get(text.trim().toLowerCase(Locale.ROOT));int size=(int)(!enlargeStandalone||alone==null?textSize*1.45f:48*context.getResources().getDisplayMetrics().density);
         for(Hit hit:hits){Entry item=tokens.get(hit.text().toLowerCase(Locale.ROOT));if(item==null)continue;Drawable picture=image(item,size);if(picture!=null)result.setSpan(new ImageSpan(picture,ImageSpan.ALIGN_BOTTOM),hit.start(),hit.end(),Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);}return result;
     }
     private void apply(Spannable text,int size){

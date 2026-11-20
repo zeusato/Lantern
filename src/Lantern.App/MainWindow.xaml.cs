@@ -42,7 +42,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, string> replyDrafts = [];
     private string selectedId = "";
     private string renderKey = "";
-    private bool refreshPending, refreshing, closing, detailsVisible = true;
+    private bool refreshPending, refreshing, closing, detailsVisible;
     private int messageLimit = 150;
     private bool markingRead;
     private bool replaceEmoticons;
@@ -550,7 +550,7 @@ public partial class MainWindow : Window
     {
         if (refreshing || ContactsList.SelectedItem is not ContactRow row) return;
         if (selectedId.Length > 0) drafts[selectedId] = Composer.Export();
-        if (selectedId != row.Id) { CloseMediaViews(); if (emojiPopup is not null) emojiPopup.IsOpen = false; }
+        if (selectedId != row.Id) { detailsVisible = false; UpdateLayoutWidths(); CloseMediaViews(); if (emojiPopup is not null) emojiPopup.IsOpen = false; }
         ClearStickerSuggestions(); selectedId = row.Id; RestoreComposerDraft(selectedId); MessageSearch.Clear(); messageLimit = 150; renderKey = ""; RefreshConversation(); ChatScroll.ScrollToEnd();
         if (ConversationProtected) TryUnlockConversation();
         MarkSelectedRead();
@@ -678,30 +678,14 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { ShowError(ex); }
     }
-    private bool discovering;
-    private async void DiscoverClick(object sender, RoutedEventArgs e)
-    {
-        if (ConversationProtected) { TryUnlockConversation(); return; }
-        if (discovering) { ShowToast("Đang tìm máy, vui lòng chờ một chút."); return; }
-        discovering = true;
-        try
-        {
-            ContactSearch.Clear(); ShowToast("Đang dò các máy trong LAN…");
-            var count = await node.DiscoverAsync(uiLifetime.Token); Refresh();
-            ShowToast(count > 0 ? $"Tìm thấy {count} máy đang hoạt động." : "Chưa tìm thấy máy. Máy bên kia cần mở khóa Lantern; nếu khác VLAN, hãy kết nối bằng IP.");
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { ShowError(ex); }
-        finally { discovering = false; }
-    }
     private void ChatsClick(object sender, RoutedEventArgs e) { ContactSearch.Clear(); ContactsList.Focus(); }
     private async void AddPeerClick(object sender, RoutedEventArgs e)
     {
         var panel = new StackPanel(); panel.Children.Add(Paragraph("Kết nối một máy trong LAN", 23, true)); panel.Children.Add(Paragraph("Xem IP và cổng ở thanh trạng thái Lantern trên máy bên kia.", muted: true));
-        var address = new TextBox { Text = "192.168.1.", MaxLength = 15 }; panel.Children.Add(Paragraph("Địa chỉ IP", bold: true)); panel.Children.Add(address);
+        var address = new TextBox { Text = "192.168.1.", MaxLength = 21 }; panel.Children.Add(Paragraph("Địa chỉ IP hoặc IP:cổng", bold: true)); panel.Children.Add(address);
         var port = new TextBox { Text = "45853", Margin = new Thickness(0, 0, 0, 12), MaxLength = 5 }; panel.Children.Add(Paragraph("Cổng", bold: true)); panel.Children.Add(port);
         if (!ShowDialog("Thêm máy", panel, "Kết nối")) return;
-        try { ShowToast("Đang kết nối…"); await node.ConnectAsync(address.Text.Trim(), int.Parse(port.Text)); Refresh(); }
+        try { ShowToast("Đang kết nối…"); var parts = address.Text.Trim().Split(':'); if (parts.Length > 2) throw new ArgumentException("Nhập IPv4 hoặc IPv4:cổng."); await node.ConnectAsync(parts[0], int.Parse(parts.Length == 2 ? parts[1] : port.Text)); Refresh(); }
         catch (Exception ex) { ShowError(ex); }
     }
     private async void NewGroupClick(object sender, RoutedEventArgs e)
@@ -762,6 +746,8 @@ public partial class MainWindow : Window
         var workshop = new Button { Content = "Xưởng chế tác sticker", Margin = new Thickness(0, 0, 0, 12) }; workshop.Click += (_, _) => OpenStickerWorkshop(); panel.Children.Add(workshop);
         panel.Children.Add(Paragraph("Danh tính cố định", bold: true)); panel.Children.Add(new TextBox { Text = identity.Fingerprint, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, FontFamily = new FontFamily("Consolas"), FontSize = 12, Margin = new Thickness(0, 0, 0, 18) });
         var actions = new WrapPanel(); AddButton(actions, "Sao lưu danh tính", ExportIdentity); AddButton(actions, "Khôi phục danh tính", ImportIdentity); panel.Children.Add(actions);
+        var backup = new Button { Content = "Xuất toàn bộ dữ liệu để chuyển máy", Margin = new Thickness(0, 8, 0, 12) }; backup.Click += ExportWorkspaceClick; panel.Children.Add(backup);
+        panel.Children.Add(Paragraph("Xuất một file có mật khẩu gồm danh tính, lịch sử, danh bạ, nhóm, sticker và tệp đính kèm hiện có. Trên máy mới, chọn Khôi phục dữ liệu ở màn tạo workspace. Điện thoại cần ghép đôi lại.", 12, muted: true));
         panel.Children.Add(Paragraph("Nội dung lịch sử được mã hóa bằng khóa của mật khẩu ứng dụng. Tệp ảnh/video đã lưu chưa mã hóa riêng trên ổ đĩa. Mật khẩu hội thoại là lớp khóa xem cục bộ, không đặt mật khẩu ở máy người khác.", 12, muted: true));
         var changePassword = new Button { Content = "Đổi mật khẩu ứng dụng", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 12) }; changePassword.Click += (_, _) => ChangeAppPassword(); panel.Children.Add(changePassword);
         var folder = new Button { Content = "Mở thư mục dữ liệu", HorizontalAlignment = HorizontalAlignment.Left }; folder.Click += (_, _) => Process.Start(new ProcessStartInfo(App.DataDirectory) { UseShellExecute = true }); panel.Children.Add(folder);
@@ -1017,6 +1003,7 @@ public partial class MainWindow : Window
     }
     private async void WindowClosing(object? sender, CancelEventArgs e)
     {
+        if (exportingWorkspace || loginView?.IsRestoring == true) { e.Cancel = true; ShowToast("Đang sao lưu/khôi phục dữ liệu. Vui lòng chờ hoàn tất trước khi đóng ứng dụng."); return; }
         if (node is null) { closing = true; InAppDialog.CancelAll(this); updates.Dispose(); linkPreviews.Dispose(); uiLifetime.Dispose(); return; }
         if (closing) { e.Cancel = !closeReady; return; }
         if (!exitRequested && App.Settings.CloseToTray && tray is not null) { e.Cancel = true; HideToTray(); return; }

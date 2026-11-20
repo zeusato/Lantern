@@ -119,6 +119,31 @@ public sealed class WorkspaceVault : IDisposable
         var header = Codec.Decode<VaultHeader>(Codec.Encode(Header)); header.Salt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)); WrapKey(header, key, next); WriteHeader(directory, header); Header = header;
     }
     public string Seal(string plain) => "enc:v1:" + Convert.ToBase64String(Encrypt(key, Encoding.UTF8.GetBytes(plain), Encoding.UTF8.GetBytes(Header.WorkspaceId)));
+    internal string PortableHeader(string password)
+    {
+        lock (gate)
+        {
+            var header = new VaultHeader { WorkspaceId = Header.WorkspaceId, OwnerSid = "", OwnerProof = "", Salt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)) };
+            WrapKey(header, key, password); return Codec.Encode(header);
+        }
+    }
+    internal static WorkspaceVault RestorePortable(string directory, string json, string password)
+    {
+        var header = Codec.Decode<VaultHeader>(json);
+        if (header.Version != 1 || !Protocol.ValidId(header.WorkspaceId) || header.Iterations != 600000 || header.OwnerSid != "") throw new InvalidDataException("Khóa sao lưu không hợp lệ.");
+        var derived = Rfc2898DeriveBytes.Pbkdf2(password, Convert.FromBase64String(header.Salt), header.Iterations, HashAlgorithmName.SHA256, 32);
+        byte[] restored;
+        try { restored = Decrypt(derived, Convert.FromBase64String(header.WrappedKey), Encoding.UTF8.GetBytes(header.WorkspaceId)); }
+        finally { CryptographicOperations.ZeroMemory(derived); }
+        try
+        {
+            header.OwnerSid = WindowsIdentity.GetCurrent().User!.Value;
+            header.OwnerProof = Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(header.OwnerSid + ":" + header.WorkspaceId), null, DataProtectionScope.CurrentUser));
+            header.Salt = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)); WrapKey(header, restored, password); WriteHeader(directory, header);
+            return new WorkspaceVault(directory, header, restored);
+        }
+        catch { CryptographicOperations.ZeroMemory(restored); throw; }
+    }
     public string Unseal(string value)
     {
         if (!value.StartsWith("enc:v1:", StringComparison.Ordinal)) return value;

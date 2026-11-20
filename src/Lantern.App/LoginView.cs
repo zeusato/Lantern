@@ -15,6 +15,7 @@ public sealed class LoginView : UserControl
     private readonly bool allowReset;
     private int attempts;
     private bool busy;
+    public bool IsRestoring { get; private set; }
     private PasswordBox? passwordInput;
     public LoginView(string directory, bool allowReset = true)
     {
@@ -70,6 +71,30 @@ public sealed class LoginView : UserControl
             finally { busy = false; enter.IsEnabled = true; }
         };
         panel.Children.Add(enter);
+        if (creating && allowReset && WorkspaceBackup.CanRestore(directory))
+        {
+            var restore = new Button { Content = "Khôi phục dữ liệu từ máy cũ", Margin = new Thickness(0, 12, 0, 0) };
+            restore.Click += async (_, _) =>
+            {
+                if (busy) return;
+                var file = new Microsoft.Win32.OpenFileDialog { Filter = "Dữ liệu Lantern|*.lanternbackup" };
+                if (file.ShowDialog(Window.GetWindow(this)) != true) return;
+                var form = new StackPanel(); form.Children.Add(Text("Khôi phục dữ liệu", 22, true));
+                form.Children.Add(Text("Nhập mật khẩu file sao lưu. Mật khẩu này sẽ dùng để mở Lantern trên máy mới. Đóng Lantern trên máy cũ sau khi chuyển xong.", 13));
+                var secret = new PasswordBox { Padding = new Thickness(12), MaxLength = 256 }; form.Children.Add(secret);
+                if (!InAppDialog.Show(Window.GetWindow(this), "Khôi phục dữ liệu", form, "Khôi phục", () => secret.Password.Length >= 12, secret)) return;
+                busy = IsRestoring = true; enter.IsEnabled = restore.IsEnabled = false; error.Text = "Đang khôi phục dữ liệu…";
+                var backupPassword = secret.Password; secret.Clear();
+                try
+                {
+                    await Task.Run(() => WorkspaceBackup.Restore(file.FileName, backupPassword, directory));
+                    App.ReloadSettings(); Build();
+                }
+                catch (Exception ex) { error.Text = "Chưa khôi phục được. Kiểm tra mật khẩu và file sao lưu. " + ex.Message; }
+                finally { busy = IsRestoring = false; enter.IsEnabled = restore.IsEnabled = true; }
+            };
+            panel.Children.Add(restore);
+        }
         if (!creating && allowReset)
         {
             var forgot = new Button { Content = "Quên mật khẩu?", Background = Brushes.Transparent, BorderThickness = new Thickness(0), Margin = new Thickness(0, 10, 0, 0), HorizontalContentAlignment = HorizontalAlignment.Center };

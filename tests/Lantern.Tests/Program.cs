@@ -6,6 +6,11 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Lantern.Core;
 
+if (args.FirstOrDefault() == "--backup-only")
+{
+    BackupTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-backup-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
+}
+
 if (args.FirstOrDefault() == "--stickers-only")
 {
     await StickerTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-stickers-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
@@ -49,6 +54,7 @@ var root = args.FirstOrDefault() ?? Path.Combine(Path.GetTempPath(), "Lantern-te
 Directory.CreateDirectory(root);
 int passed = 0;
 void Check(bool condition, string name) { if (!condition) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); passed++; }
+BackupTests.Run(Path.Combine(root, "backup"), Check);
 var groupingTime = new DateTimeOffset(DateTime.Today.AddHours(10));
 ChatMessage GroupSample(int seconds, string sender = "alice", string conversation = "chat", bool outgoing = false) => new() { SenderId = sender, ConversationId = conversation, Time = groupingTime.AddSeconds(seconds), Outgoing = outgoing };
 Check(MessageGrouping.CanJoin(GroupSample(0), GroupSample(300)) && !MessageGrouping.CanJoin(GroupSample(0), GroupSample(301)), "Message groups include the five-minute boundary and split after it");

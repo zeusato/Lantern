@@ -10,6 +10,17 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class EmojiTest {
+    @Test public void reactionsUseInlineEmojiSize(){
+        EmojiCatalog catalog=EmojiCatalog.get(InstrumentationRegistry.getInstrumentation().getTargetContext());
+        Spanned inline=(Spanned)catalog.render("Hello ❤️",16);
+        int size=inline.getSpans(0,inline.length(),ImageSpan.class)[0].getDrawable().getBounds().height();
+        for(String value:new String[]{"❤️","❤️👍"}){
+            Spanned reaction=(Spanned)catalog.render(value,16,false);
+            for(ImageSpan span:reaction.getSpans(0,reaction.length(),ImageSpan.class))assertEquals(size,span.getDrawable().getBounds().height());
+        }
+        Spanned standalone=(Spanned)catalog.render("❤️",16);
+        assertTrue(standalone.getSpans(0,standalone.length(),ImageSpan.class)[0].getDrawable().getBounds().height()>size);
+    }
     @Test public void pcArtworkShortcodesAndCopyableSpans(){
         EmojiCatalog catalog=EmojiCatalog.get(InstrumentationRegistry.getInstrumentation().getTargetContext());
         assertTrue(catalog.entries.size()>1000);

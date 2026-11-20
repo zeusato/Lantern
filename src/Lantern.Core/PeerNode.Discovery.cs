@@ -120,38 +120,52 @@ public sealed partial class PeerNode
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException) { }
     }
 
-    public async Task<int> DiscoverAsync(CancellationToken ct = default)
+    public static string[] DiscoveryRanges() => LanDiscovery.Interfaces().Select(n => n.Address.GetAddressBytes()[0] == 10 ? string.Join(".", n.Address.GetAddressBytes().Take(2)) : $"{n.Address}/{Math.Max(n.PrefixLength, 22)}").Distinct().ToArray();
+    public Task<int> DiscoverAsync(CancellationToken ct = default) => DiscoverAsync(null, null, ct);
+    public async Task<int> DiscoverAsync(string? ranges, IProgress<DiscoveryProgress>? progress, CancellationToken ct = default)
     {
         if (!discoveryEnabled) return 0;
         await AnnounceAsync();
-        var targets = LanDiscovery.Targets(LanDiscovery.Interfaces());
+        var targets = string.IsNullOrWhiteSpace(ranges) ? LanDiscovery.Targets(LanDiscovery.Interfaces()) : LanDiscovery.ParseRanges(ranges, LanDiscovery.Interfaces().Select(n => n.Address));
+        // Search the machine's current /24 first, then visit the other /24s in order.
+        var nearby = LanDiscovery.Interfaces().Select(n => SubnetKey(n.Address)).ToHashSet();
+        targets = targets.OrderBy(a => nearby.Contains(SubnetKey(a)) ? 0 : 1).ToArray();
         var tcp = targets.Select(a => new IPEndPoint(a, 45853)).Concat(Peers.Where(p => !p.Blocked && p.Port > 0 && IPAddress.TryParse(p.Address, out var ip) && IsLanAddress(ip)).Select(p => new IPEndPoint(IPAddress.Parse(p.Address), p.Port))).Distinct().ToArray();
-        var search = DiscoverTargetsAsync(tcp, targets.Select(a => new IPEndPoint(a, DiscoveryPort)).ToArray(), ct);
+        var search = DiscoverTargetsAsync(tcp, targets.Select(a => new IPEndPoint(a, DiscoveryPort)).ToArray(), ct, progress);
         Track(search);
         return await search;
     }
 
-    internal async Task<int> DiscoverTargetsAsync(IReadOnlyList<IPEndPoint> tcpTargets, IReadOnlyList<IPEndPoint> udpTargets, CancellationToken ct)
+    internal async Task<int> DiscoverTargetsAsync(IReadOnlyList<IPEndPoint> tcpTargets, IReadOnlyList<IPEndPoint> udpTargets, CancellationToken ct, IProgress<DiscoveryProgress>? progress = null)
     {
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, ct);
         await discoverySearch.WaitAsync(cancel.Token);
         try
         {
-            cancel.CancelAfter(TimeSpan.FromSeconds(25));
             var started = DateTimeOffset.UtcNow;
-            var udp = ProbeUdpAsync(udpTargets, cancel.Token);
-            var tcp = Parallel.ForEachAsync(tcpTargets, new ParallelOptions { MaxDegreeOfParallelism = 32, CancellationToken = cancel.Token }, async (target, token) =>
+            int completed = 0;
+            var tcpGroups = tcpTargets.GroupBy(t => SubnetKey(t.Address)).ToDictionary(g => g.Key, g => g.ToArray());
+            var udpGroups = udpTargets.GroupBy(t => SubnetKey(t.Address)).ToDictionary(g => g.Key, g => g.ToArray());
+            foreach (var subnet in tcpGroups.Keys.Concat(udpGroups.Keys).Distinct())
             {
-                if (peers.Values.Any(p => p.Address == target.Address.ToString() && p.Port == target.Port && (p.Blocked || p.Connected || p.Seen >= started))) return;
-                await ProbeTcpAsync(target, token);
-            });
-            try { await Task.WhenAll(udp, tcp); }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested && !lifetime.IsCancellationRequested) { }
-            ct.ThrowIfCancellationRequested();
+                cancel.Token.ThrowIfCancellationRequested();
+                var range = subnet + ".0/24"; progress?.Report(new(completed, tcpTargets.Count, range));
+                var udp = ProbeUdpAsync(udpGroups.GetValueOrDefault(subnet) ?? [], cancel.Token);
+                var tcp = Parallel.ForEachAsync(tcpGroups.GetValueOrDefault(subnet) ?? [], new ParallelOptions { MaxDegreeOfParallelism = 64, CancellationToken = cancel.Token }, async (target, token) =>
+                {
+                    if (!peers.Values.Any(p => p.Address == target.Address.ToString() && p.Port == target.Port && (p.Blocked || p.Connected || p.Seen >= started))) await ProbeTcpAsync(target, token);
+                    var done = Interlocked.Increment(ref completed);
+                    if (done % 32 == 0 || done == tcpTargets.Count) progress?.Report(new(done, tcpTargets.Count, range));
+                });
+                await Task.WhenAll(udp, tcp);
+            }
+            cancel.Token.ThrowIfCancellationRequested();
             return peers.Values.Count(p => !p.Blocked && (p.Connected || p.Seen >= started));
         }
         finally { discoverySearch.Release(); }
     }
+
+    private static string SubnetKey(IPAddress address) => string.Join(".", address.GetAddressBytes().Take(3));
 
     private async Task ProbeUdpAsync(IReadOnlyList<IPEndPoint> targets, CancellationToken ct)
     {

@@ -44,6 +44,12 @@ public partial class App : Application
         File.WriteAllText(file + ".tmp", Codec.Encode(Settings)); File.Move(file + ".tmp", file, true);
     }
     public static void ResetSettings() => Settings = new AppSettings { Name = Environment.UserName };
+    internal static void ReloadSettings()
+    {
+        var path = Path.Combine(DataDirectory, "settings.json");
+        if (File.Exists(path)) Settings = Codec.Decode<AppSettings>(File.ReadAllText(path));
+        ApplyTheme(Settings.Theme);
+    }
     internal static void SetUnlockedVault(WorkspaceVault vault) => Vault = vault;
     public static void ApplyTheme(string mode)
     {
