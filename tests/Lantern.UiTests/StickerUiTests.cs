@@ -75,7 +75,7 @@ internal sealed partial class UiHarness
             // A loaded/unloaded route must release the animation timer and cached frames.
             animatedImage.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent)); animatedImage.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
             Check(!Field<DispatcherTimer>(animatedImage, "timer").IsEnabled, "Unloading a sticker stops its animation timer");
-            Call(window, "Refresh"); var contacts = (ListBox)window.FindName("ContactsList"); contacts.SelectedItem = contacts.Items.OfType<ContactRow>().First(c => c.Id == peer);
+            Call(window, "ShowContact", peer);
             var composer = (RichComposer)window.FindName("Composer"); composer.Text = "chúc ngủ ngon";
             await Until(() => ((Panel)window.FindName("StickerSuggestions")).Children.Count >= 3, "Composer sticker suggestions");
             Check(((ScrollViewer)window.FindName("StickerSuggestionBar")).Visibility == Visibility.Visible, "Typing a phrase opens the inline sticker row");

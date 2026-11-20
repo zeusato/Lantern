@@ -71,7 +71,7 @@ public partial class MainWindow : Window
         store = new LocalStore(App.DataDirectory, App.Vault); node = new PeerNode(identity, store) { AutoReceiveImages = true };
         InitializeMobile();
         node.Changed += QueueRefresh;
-        node.GamesChanged += QueueRefresh;
+        node.GamesChanged += QueueGameRefresh;
         node.MessageReceived += message => Dispatcher.BeginInvoke(() => NotifyMessage(message));
         node.Notice += message => Dispatcher.BeginInvoke(() => ShowToast(message));
         node.TransferProgress += update => Dispatcher.BeginInvoke(() =>
@@ -125,7 +125,7 @@ public partial class MainWindow : Window
             Title = $"Lantern · {identity.Name}";
             tray = new TrayIcon(() => Dispatcher.BeginInvoke(RestoreFromTray), () => Dispatcher.BeginInvoke(LockApp), () => Dispatcher.BeginInvoke(ExitApplication), id => Dispatcher.BeginInvoke(() => OpenNotification(id)));
             Refresh();
-            if (App.Settings.AutoUpdates && !App.TestMode) _ = updates.CheckAsync(uiLifetime.Token);
+            if (!App.TestMode) { await updates.RestoreAsync(uiLifetime.Token); if (updates.DownloadedArchive is not null) { UpdateButton.ToolTip = updates.Status; UpdateButton.SetResourceReference(Control.BackgroundProperty, "AccentSoftBrush"); } if (App.Settings.AutoUpdates) _ = updates.CheckAsync(uiLifetime.Token); }
         }
         catch (Exception ex) { ShowError(ex); }
     }
@@ -168,7 +168,7 @@ public partial class MainWindow : Window
         RestoreFromTray();
         if (appLocking || !IsEnabled) return;
         if (id.Length == 0) { UpdatesClick(this, new RoutedEventArgs()); return; }
-        ContactSearch.Clear(); Refresh(); ContactsList.SelectedItem = ContactsList.Items.OfType<ContactRow>().FirstOrDefault(row => row.Id == id);
+        ShowContact(id);
     }
     private static string Initials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).TakeLast(2).Select(x => char.ToUpperInvariant(x[0])));
     private static string FormatBytes(long bytes) => bytes < 1024 ? $"{bytes} B" : bytes < 1024 * 1024 ? $"{bytes / 1024d:0.#} KB" : bytes < 1024L * 1024 * 1024 ? $"{bytes / (1024d * 1024):0.#} MB" : $"{bytes / (1024d * 1024 * 1024):0.##} GB";
@@ -193,16 +193,21 @@ public partial class MainWindow : Window
         refreshing = true;
         var unreadCounts = store.UnreadCounts();
         var query = ContactSearch.Text.Trim();
-        var rows = node.Peers.Where(p => !p.Blocked).Select(p => new ContactRow(p.Id, p.DisplayName, p.Initials, !p.Trusted ? p.Connected ? "Chờ xác minh" : "Máy trong LAN" : p.Connected ? "Đang online" : "Offline · Tin nhắn sẽ chờ gửi", false)).Concat(store.Groups().Select(g => new ContactRow(g.Id, g.Name, "#", $"Nhóm · {g.Members.Count} thành viên", true, Avatar: g.Avatar))).Where(r => r.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)).ToList();
-        rows = rows.Select(row => { var peer = node.FindPeer(row.Id); var presence = peer is { Connected: true } ? peer.Presence : "offline"; var result = row with { Unread = unreadCounts.GetValueOrDefault(row.Id), Presence = presence, Avatar = peer?.Avatar ?? row.Avatar }; return peer is null || !peer.Trusted ? result : result with { Subtitle = result.PresenceLabel }; }).ToList();
         var preferences = store.Preferences().ToDictionary(p => p.Id); var activity = store.ConversationActivity(); var groups = store.Groups().ToDictionary(g => g.Id);
+        bool chats = contactSection == "chats";
+        var rows = node.Peers.Where(p => !p.Blocked && (chats ? activity.ContainsKey(p.Id) : contactSection == "friends" ? p.Trusted : !p.Trusted))
+            .Where(p => p.DisplayName.Contains(query, StringComparison.CurrentCultureIgnoreCase) || !chats && $"{p.Address}:{p.Port}".Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Select(p => new ContactRow(p.Id, p.DisplayName, p.Initials, "", false, unreadCounts.GetValueOrDefault(p.Id), p.Connected ? p.Presence : "offline", p.Avatar))
+            .Select(row => { var peer = node.FindPeer(row.Id)!; return row with { Subtitle = chats ? peer.Trusted ? row.PresenceLabel : "Chờ xác minh" : $"{peer.Address}:{peer.Port} · {(peer.Trusted ? row.PresenceLabel : "Chưa xác minh")}" }; }).ToList();
+        if (chats) rows.AddRange(groups.Values.Where(g => g.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase)).Select(g => new ContactRow(g.Id, g.Name, "#", $"Nhóm · {g.Members.Count} thành viên", true, unreadCounts.GetValueOrDefault(g.Id), Avatar: g.Avatar)));
         bool Online(ContactRow row) => row.IsGroup ? groups.TryGetValue(row.Id, out var g) && g.Members.Contains(identity.Id) && g.Members.Any(id => id != identity.Id && node.IsConnected(id)) : node.IsConnected(row.Id);
-        rows = rows.Where(row => preferences.GetValueOrDefault(row.Id)?.Hidden != true).OrderByDescending(Online)
+        rows = chats ? rows.Where(row => preferences.GetValueOrDefault(row.Id)?.Hidden != true).OrderByDescending(Online)
             .ThenByDescending(row => preferences.GetValueOrDefault(row.Id)?.Pinned == true).ThenByDescending(row => activity.GetValueOrDefault(row.Id)).ThenBy(row => row.Name)
-            .Select(row => row with { Subtitle = (preferences.GetValueOrDefault(row.Id)?.Pinned == true ? "📌 · " : "") + (row.IsGroup && !groups[row.Id].Members.Contains(identity.Id) ? "Đã rời nhóm · Chỉ đọc" : row.Subtitle) + (preferences.GetValueOrDefault(row.Id) is { Category.Length: > 0 } p ? " · " + p.Category : "") }).ToList();
+            .Select(row => row with { Subtitle = (preferences.GetValueOrDefault(row.Id)?.Pinned == true ? "📌 · " : "") + (row.IsGroup && !groups[row.Id].Members.Contains(identity.Id) ? "Đã rời nhóm · Chỉ đọc" : row.Subtitle) + (preferences.GetValueOrDefault(row.Id) is { Category.Length: > 0 } p ? " · " + p.Category : "") }).ToList()
+            : rows.OrderByDescending(Online).ThenBy(row => row.Name).ToList();
         ContactsList.ItemsSource = rows; ContactsList.SelectedItem = rows.Find(r => r.Id == selectedId);
         NoContacts.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        OnlineCount.Text = $"{node.Peers.Count(p => p.Connected && !p.Blocked)} online";
+        RefreshDirectoryHeader(rows.Count(Online));
         refreshing = false;
         RefreshConversation();
         MarkSelectedRead();
@@ -271,11 +276,11 @@ public partial class MainWindow : Window
         {
             Composer.Clear(); MessageSearch.Clear(); ClearSharedContent(); RefreshSharedButton.IsEnabled = false;
             Composer.IsEnabled = false; SendButton.IsEnabled = false; AttachButton.IsEnabled = false; PairBanner.Visibility = Visibility.Collapsed;
-            foreach (var player in players) player.Close(); players.Clear(); MessagesPanel.Children.Clear(); expiryLabels.Clear(); progress.Clear();
+            foreach (var player in players) player.Close(); players.Clear(); gameCards.Clear(); MessagesPanel.Children.Clear(); expiryLabels.Clear(); progress.Clear();
             WelcomePanel.Visibility = Visibility.Visible; WelcomeTitle.Text = "Cuộc trò chuyện\nđang được khóa."; WelcomeBody.Text = "Nhập mật khẩu riêng để xem nội dung\nvà tệp đã chia sẻ trong cuộc trò chuyện này."; WelcomeAction.Content = "Mở khóa hội thoại"; WelcomeAction.Visibility = Visibility.Visible; NoFiles.Visibility = Visibility.Collapsed; renderKey = "locked:" + selectedId; return;
         }
         if (!UpdateCaptureProtection()) { HideGamePanel(); return; }
-        RefreshGamePanel(false);
+        RefreshGamePanel(false); RefreshGameCards();
         RefreshPinnedMessages();
         WelcomeAction.Content = "Tìm người trong LAN";
         var messages = hasChat ? store.Messages(selectedId, MessageSearch.Text, messageLimit) : [];
@@ -292,7 +297,7 @@ public partial class MainWindow : Window
         renderKey = key; hasTimedPolls = false;
         var shouldScroll = ChatScroll.ScrollableHeight - ChatScroll.VerticalOffset < 80;
         foreach (var player in players) player.Close(); players.Clear();
-        MessagesPanel.Children.Clear(); expiryLabels.Clear(); progress.Clear();
+        gameCards.Clear(); MessagesPanel.Children.Clear(); expiryLabels.Clear(); progress.Clear();
         if (messages.Count >= messageLimit)
         {
             var more = new Button { Content = "Xem tin nhắn trước đó", HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 18) };
@@ -363,7 +368,7 @@ public partial class MainWindow : Window
             content.Children.Add(Paragraph("👤 " + (node.FindPeer(card.Id)?.DisplayName ?? card.Name), 16, true));
             content.Children.Add(Paragraph($"Danh tính: {card.Id[..12]}…", 11, muted: true));
             var connect = new Button { Content = "Kết nối với liên hệ", HorizontalAlignment = HorizontalAlignment.Left };
-            connect.Click += async (_, _) => { try { if (card.Id == identity.Id) { ShowToast("Đây là liên hệ của bạn."); return; } await node.ConnectAsync(card.Address, card.Port, card.Id); ContactSearch.Clear(); Refresh(); ContactsList.SelectedItem = ContactsList.Items.OfType<ContactRow>().FirstOrDefault(r => r.Id == card.Id); ShowToast("Đối chiếu mã xác minh để tin cậy liên hệ mới."); } catch (Exception ex) { ShowError(ex); } }; content.Children.Add(connect);
+            connect.Click += async (_, _) => { try { if (card.Id == identity.Id) { ShowToast("Đây là liên hệ của bạn."); return; } await node.ConnectAsync(card.Address, card.Port, card.Id); ShowContact(card.Id); ShowToast("Đối chiếu mã xác minh để tin cậy liên hệ mới."); } catch (Exception ex) { ShowError(ex); } }; content.Children.Add(connect);
         }
         else if (msg.Kind == "text")
         {
@@ -678,18 +683,18 @@ public partial class MainWindow : Window
             var panel = new StackPanel(); panel.Children.Add(Paragraph("Xác minh " + peer.Name, 23, true));
             panel.Children.Add(Paragraph("Mở Xác minh trên cả hai máy và đối chiếu trực tiếp hoặc qua một kênh đã tin cậy. Chỉ xác nhận khi toàn bộ mã dưới đây giống nhau.", muted: true));
             var code = new TextBox { Text = Identity.VerificationCode(identity.Id, peer.Id), IsReadOnly = true, FontFamily = new FontFamily("Consolas"), FontSize = 19, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 20) }; panel.Children.Add(code);
-            if (ShowDialog("Ghép đôi an toàn", panel, "Mã giống nhau · Tin cậy máy này")) { await node.TrustAsync(peer.Id); ShowToast("Đã lưu danh tính. Máy bên kia cũng cần xác nhận mã."); Refresh(); }
+            if (ShowDialog("Ghép đôi an toàn", panel, "Mã giống nhau · Tin cậy máy này")) { await node.TrustAsync(peer.Id); ShowToast("Đã lưu danh tính. Máy bên kia cũng cần xác nhận mã."); ShowContact(peer.Id); }
         }
         catch (Exception ex) { ShowError(ex); }
     }
-    private void ChatsClick(object sender, RoutedEventArgs e) { ContactSearch.Clear(); ContactsList.Focus(); }
+    private void ChatsClick(object sender, RoutedEventArgs e) => SetContactSection("chats");
     private async void AddPeerClick(object sender, RoutedEventArgs e)
     {
         var panel = new StackPanel(); panel.Children.Add(Paragraph("Kết nối một máy trong LAN", 23, true)); panel.Children.Add(Paragraph("Xem IP và cổng ở thanh trạng thái Lantern trên máy bên kia.", muted: true));
         var address = new TextBox { Text = "192.168.1.", MaxLength = 21 }; panel.Children.Add(Paragraph("Địa chỉ IP hoặc IP:cổng", bold: true)); panel.Children.Add(address);
         var port = new TextBox { Text = "45853", Margin = new Thickness(0, 0, 0, 12), MaxLength = 5 }; panel.Children.Add(Paragraph("Cổng", bold: true)); panel.Children.Add(port);
         if (!ShowDialog("Thêm máy", panel, "Kết nối")) return;
-        try { ShowToast("Đang kết nối…"); var parts = address.Text.Trim().Split(':'); if (parts.Length > 2) throw new ArgumentException("Nhập IPv4 hoặc IPv4:cổng."); await node.ConnectAsync(parts[0], int.Parse(parts.Length == 2 ? parts[1] : port.Text)); Refresh(); }
+        try { ShowToast("Đang kết nối…"); var parts = address.Text.Trim().Split(':'); if (parts.Length > 2) throw new ArgumentException("Nhập IPv4 hoặc IPv4:cổng."); var endpointPort = int.Parse(parts.Length == 2 ? parts[1] : port.Text); await node.ConnectAsync(parts[0], endpointPort); var peer = node.Peers.FirstOrDefault(p => p.Address == parts[0] && p.Port == endpointPort); if (peer is not null) ShowContact(peer.Id); else SetContactSection("lan"); }
         catch (Exception ex) { ShowError(ex); }
     }
     private async void NewGroupClick(object sender, RoutedEventArgs e)
@@ -699,7 +704,7 @@ public partial class MainWindow : Window
         if (available.Count < 2) { ShowToast("Cần ghép đôi với ít nhất 2 người để tạo nhóm."); return; }
         var form = BuildGroupCreationForm(available);
         if (!ShowDialog("Tạo nhóm", form, "Tạo nhóm", form.Validate, form.NameInput, width: 570)) return;
-        try { var group = await node.CreateGroupAsync(form.NameInput.Text, form.Members.SelectedIds, form.Avatar); selectedId = group.Id; renderKey = ""; Refresh(); FocusComposer(); }
+        try { var group = await node.CreateGroupAsync(form.NameInput.Text, form.Members.SelectedIds, form.Avatar); ShowContact(group.Id); FocusComposer(); }
         catch (Exception ex) { ShowError(ex); }
     }
     private GroupCreationForm BuildGroupCreationForm(IEnumerable<Peer> available)
@@ -852,7 +857,7 @@ public partial class MainWindow : Window
                 foreach (var card in contacts)
                 {
                     var button = new Button { Content = new TextBlock { Text = $"{card.Name}\nDanh tính · {card.Id[..12]}…", TextWrapping = TextWrapping.Wrap }, HorizontalContentAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 9) };
-                    button.Click += async (_, _) => { button.IsEnabled = false; try { await node.ConnectAsync(card.Address, card.Port, card.Id); window.Close(); ContactSearch.Clear(); Refresh(); ContactsList.SelectedItem = ContactsList.Items.OfType<ContactRow>().FirstOrDefault(row => row.Id == card.Id); ShowToast("Đối chiếu mã để xác minh người dùng vừa tìm thấy."); } catch (Exception ex) { button.IsEnabled = true; ShowError(ex); } }; results.Children.Add(button);
+                    button.Click += async (_, _) => { button.IsEnabled = false; try { await node.ConnectAsync(card.Address, card.Port, card.Id); window.Close(); ShowContact(card.Id); ShowToast("Đối chiếu mã để xác minh người dùng vừa tìm thấy."); } catch (Exception ex) { button.IsEnabled = true; ShowError(ex); } }; results.Children.Add(button);
                 }
             }
             catch (OperationCanceledException) { }
@@ -878,6 +883,7 @@ public partial class MainWindow : Window
         updates.Changed += Changed; window.Closed += (_, _) => updates.Changed -= Changed;
         check.Click += async (_, _) => { check.IsEnabled = false; await updates.CheckAsync(uiLifetime.Token); check.IsEnabled = true; };
         install.Click += async (_, _) => { install.IsEnabled = false; try { await updates.StartInstallAsync(uiLifetime.Token); window.Close(); ExitApplication(); } catch (Exception ex) { install.IsEnabled = true; MessageBox.Show(window, ex.Message, "Cập nhật Lantern"); } };
+        var skip = new Button { Content = "Bỏ qua · Giữ bộ cài", Margin = new Thickness(0, 10, 0, 0) }; skip.Click += (_, _) => window.Close(); panel.Children.Add(skip);
         window.ShowDialog();
     }
     private void ExportIdentity()

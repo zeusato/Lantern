@@ -52,12 +52,12 @@ internal sealed partial class UiHarness
             var poll = new ChatPoll { Question = "Chọn lịch duyệt thiết kế?", Options = ["Thứ hai · 09:00", "Thứ ba · 14:00", "Thứ tư · 10:00"], Multiple = true, Votes = new() { [peerId] = new() { Revision = 1, Choices = [0, 2] } } };
             var pollMessage = new ChatMessage { ConversationId = group.Id, GroupId = group.Id, SenderId = node.Identity.Id, Outgoing = true, Text = poll.Summary(), Poll = poll, Status = "read" }; store.SaveMessage(pollMessage);
             Call(window, "Refresh");
-            var contacts = (ListBox)window.FindName("ContactsList"); contacts.SelectedItem = contacts.Items.OfType<ContactRow>().Single(r => r.Id == group.Id);
+            var contacts = (ListBox)window.FindName("ContactsList"); Call(window, "ShowContact", group.Id);
             var composer = (RichComposer)window.FindName("Composer"); composer.Load(rich);
             Check(((Button)window.FindName("PollButton")).Visibility == Visibility.Visible, "Group conversations expose the create-poll action");
-            contacts.SelectedItem = contacts.Items.OfType<ContactRow>().Single(r => r.Id == peerId);
+            Call(window, "ShowContact", peerId);
             Check(composer.Text.Length == 0 && ((Button)window.FindName("PollButton")).Visibility == Visibility.Collapsed, "Direct chats have their own draft and hide group polls");
-            contacts.SelectedItem = contacts.Items.OfType<ContactRow>().Single(r => r.Id == group.Id);
+            Call(window, "ShowContact", group.Id);
             Check(Codec.Encode(composer.Export()) == Codec.Encode(rich), "Switching conversations restores the full rich draft");
             var toolbar = (WrapPanel)window.FindName("FormattingToolbar");
             if (toolbar.Visibility != Visibility.Visible) Call(window, "FormatClick", window, new RoutedEventArgs());

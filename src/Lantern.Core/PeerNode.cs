@@ -187,7 +187,7 @@ public sealed partial class PeerNode : IAsyncDisposable
                 await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = "lantern.local", ClientCertificates = new X509CertificateCollection { Identity.Certificate }, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, CertificateRevocationCheckMode = X509RevocationMode.NoCheck }, timeout.Token);
             else
                 await ssl.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = Identity.Certificate, ClientCertificateRequired = true, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, CertificateRevocationCheckMode = X509RevocationMode.NoCheck }, timeout.Token);
-            await Protocol.WriteAsync(ssl, new WireMessage { Type = "hello", Version = 6, Id = Identity.Id, Name = Identity.Name, Port = Port, Data = Presence }, timeout.Token);
+            await Protocol.WriteAsync(ssl, new WireMessage { Type = "hello", Version = 7, Id = Identity.Id, Name = Identity.Name, Port = Port, Data = Presence }, timeout.Token);
             var hello = await Protocol.ReadAsync(ssl, timeout.Token);
             if (hello.Type != "hello" || hello.Id != certificateId || hello.Name.Length is < 1 or > 80 || string.IsNullOrWhiteSpace(hello.Name) || hello.Name.Any(char.IsControl) || hello.Port is < 1 or > 65535) throw new AuthenticationException("Danh tính không khớp khóa của kết nối.");
             session = new Session(certificateId, ssl, client, outbound);
@@ -303,7 +303,7 @@ public sealed partial class PeerNode : IAsyncDisposable
     {
         if (!peers.TryGetValue(peerId, out var recipient) || !recipient.Trusted || recipient.Blocked) return;
         await ReplayGroupActions(peerId);
-        foreach (var rules in Store.Restrictions().Where(p => p.Id == peerId && p.Actor == Identity.Id)) await SendRestrictions(peerId, rules);
+        foreach (var rules in Store.Restrictions().Where(p => p.Id == peerId)) await SendRestrictions(peerId, rules);
         if (includeReceipts) await SendTo(peerId, new WireMessage { Type = "profile", Name = Identity.Name, Data = Store.Avatar });
         await SendTo(peerId, new WireMessage { Type = "presence", Data = Presence });
         foreach (var group in Store.Groups().Where(g => g.OwnerId == Identity.Id && g.Members.Contains(peerId))) await SendTo(peerId, new WireMessage { Type = "group", Group = group });
@@ -523,9 +523,7 @@ public sealed partial class PeerNode : IAsyncDisposable
         if (wire.Type == "group-action") { await HandleGroupAction(wire.Data); return; }
         if (wire.Type == "conversation-rules")
         {
-            var rules = Codec.Decode<ConversationRestrictions>(wire.Data);
-            if (rules.Id != "" || rules.Actor != peerId || rules.Revision < 1 || rules.Revision == long.MaxValue) throw new InvalidDataException("Quyền hội thoại không hợp lệ.");
-            rules.Id = peerId; if (Store.SaveRestrictions(rules)) Changed?.Invoke(); return;
+            await ReceiveRestrictions(peerId, wire.Data); return;
         }
         if (wire.Type == "lookup")
         {

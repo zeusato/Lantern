@@ -4,18 +4,28 @@ public sealed partial class PeerNode
 {
     public event Action? GamesChanged;
     private readonly SemaphoreSlim gameChanges = new(1, 1);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, GameView> gameSnapshots = new();
+    private GameView GameSnapshot(GameRecord record) => new(record.State, Identity.Id, "", false, record.Pending is not null || record.State.Host == Identity.Id && record.Acknowledged < record.Events.Count, record.Fleet?.Board ?? [], record.Error);
     public GameView? CurrentGame(string conversation, string? gameId = null)
     {
         if (FindPeer(conversation) is not { Trusted: true, Blocked: false } peer) return null;
-        var record = gameId is null ? Store.LatestGame(conversation) : Store.Game(gameId);
-        if (record is null || record.State.Other(Identity.Id) != conversation || Store.WasDeleted(record.State.Id)) return null;
-        return new(record.State, Identity.Id, peer.DisplayName, peer.Connected, record.Pending is not null || record.State.Host == Identity.Id && record.Acknowledged < record.Events.Count, record.Fleet?.Board ?? [], record.Error);
+        gameId ??= Store.LatestGameId(conversation);
+        if (gameId is null) return null;
+        if (Store.WasDeleted(gameId)) { gameSnapshots.TryRemove(gameId, out _); return null; }
+        if (!gameSnapshots.TryGetValue(gameId, out var snapshot))
+        {
+            var record = Store.Game(gameId); if (record is null) return null;
+            snapshot = gameSnapshots.GetOrAdd(gameId, GameSnapshot(record));
+        }
+        if (snapshot.State.Other(Identity.Id) != conversation) return null;
+        return snapshot with { PeerName = peer.DisplayName, Connected = peer.Connected };
     }
     public async Task<string> InviteGameAsync(string conversation, string kind, string? starter = null)
     {
         var peer = FindPeer(conversation);
         if (peer is not { Trusted: true, Blocked: false, Connected: true }) throw new InvalidOperationException("Mời chơi trong chat riêng với người đã ghép đôi và đang online.");
         if (peer.ProtocolVersion < 6) throw new InvalidOperationException("Đối thủ cần cập nhật Lantern để chơi game.");
+        if (kind == "reversi" && peer.ProtocolVersion < 7) throw new InvalidOperationException("Đối thủ cần cập nhật Lantern để chơi Cờ lật.");
         SignedGameCommand signed; GameRecord record;
         await gameChanges.WaitAsync(lifetime.Token);
         try
@@ -67,10 +77,12 @@ public sealed partial class PeerNode
     private void PersistGame(GameRecord record)
     {
         var state = record.State; var peer = state.Other(Identity.Id); Store.SaveGame(record, peer);
+        gameSnapshots[state.Id] = GameSnapshot(record);
         if (Store.Message(state.Id) is null && !Store.WasDeleted(state.Id))
         {
             var message = new ChatMessage { Id = state.Id, GameId = state.Id, ConversationId = peer, SenderId = state.Host, SenderName = state.Host == Identity.Id ? Identity.Name : FindPeer(peer)?.Name ?? "", Outgoing = state.Host == Identity.Id, Kind = "text", Text = "🎮 " + GameState.Title(state.Kind) + " · Lời mời chơi", Status = "delivered" };
             if (message.Outgoing) Store.SaveMessage(message); else { Store.SaveIncomingMessage(message); MessageReceived?.Invoke(message); }
+            Changed?.Invoke(); // Only a new invitation changes the chat list/history.
         }
     }
     private Task SendGameEvent(string peer, SignedGameCommand command) => SendTo(peer, new WireMessage { Type = "game-event", Id = command.Verify().GameId, Data = Codec.Encode(command) });

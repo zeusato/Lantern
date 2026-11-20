@@ -63,6 +63,41 @@ internal static class GameTests
         check(bStore.Game(ships) is null && bStore.WasDeleted(ships), "Deleting a game card removes its secret fleet and retains a replay tombstone");
         using var reopened = new LocalStore(Path.Combine(root, "a")); check(reopened.Game(ships)!.State.Winner == aId.Id, "Completed games survive reopening the workspace database");
         await a.DeleteMessagesAsync(bId.Id, new HashSet<string> { ships });
+        var opening = ReversiRules.Opening();
+        check(ReversiRules.LegalMoves(opening, 1).SequenceEqual(new[] { 19, 26, 37, 44 }), "Reversi opens with four central disks and exactly four legal black moves");
+        check(ReversiRules.Flips(opening, 19, 1).SequenceEqual(new[] { 27 }) && ReversiRules.Flips(opening, 0, 1).Length == 0, "Reversi captures a bracketed line and rejects an empty non-capturing move");
+        var edge = new int[64]; edge[7] = 1; edge[8] = 2;
+        check(ReversiRules.Flips(edge, 9, 1).Length == 0, "Reversi lines cannot wrap across a board edge");
+        GameState ReversiPosition(int[] board) => new() { Id = Guid.NewGuid().ToString("N"), Host = aId.Id, Guest = bId.Id, Starter = aId.Id, Turn = aId.Id, Kind = "reversi", Status = "playing", Revision = 1, Board = board };
+        GameState PlayPosition(GameState state, int cell) => GameRules.Apply(state, SignedGameCommand.Sign(aId, new() { GameId = state.Id, Revision = state.Revision, Previous = state.Head, Type = "move", Cell = cell }));
+        var passBoard = Enumerable.Repeat(1, 64).ToArray(); passBoard[0] = passBoard[63] = 0; passBoard[1] = passBoard[62] = 2;
+        var passState = PlayPosition(ReversiPosition(passBoard), 0);
+        check(!passState.Finished && passState.Turn == aId.Id && ReversiRules.LegalMoves(passState.Board, 2).Length == 0, "Reversi keeps the current player's turn when the opponent has no legal move");
+        check(PlayPosition(passState, 63).Winner == aId.Id, "Reversi finishes after the remaining legal move");
+        passBoard[62] = 1;
+        check(PlayPosition(ReversiPosition(passBoard), 0).Finished, "Reversi ends when neither player can move even with empty squares remaining");
+        var tieBoard = Enumerable.Repeat(2, 64).ToArray(); tieBoard[0] = 0; for (int i = 2; i <= 31; i++) tieBoard[i] = 1;
+        var tie = PlayPosition(ReversiPosition(tieBoard), 0);
+        check(tie.Finished && tie.Winner == "" && tie.Board.Count(v => v == 1) == 32, "Reversi reports a draw for equal final disk counts");
+        a.FindPeer(bId.Id)!.ProtocolVersion = 6;
+        prevented = false; try { await a.InviteGameAsync(bId.Id, "reversi"); } catch (InvalidOperationException) { prevented = true; }
+        check(prevented, "Reversi invitations require a peer supporting the new game");
+        a.FindPeer(bId.Id)!.ProtocolVersion = 7;
+        var reversi = await a.InviteGameAsync(bId.Id, "reversi"); await Ready(reversi); await b.GameActionAsync(reversi, "accept"); await Ready(reversi);
+        long historyVersion = aStore.MessageVersion(bId.Id);
+        int moves = 0;
+        while (!a.CurrentGame(bId.Id)!.State.Finished)
+        {
+            var state = a.CurrentGame(bId.Id)!.State; int mark = state.Turn == state.Starter ? 1 : 2;
+            var legal = ReversiRules.LegalMoves(state.Board, mark);
+            check(legal.Length > 0, "Reversi automatically skips a player with no legal move");
+            await (state.Turn == aId.Id ? a : b).GameActionAsync(reversi, "move", legal[0]); await Ready(reversi);
+            if (++moves > 60) throw new Exception("Reversi did not terminate");
+        }
+        var result = a.CurrentGame(bId.Id)!.State; int black = result.Board.Count(v => v == 1), white = result.Board.Count(v => v == 2);
+        check(result.Winner == (black == white ? "" : black > white ? result.Starter : result.Other(result.Starter)) && b.CurrentGame(aId.Id)!.State.Board.SequenceEqual(result.Board), "A complete Reversi network match terminates with identical disks and a winner determined by count");
+        check(aStore.MessageVersion(bId.Id) == historyVersion, "Moves and acknowledgements never invalidate chat history");
+        check(Codec.Decode<GameCommand>(aStore.Game(reversi)!.Events.Last().Payload).Board.Length == 0, "A Reversi move sends only an action and cell, never the board artwork or full board");
         var offline = await a.InviteGameAsync(bId.Id, "caro"); await Ready(offline); await b.GameActionAsync(offline, "accept"); await Ready(offline);
         await a.GameActionAsync(offline, "move", 100); await Ready(offline);
         await a.DisposeAsync(); await Until(() => !b.IsConnected(aId.Id));

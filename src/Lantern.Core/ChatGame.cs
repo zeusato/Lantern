@@ -76,7 +76,7 @@ public sealed class GameState
     public int PendingCell { get; set; } = -1;
     public bool Finished => Status is "finished" or "declined" or "cancelled";
     public string Other(string actor) => actor == Host ? Guest : Host;
-    public static string Title(string kind) => kind switch { "caro" => "Caro", "ships" => "Bắn tàu", "words" => "Nối chữ", _ => "Game" };
+    public static string Title(string kind) => kind switch { "caro" => "Caro", "ships" => "Bắn tàu", "words" => "Nối chữ", "reversi" => "Cờ lật", _ => "Game" };
 }
 public sealed class GameFleet
 {

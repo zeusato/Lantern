@@ -20,7 +20,7 @@ internal sealed partial class UiHarness
         {
             string peer = new('a', 64); using (var seed = new LocalStore(root, Vault)) seed.SavePeer(new Peer { Id = peer, Name = "Synthetic peer", Trusted = true });
             window = new MainWindow { ShowInTaskbar = false }; window.Show(); await Until(() => Field<PeerNode>(window, "node").Port > 0, "Fixture startup");
-            Call(window, "Refresh"); var list = (ListBox)window.FindName("ContactsList"); list.SelectedItem = list.Items.OfType<ContactRow>().Single(p => p.Id == peer); await Task.Delay(100); ActivateFixture(window);
+            Call(window, "Refresh"); var list = (ListBox)window.FindName("ContactsList"); Call(window, "ShowContact", peer); await Task.Delay(100); ActivateFixture(window);
             var composer = (RichComposer)window.FindName("Composer"); composer.Text = "Nội dung kiểm thử"; Call(window, "FormatClick", window, new RoutedEventArgs());
             var controls = Field<Dictionary<string, Button>>(window, "formatControls");
             foreach (var key in new[] { "size", "color" })

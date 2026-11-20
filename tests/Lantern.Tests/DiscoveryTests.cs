@@ -51,6 +51,12 @@ internal static class DiscoveryTests
         count = await a.DiscoverTargetsAsync([], [endpoint], timeout.Token); await respond;
         check(count == 2 && a.FindPeer(cId.Id)?.Port == c.Port && !a.IsConnected(cId.Id), "Unicast UDP discovers the advertised dynamic TCP port without multicast or an implicit connection");
         check(!a.FindPeer(cId.Id)!.Trusted && a.FindPeer(cId.Id)!.Address == "127.0.0.1", "Unicast metadata remains untrusted and uses the packet source address");
+        using (var reopened = new LocalStore(Path.Combine(root, "discovery-a")))
+        {
+            var saved = reopened.Peers().Single(p => p.Id == cId.Id);
+            check(saved.Address == "127.0.0.1" && saved.Port == c.Port && !saved.Trusted, "UDP discovery persists an untrusted endpoint for the directory after reopening storage");
+            check(reopened.ConversationActivity().Count == 0, "Discovery and connection never create conversation history");
+        }
         var progress = new ProbeProgress();
         await a.DiscoverTargetsAsync([new(IPAddress.Loopback, b.Port), new(IPAddress.Parse("127.0.1.1"), b.Port)], [], timeout.Token, progress);
         check(progress.Values.Select(p => p.Range).Distinct().SequenceEqual(new[] { "127.0.0.0/24", "127.0.1.0/24" }) && progress.Values.Last().Completed == 2, "Discovery scans each /24 sequentially and reports the current range and overall completion");

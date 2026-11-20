@@ -51,6 +51,8 @@ internal sealed partial class UiHarness : Application
     // Isolated fixture host: production startup/password handling is not altered or shipped with a bypass.
     protected override async void OnStartup(StartupEventArgs e)
     {
+        if (e.Args.FirstOrDefault() == "--update-cache") { await RunUpdateCache(); return; }
+        if (e.Args.FirstOrDefault() == "--contacts") { await RunContactDirectoryUi(e.Args.ElementAtOrDefault(1)); return; }
         if (e.Args.FirstOrDefault() == "--games") { await RunGamesUi(e.Args.ElementAtOrDefault(1)); return; }
         if (e.Args.FirstOrDefault() == "--network-backup") { await RunNetworkBackupUi(e.Args.ElementAtOrDefault(1)); return; }
         if (e.Args.FirstOrDefault() == "--composer-menus") { await RunComposerMenus(); return; }
@@ -81,11 +83,11 @@ internal sealed partial class UiHarness : Application
             Check(Vault.VerifyConversation(remoteIdentity.Id, "synthetic conversation password"), "Synthetic conversation credential verifies");
             Field<HashSet<string>>(window, "unlockedConversations").Add(remoteIdentity.Id);
             window.WindowState = WindowState.Normal; window.Activate(); Call(window, "Refresh");
-            list.SelectedItem = list.Items.OfType<ContactRow>().Single(r => r.Id == remoteIdentity.Id);
+            Call(window, "ShowContact", remoteIdentity.Id);
             await Until(() => store.UnreadCount() == 0, "Visible read count");
             await Until(() => window.TaskbarItemInfo.Overlay is null, "Taskbar badge clears"); Check(true, "Reading all messages clears the taskbar badge");
-            list.SelectedItem = list.Items.OfType<ContactRow>().Single(r => r.Id == new string('c', 64));
-            list.SelectedItem = list.Items.OfType<ContactRow>().Single(r => r.Id == remoteIdentity.Id);
+            Call(window, "ShowContact", new string('c', 64));
+            Call(window, "ShowContact", remoteIdentity.Id);
             Check(Field<HashSet<string>>(window, "unlockedConversations").Contains(remoteIdentity.Id) && ((RichComposer)window.FindName("Composer")).IsEnabled, "Conversation remains unlocked when switching away and back");
             node.SetPeerAlias(remoteIdentity.Id, "Minh Anh · Thiết kế"); Call(window, "Refresh");
             Check(((TextBlock)window.FindName("ChatTitle")).Text == "Minh Anh · Thiết kế", "Local alias appears in chat header");
@@ -112,7 +114,7 @@ internal sealed partial class UiHarness : Application
             Check(ScreenCaptureProtection.IsProtected(protectedViewer), "Owned content windows receive the same capture exclusion"); protectedViewer.Close(); ActivateFixture(window);
             list.SelectedItem = list.Items.OfType<ContactRow>().Single(r => r.Id == offlineId);
             Check(!ScreenCaptureProtection.IsProtected(window), "Switching to an ordinary log removes capture exclusion");
-            list.SelectedItem = list.Items.OfType<ContactRow>().Single(r => r.Id == remoteIdentity.Id);
+            Call(window, "ShowContact", remoteIdentity.Id);
             await node.SetConversationRulesAsync(remoteIdentity.Id, false, true); Call(window, "Refresh");
             var avatarPixels = new byte[400 * 200 * 4];
             for (int y = 0; y < 200; y++) for (int x = 0; x < 400; x++) { int pos = (y * 400 + x) * 4; avatarPixels[pos + (x < 200 ? 2 : 0)] = 255; avatarPixels[pos + 3] = 255; }
@@ -186,6 +188,9 @@ internal sealed partial class UiHarness : Application
             var image = remoteStore.Messages().Last(m => m.Kind == "image"); await remote.AcceptFileAsync(image.Id); await Until(() => remoteStore.Message(image.Id)?.Status == "received", "Pasted image transfer");
             Check(File.Exists(remoteStore.Message(image.Id)!.FilePath), "Clipboard image follows normal PNG transfer and receipt");
             Check(Pixels(ClipboardImages.LoadLocal(remoteStore.Message(image.Id)!.FilePath, 0)).Take(4).SequenceEqual(new byte[] { 100, 190, 35, 255 }), "Received clipboard PNG retains visible colored pixels");
+            // Shared-media thumbnails load only while visible. The information
+            // sidebar now starts closed, so open it as a user would first.
+            Call(window, "DetailsClick", window, new RoutedEventArgs()); window.UpdateLayout();
             Call(window, "Refresh"); Check(((Panel)window.FindName("SharedLinks")).Children.Count == 1 && ((Panel)window.FindName("SharedMedia")).Children.Count == 1, "Info panel separates shared links and media");
             var thumbnail = ((Panel)window.FindName("SharedMedia")).Children.OfType<MediaThumbnail>().Single(); await Until(() => Visuals<Image>(thumbnail).Any(view => view.Source is not null), "Thumbnail loads");
             Check(thumbnail.ActualWidth == thumbnail.ActualHeight && thumbnail.ActualWidth == 78, "Media panel displays square image thumbnails");

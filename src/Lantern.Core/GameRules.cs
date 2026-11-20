@@ -10,8 +10,9 @@ public static class GameRules
         if (c.Revision != s.Revision || c.Previous != s.Head || s.Revision >= 2048) throw new InvalidOperationException("Ván đã đổi lượt. Đợi đồng bộ rồi thử lại.");
         if (s.Revision == 0)
         {
-            if (c.Type != "invite" || c.Kind is not ("caro" or "ships" or "words") || c.Opponent.Length != 64 || !c.Opponent.All(Uri.IsHexDigit) || c.Opponent == c.Actor || c.Starter != c.Actor && c.Starter != c.Opponent || c.Text != WordChain.Version) throw new InvalidOperationException("Lời mời game không hợp lệ hoặc khác phiên bản luật.");
+            if (c.Type != "invite" || c.Kind is not ("caro" or "ships" or "words" or "reversi") || c.Opponent.Length != 64 || !c.Opponent.All(Uri.IsHexDigit) || c.Opponent == c.Actor || c.Starter != c.Actor && c.Starter != c.Opponent || c.Text != WordChain.Version) throw new InvalidOperationException("Lời mời game không hợp lệ hoặc khác phiên bản luật.");
             s.Id = c.GameId; s.Host = c.Actor; s.Guest = c.Opponent; s.Kind = c.Kind; s.Starter = s.Turn = c.Starter;
+            if (s.Kind == "reversi") s.Board = ReversiRules.Opening();
         }
         else
         {
@@ -28,6 +29,7 @@ public static class GameRules
             else if (c.Type == "draw-decline" && s.DrawOffer.Length > 0 && s.DrawOffer != c.Actor) s.DrawOffer = "";
             else if (s.Kind == "ships") Ships(s, c);
             else if (s.Kind == "words") Words(s, c);
+            else if (s.Kind == "reversi") Reversi(s, c);
             else Caro(s, c);
         }
         if (s.Revision >= 2047 && !s.Finished) Finish(s, "", "Ván đạt giới hạn lượt lưu trữ");
@@ -38,6 +40,21 @@ public static class GameRules
         if (s.Status != "playing" || s.Turn != c.Actor) throw new InvalidOperationException("Chưa đến lượt bạn.");
     }
     private static void Finish(GameState s, string winner, string reason) { s.Status = "finished"; s.Winner = winner; s.Reason = reason; s.DrawOffer = ""; }
+    private static void Reversi(GameState s, GameCommand c)
+    {
+        NeedTurn(s, c);
+        int mark = c.Actor == s.Starter ? 1 : 2;
+        var flips = ReversiRules.Flips(s.Board, c.Cell, mark);
+        if (c.Type != "move" || flips.Length == 0) throw new InvalidOperationException("Chọn ô gợi ý để kẹp và lật ít nhất một quân đối thủ.");
+        s.Board[c.Cell] = mark; foreach (int cell in flips) s.Board[cell] = mark; s.LastCell = c.Cell; s.WinningCells = flips.ToList();
+        if (ReversiRules.LegalMoves(s.Board, 3 - mark).Length > 0) { s.Turn = s.Other(c.Actor); s.Reason = ""; }
+        else if (ReversiRules.LegalMoves(s.Board, mark).Length > 0) { s.Turn = c.Actor; s.Reason = "Đối thủ không có nước hợp lệ · Bạn đi tiếp"; }
+        else
+        {
+            int black = s.Board.Count(v => v == 1), white = s.Board.Count(v => v == 2);
+            Finish(s, black == white ? "" : black > white ? s.Starter : s.Other(s.Starter), $"Hết nước đi · Đen {black} — Trắng {white}");
+        }
+    }
     private static void Caro(GameState s, GameCommand c)
     {
         NeedTurn(s, c);

@@ -24,15 +24,15 @@ internal sealed partial class UiHarness
             var node = Field<PeerNode>(window, "node"); await Until(() => node.Port > 0, "Window started");
             await node.ConnectAsync("127.0.0.1", remote.Port, remoteId.Id); await Until(() => remote.IsConnected(node.Identity.Id), "Peer connected"); await node.TrustAsync(remoteId.Id); await remote.TrustAsync(node.Identity.Id);
             Call(window, "Refresh"); var list = (ListBox)window.FindName("ContactsList");
-            void Select(string id) { Call(window, "Refresh"); list.SelectedItem = list.Items.OfType<ContactRow>().Single(r => r.Id == id); Call(window, "Refresh"); window.UpdateLayout(); }
+            void Select(string id) { Call(window, "ShowContact", id); Call(window, "Refresh"); window.UpdateLayout(); }
             Select(remoteId.Id);
             var host = (Border)window.FindName("GameHost"); var chat = (Grid)window.FindName("ChatPane");
             async Task Ready(string id) { await Until(() => node.CurrentGame(remoteId.Id, id) is { Pending: false } a && remote.CurrentGame(node.Identity.Id, id) is { Pending: false } b && a.State.Head == b.State.Head, "Game synchronized"); Call(window, "Refresh"); window.UpdateLayout(); }
             var id = await remote.InviteGameAsync(node.Identity.Id, "caro"); await Ready(id);
-            Check(host.Visibility == Visibility.Collapsed && Visuals<Button>(window).Any(b => Equals(b.Content, "Chấp nhận")), "Invitation stays in the chat before acceptance");
+            Check(host.Visibility == Visibility.Collapsed && Visuals<Button>(window).Any(b => b.IsVisible && Equals(b.Content, "Chấp nhận")), "Invitation stays in the chat before acceptance");
             await node.GameActionAsync(id, "decline"); await Ready(id); Check(!host.IsVisible, "Declining an invitation never splits the chat");
             id = await remote.InviteGameAsync(node.Identity.Id, "caro"); await Ready(id);
-            Visuals<Button>(window).Single(b => Equals(b.Content, "Chấp nhận")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Visuals<Button>(window).Single(b => b.IsVisible && Equals(b.Content, "Chấp nhận")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => node.CurrentGame(remoteId.Id)!.State.Status == "playing", "Accepted"); await Ready(id);
             Check(host.IsVisible && Math.Abs(chat.ActualWidth - host.ActualWidth) < 2, "Accepting splits conversation into equal chat and game columns");
             Check(((ColumnDefinition)window.FindName("DetailsColumn")).Width.Value == 0 && ((RichComposer)window.FindName("Composer")).IsEnabled, "Information sidebar is hidden and chat composer stays enabled");
@@ -49,10 +49,30 @@ internal sealed partial class UiHarness
             id = await node.InviteGameAsync(remoteId.Id, "words"); await Ready(id); await remote.GameActionAsync(id, "accept"); await Ready(id);
             foreach (var item in new[] { (node, "học sinh"), (remote, "sinh nhật"), (node, "nhật ký"), (remote, "ký ức") }) { await item.Item1.GameActionAsync(id, "word", text: item.Item2); await Ready(id); }
             Check(Visuals<TextBlock>(host).Any(t => t.Text == "ức  🔒") && Visuals<TextBox>(host).Single().IsEnabled, "Word chain highlights and locks the required prefix beside an enabled next-syllable input");
+            var input = Visuals<TextBox>(host).Single(); input.Text = "thử"; input.Select(1, 1);
+            var wordPanel = (ChatGamePanel)host.Child; var stableWords = wordPanel.Content; var wordView = node.CurrentGame(remoteId.Id)!;
+            wordPanel.Update(wordView with { Connected = false }); wordPanel.Update(wordView);
+            Check(ReferenceEquals(input, Visuals<TextBox>(host).Single()) && input.Text == "thử" && input.SelectionStart == 1 && ReferenceEquals(stableWords, wordPanel.Content), "Word acknowledgements and presence changes preserve the input, draft, selection and existing layout");
+            input.Clear();
             Snapshot(window, Path.Combine(root, "word-chain-light.png")); ApplyTheme("dark"); Snapshot(window, Path.Combine(root, "word-chain-dark.png"));
             await node.GameActionAsync(id, "resign"); await Ready(id);
             id = await node.InviteGameAsync(remoteId.Id, "ships"); await Ready(id); await remote.GameActionAsync(id, "accept"); await Ready(id);
-            Check(Visuals<Button>(host).Any(b => Equals(b.Content, "Khóa đội tàu · Sẵn sàng")), "Battleship exposes manual placement and fleet locking"); Snapshot(window, Path.Combine(root, "battleship.png"));
+            await CheckBattleshipUi(window, host, node, remote, remoteId.Id, id, Ready, root);
+            await node.GameActionAsync(id, "resign"); await Ready(id);
+            window.Width = 1400; window.Height = 900;
+            id = await node.InviteGameAsync(remoteId.Id, "reversi"); await Ready(id); await remote.GameActionAsync(id, "accept"); await Ready(id);
+            await Task.Delay(300); window.UpdateLayout();
+            var reversiPanel = (ChatGamePanel)host.Child; var rootPanel = reversiPanel.Content;
+            var board = Visuals<GameBoard>(host).Single(); var tiles = Enumerable.Range(0, 64).Select(board.CellVisual).ToArray();
+            var chatRows = ((Panel)window.FindName("MessagesPanel")).Children.Cast<UIElement>().ToArray();
+            var directoryRows = list.ItemsSource; int paints = board.CellPaintCount;
+            await node.GameActionAsync(id, "move", 19);
+            await Until(() => node.CurrentGame(remoteId.Id) is { Pending: false, State.Turn: var turn } && turn == remoteId.Id, "Reversi move acknowledged"); await Task.Delay(220); window.UpdateLayout();
+            Check(ReferenceEquals(rootPanel, reversiPanel.Content) && ReferenceEquals(board, Visuals<GameBoard>(host).Single()), "Reversi moves retain the game root and board instances");
+            Check(tiles.Select((tile, index) => ReferenceEquals(tile, board.CellVisual(index))).All(v => v) && board.CellPaintCount - paints < 20, "Reversi repaints only changed disks and legal-move markers, retaining every cell visual");
+            Check(chatRows.SequenceEqual(((Panel)window.FindName("MessagesPanel")).Children.Cast<UIElement>()) && ReferenceEquals(directoryRows, list.ItemsSource), "A game move and its acknowledgement do not recreate chat bubbles or the contact list");
+            Check(node.CurrentGame(remoteId.Id)!.State.Board[27] == 1, "Reversi flips the captured white disk");
+            Snapshot(window, Path.Combine(root, "reversi-light.png")); ApplyTheme("dark"); Snapshot(window, Path.Combine(root, "reversi-dark.png"));
             Console.WriteLine($"{passed} game UI checks passed. Screenshots: {root}");
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; }

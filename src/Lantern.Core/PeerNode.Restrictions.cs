@@ -5,7 +5,7 @@ public sealed partial class PeerNode
     public ConversationRestrictions ConversationRules(string id)
     {
         var group = Store.Groups().Find(g => g.Id == id);
-        return group is null ? Store.Restrictions().Find(p => p.Id == id) ?? new() { Id = id } : new() { Id = id, Actor = group.OwnerId, Revision = group.Revision, CaptureProtected = group.CaptureProtected, ForwardAllowed = group.ForwardAllowed };
+        var policy = group is null ? Store.Restrictions().Find(p => p.Id == id) ?? new() { Id = id } : new() { Id = id, Actor = group.OwnerId, Revision = group.Revision, CaptureProtected = group.CaptureProtected, ForwardAllowed = group.ForwardAllowed }; policy.NormalizeOwnership(); return policy;
     }
     public async Task SetConversationRulesAsync(string id, bool captureProtected, bool forwardAllowed)
     {
@@ -23,16 +23,51 @@ public sealed partial class PeerNode
             }
             else
             {
-                if (FindPeer(id) is not { Trusted: true, Blocked: false, ProtocolVersion: >= 5 }) throw new InvalidOperationException("Đối tác cần ghép đôi và cập nhật Lantern để đồng bộ quyền của hội thoại.");
-                var policy = ConversationRules(id); policy.Actor = Identity.Id; policy.Revision++; policy.CaptureProtected = captureProtected; policy.ForwardAllowed = forwardAllowed;
-                Store.SaveRestrictions(policy); await SendRestrictions(id, policy);
+                if (FindPeer(id) is not { Trusted: true, Blocked: false, ProtocolVersion: >= 7 }) throw new InvalidOperationException("Đối tác cần ghép đôi và cập nhật Lantern để đồng bộ quyền của hội thoại.");
+                var policy = ConversationRules(id);
+                var claim = policy.Claims.GetValueOrDefault(Identity.Id) ?? new RestrictionClaim();
+                bool changeCapture = captureProtected != policy.CaptureProtected, changeForward = forwardAllowed != policy.ForwardAllowed;
+                if (changeCapture && policy.CaptureProtected && !policy.CaptureOwners.Contains(Identity.Id) ||
+                    changeForward && !policy.ForwardAllowed && !policy.ForwardOwners.Contains(Identity.Id))
+                    throw new InvalidOperationException("Chỉ người đã thiết lập quyền này mới được trả về mặc định.");
+                if (!changeCapture && !changeForward) return;
+                claim = new() { Revision = checked(claim.Revision + 1), CaptureProtected = changeCapture ? captureProtected : claim.CaptureProtected, ForwardAllowed = changeForward ? forwardAllowed : claim.ForwardAllowed };
+                Store.MergeRestrictionClaim(id, Identity.Id, claim); await SendRestrictions(id, ConversationRules(id));
             }
             Changed?.Invoke();
         }
         finally { groupChanges.Release(); }
     }
-    private Task SendRestrictions(string peerId, ConversationRestrictions policy) => SendTo(peerId, new WireMessage { Type = "conversation-rules", Data = Codec.Encode(new ConversationRestrictions { Actor = policy.Actor, Revision = policy.Revision, CaptureProtected = policy.CaptureProtected, ForwardAllowed = policy.ForwardAllowed }) });
-
+    public bool CanChangeConversationRule(string id, bool capture)
+    {
+        var group = Store.Groups().Find(g => g.Id == id);
+        if (group is not null) return group.OwnerId == Identity.Id;
+        var rules = ConversationRules(id); var owners = capture ? rules.CaptureOwners : rules.ForwardOwners;
+        return owners.Length == 0 || owners.Contains(Identity.Id);
+    }
+    private Task SendRestrictions(string peerId, ConversationRestrictions policy)
+    {
+        policy.NormalizeOwnership();
+        if (!policy.Claims.TryGetValue(Identity.Id, out var claim)) return Task.CompletedTask;
+        return SendTo(peerId, new WireMessage { Type = "conversation-rules", Data = Codec.Encode(new ConversationRestrictions { Actor = Identity.Id, Revision = claim.Revision, OwnershipVersion = 2, CaptureProtected = claim.CaptureProtected, ForwardAllowed = claim.ForwardAllowed }) });
+    }
+    private async Task ReceiveRestrictions(string peerId, string data)
+    {
+        var incoming = Codec.Decode<ConversationRestrictions>(data);
+        if (incoming.Id != "" || incoming.Actor != peerId || incoming.Revision < 1 || incoming.Revision == long.MaxValue)
+            throw new InvalidDataException("Quyền hội thoại không hợp lệ.");
+        await groupChanges.WaitAsync(lifetime.Token);
+        try
+        {
+            var current = ConversationRules(peerId);
+            // A legacy whole-policy update cannot release another participant's restriction.
+            if (incoming.OwnershipVersion < 2 &&
+                (current.CaptureProtected && !incoming.CaptureProtected && current.CaptureOwners.Any(id => id != peerId) ||
+                 !current.ForwardAllowed && incoming.ForwardAllowed && current.ForwardOwners.Any(id => id != peerId))) return;
+            if (Store.MergeRestrictionClaim(peerId, peerId, new() { Revision = incoming.Revision, CaptureProtected = incoming.CaptureProtected, ForwardAllowed = incoming.ForwardAllowed })) Changed?.Invoke();
+        }
+        finally { groupChanges.Release(); }
+    }
     public async Task<ChatMessage> ForwardMessageAsync(string messageId, string target, CancellationToken ct = default)
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct, lifetime.Token); ct = stop.Token;

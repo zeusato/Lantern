@@ -15,7 +15,7 @@ public partial class MainWindow
         if (appLocking || node is null) return;
         var item = ItemsControl.ContainerFromElement(ContactsList, e.OriginalSource as DependencyObject) as ListBoxItem;
         if (item?.Content is not ContactRow row) return;
-        var menu = ConversationMenu(row); menu.PlacementTarget = item; menu.Placement = PlacementMode.MousePoint; menu.IsOpen = true;
+        var menu = contactSection == "chats" ? ConversationMenu(row) : DirectoryMenu(row); menu.PlacementTarget = item; menu.Placement = PlacementMode.MousePoint; menu.IsOpen = true;
     }
     private ContextMenu ConversationMenu(ContactRow row)
     {
@@ -100,13 +100,15 @@ public partial class MainWindow
     {
         if (ConversationProtected || appLocking || selectedId.Length == 0) return;
         var id = selectedId; var group = store.Groups().Find(g => g.Id == id); var rules = node.ConversationRules(id);
-        bool canEdit = group is null || group.OwnerId == identity.Id;
+        bool canCapture = node.CanChangeConversationRule(id, true), canForward = node.CanChangeConversationRule(id, false); bool canEdit = canCapture || canForward;
         var panel = new StackPanel(); panel.Children.Add(Paragraph("Quyền hội thoại", 23, true));
-        var capture = new CheckBox { Content = "Chặn chụp và ghi màn hình", IsChecked = rules.CaptureProtected, IsEnabled = canEdit, Margin = new Thickness(0, 8, 0, 8) };
-        var forward = new CheckBox { Content = "Cho phép chuyển tiếp tin nhắn và tệp", IsChecked = rules.ForwardAllowed, IsEnabled = canEdit, Margin = new Thickness(0, 8, 0, 12) };
+        var capture = new CheckBox { Content = "Chặn chụp và ghi màn hình", IsChecked = rules.CaptureProtected, IsEnabled = canCapture, Margin = new Thickness(0, 8, 0, 8) };
+        var forward = new CheckBox { Content = "Cho phép chuyển tiếp tin nhắn và tệp", IsChecked = rules.ForwardAllowed, IsEnabled = canForward, Margin = new Thickness(0, 8, 0, 12) };
         capture.SetResourceReference(Control.ForegroundProperty, "TextBrush"); forward.SetResourceReference(Control.ForegroundProperty, "TextBrush"); panel.Children.Add(capture); panel.Children.Add(forward);
         panel.Children.Add(Paragraph("Đồng bộ cho mọi người trong hội thoại. Chống chụp áp dụng cho cửa sổ đang mở log; không ngăn được camera bên ngoài hoặc mọi công cụ chụp. PWA vẫn cho đọc và gửi tin nhưng không chặn được chụp màn hình; bản web sẽ hiện thông báo giới hạn này.", 12, muted: true));
-        if (!canEdit) panel.Children.Add(Paragraph("Chỉ chủ nhóm được thay đổi các quyền này.", 12, muted: true));
+        panel.Children.Add(Paragraph(group is not null ? "Chỉ chủ nhóm được thay đổi các quyền này." : "Mỗi quyền do người bật hạn chế quản lý. Chỉ người đó được gỡ; trả về mặc định thì cả hai lại được thiết lập." + (!canCapture ? "\nChặn chụp: do đối tác thiết lập." : "") + (!canForward ? "\nChuyển tiếp: do đối tác thiết lập." : ""), 12, muted: true));
+        if (group is null && (rules.CaptureOwners.Length > 1 || rules.ForwardOwners.Length > 1))
+            panel.Children.Add(Paragraph("Cả hai đã cùng đặt hạn chế. Gỡ ở đây chỉ gỡ phần bạn đặt; thiết lập về mặc định khi đối tác cũng gỡ phần của họ.", 12, muted: true));
         if (!ShowDialog("Quyền hội thoại", panel, canEdit ? "Lưu thay đổi" : "Đóng") || !canEdit) return;
         try { await node.SetConversationRulesAsync(id, capture.IsChecked == true, forward.IsChecked == true); renderKey = ""; Refresh(); } catch (Exception ex) { ShowError(ex); }
     }

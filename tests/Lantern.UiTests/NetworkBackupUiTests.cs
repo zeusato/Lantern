@@ -23,7 +23,7 @@ internal sealed partial class UiHarness
             window = new MainWindow { Width = 1300 }; MainWindow = window; window.Show();
             await Until(() => Field<PeerNode>(window, "node").Port > 0, "QA window starts");
             Check(((ColumnDefinition)window.FindName("DetailsColumn")).Width.Value == 0, "Details sidebar starts hidden on a wide window");
-            var contacts = (ListBox)window.FindName("ContactsList"); contacts.SelectedIndex = 0;
+            Call(window, "SetContactSection", "friends"); var contacts = (ListBox)window.FindName("ContactsList"); contacts.SelectedIndex = 0;
             Check(((ColumnDefinition)window.FindName("DetailsColumn")).Width.Value == 0, "Selecting a conversation keeps details hidden");
             void CheckDetailsOpen()
             {

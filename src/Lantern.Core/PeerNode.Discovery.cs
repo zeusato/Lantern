@@ -50,8 +50,16 @@ public sealed partial class PeerNode
     {
         if (peers.Count >= 256 && !peers.ContainsKey(msg.Id)) return;
         var peer = peers.GetOrAdd(msg.Id, id => new Peer { Id = id, Name = msg.Name });
-        if (peer.Blocked || peer.Connected) return;
-        peer.Address = address.ToString(); peer.Port = msg.Port; peer.Seen = DateTimeOffset.UtcNow;
+        lock (peer)
+        {
+            if (peer.Blocked || peer.Connected) return;
+            bool changed = peer.Address != address.ToString() || peer.Port != msg.Port || !peer.Trusted && peer.Name != msg.Name;
+            if (!peer.Trusted) peer.Name = msg.Name;
+            peer.Address = address.ToString(); peer.Port = msg.Port; peer.Seen = DateTimeOffset.UtcNow;
+            // Persist known endpoints without writing every periodic UDP announcement.
+            // Discovery never grants trust or creates a conversation.
+            if (changed) Store.SavePeer(peer);
+        }
         Changed?.Invoke();
         if (peer.Trusted) Track(QuietConnect(peer));
     }

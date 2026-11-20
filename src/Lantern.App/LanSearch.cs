@@ -26,6 +26,7 @@ public partial class MainWindow
     private void DiscoverClick(object sender, RoutedEventArgs e)
     {
         if (node is null || appLocking) return;
+        SetContactSection("lan");
         var panel = new StackPanel(); panel.Children.Add(Paragraph("Tìm máy trong LAN", 24, true));
         panel.Children.Add(Paragraph("Chỉ cần nhập 10.10 để quét lần lượt 10.10.0.x đến 10.10.255.x; ưu tiên dải máy đang dùng. Nhập 10.10.14 để chỉ quét một dải. Mở khóa Lantern trên máy cần tìm.", muted: true));
         var ranges = new TextBox { Text = string.Join(", ", PeerNode.DiscoveryRanges()), MaxLength = 2048 }; panel.Children.Add(ranges);
@@ -46,7 +47,7 @@ public partial class MainWindow
                 button.Click += async (_, _) =>
                 {
                     button.IsEnabled = false;
-                    try { await node.ConnectAsync(peer.Address, peer.Port, peer.Id); status.Text = "Đã kết nối. Đóng màn quét và chọn hội thoại để xác minh."; ContactSearch.Clear(); Refresh(); ContactsList.SelectedItem = ContactsList.Items.OfType<ContactRow>().FirstOrDefault(r => r.Id == peer.Id); }
+                    try { await node.ConnectAsync(peer.Address, peer.Port, peer.Id); status.Text = "Đã kết nối. Đóng màn quét để xác minh trong Danh bạ."; ShowContact(peer.Id); }
                     catch (Exception ex) { status.Text = ex.Message; }
                     finally { button.IsEnabled = true; }
                 };

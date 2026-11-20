@@ -14,6 +14,24 @@ public sealed class ConversationRestrictions
     public long Revision { get; set; }
     public bool CaptureProtected { get; set; }
     public bool ForwardAllowed { get; set; } = true;
+    public int OwnershipVersion { get; set; }
+    public Dictionary<string, RestrictionClaim> Claims { get; set; } = [];
+    public void NormalizeOwnership()
+    {
+        if (OwnershipVersion < 2 && Revision > 0 && Actor.Length == 64)
+            Claims[Actor] = new() { Revision = Revision, CaptureProtected = CaptureProtected, ForwardAllowed = ForwardAllowed };
+        OwnershipVersion = 2;
+        CaptureProtected = Claims.Values.Any(c => c.CaptureProtected);
+        ForwardAllowed = Claims.Values.All(c => c.ForwardAllowed);
+    }
+    public string[] CaptureOwners => Claims.Where(p => p.Value.CaptureProtected).Select(p => p.Key).ToArray();
+    public string[] ForwardOwners => Claims.Where(p => !p.Value.ForwardAllowed).Select(p => p.Key).ToArray();
+}
+public sealed class RestrictionClaim
+{
+    public long Revision { get; set; }
+    public bool CaptureProtected { get; set; }
+    public bool ForwardAllowed { get; set; } = true;
 }
 
 public sealed partial class LocalStore
@@ -23,6 +41,17 @@ public sealed partial class LocalStore
     public ConversationPreferences Preference(string id) => Preferences().Find(p => p.Id == id) ?? new() { Id = id };
     public void SavePreference(ConversationPreferences value) => Save("conversation_preferences", value.Id, Codec.Encode(value));
     public List<ConversationRestrictions> Restrictions() => ReadAll<ConversationRestrictions>("capture_policies");
+    public bool MergeRestrictionClaim(string conversation, string actor, RestrictionClaim incoming)
+    {
+        lock (gate)
+        {
+            var policy = Restrictions().Find(p => p.Id == conversation) ?? new() { Id = conversation };
+            policy.NormalizeOwnership();
+            if (policy.Claims.TryGetValue(actor, out var current) && current.Revision >= incoming.Revision) return false;
+            policy.Claims[actor] = incoming; policy.Actor = actor; policy.Revision = Math.Max(policy.Revision, incoming.Revision);
+            policy.NormalizeOwnership(); Save("capture_policies", conversation, Codec.Encode(policy)); return true;
+        }
+    }
     public bool SaveRestrictions(ConversationRestrictions policy)
     {
         lock (gate)
