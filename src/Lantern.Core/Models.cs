@@ -71,6 +71,7 @@ public sealed class ChatMessage
     public string Text { get; set; } = "";
     public RichTextContent? RichText { get; set; }
     public ChatPoll? Poll { get; set; }
+    public string GameId { get; set; } = "";
     public StickerReference? Sticker { get; set; }
     public PollBallot? PendingPollVote { get; set; }
     public DateTimeOffset Time { get; set; } = DateTimeOffset.UtcNow;

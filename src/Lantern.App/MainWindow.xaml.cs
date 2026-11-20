@@ -220,6 +220,7 @@ public partial class MainWindow : Window
         if (selectedId.Length == 32 && !store.Groups().Any(g => g.Id == selectedId))
         { CloseMediaViews(); drafts.Remove(selectedId); replyDrafts.Remove(selectedId); selectedId = ""; Composer.Clear(); }
         bool protectedDetails = ConversationProtected || appLocking;
+        if (protectedDetails) RefreshGamePanel(true);
         if (protectedDetails) ClearPinnedMessages();
         DetailsContent.IsEnabled = !protectedDetails; DetailsContent.Visibility = protectedDetails ? Visibility.Collapsed : Visibility.Visible;
         InfoTabs.IsEnabled = !protectedDetails; DetailsLocked.Visibility = protectedDetails ? Visibility.Visible : Visibility.Collapsed;
@@ -272,7 +273,8 @@ public partial class MainWindow : Window
             foreach (var player in players) player.Close(); players.Clear(); MessagesPanel.Children.Clear(); expiryLabels.Clear(); progress.Clear();
             WelcomePanel.Visibility = Visibility.Visible; WelcomeTitle.Text = "Cuộc trò chuyện\nđang được khóa."; WelcomeBody.Text = "Nhập mật khẩu riêng để xem nội dung\nvà tệp đã chia sẻ trong cuộc trò chuyện này."; WelcomeAction.Content = "Mở khóa hội thoại"; WelcomeAction.Visibility = Visibility.Visible; NoFiles.Visibility = Visibility.Collapsed; renderKey = "locked:" + selectedId; return;
         }
-        if (!UpdateCaptureProtection()) return;
+        if (!UpdateCaptureProtection()) { HideGamePanel(); return; }
+        RefreshGamePanel(false);
         RefreshPinnedMessages();
         WelcomeAction.Content = "Tìm người trong LAN";
         var messages = hasChat ? store.Messages(selectedId, MessageSearch.Text, messageLimit) : [];
@@ -283,7 +285,7 @@ public partial class MainWindow : Window
         var senderAvatars = messages.Where(m => !m.Outgoing).Select(m => m.SenderId).Distinct().ToDictionary(id => id, id => node.FindPeer(id)?.Avatar ?? "");
         if (senderAvatars.Count != renderedSenderAvatars.Count || senderAvatars.Any(pair => !renderedSenderAvatars.TryGetValue(pair.Key, out var old) || old != pair.Value)) renderKey = "";
         renderedSenderAvatars = senderAvatars;
-        var key = selectedId + "|" + node.ConversationRules(selectedId).ForwardAllowed + "|" + string.Join(',', store.PinnedMessages(selectedId).Order()) + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + Codec.Encode(m.Reactions) + Codec.Encode(m.Poll) + m.Poll?.IsClosed + Codec.Encode(m.PendingPollVote) + string.Join(',', m.Delivery.Values)));
+        var key = selectedId + "|" + store.MessageVersion(selectedId) + "|" + node.ConversationRules(selectedId).ForwardAllowed + "|" + string.Join(',', store.PinnedMessages(selectedId).Order()) + "|" + MessageSearch.Text + "|" + string.Join(";", messages.Select(m => m.Id + m.Status + m.Error + m.ExpiresAt + node.FindPeer(m.SenderId)?.DisplayName + Codec.Encode(m.Reactions) + Codec.Encode(m.Poll) + m.Poll?.IsClosed + Codec.Encode(m.PendingPollVote) + string.Join(',', m.Delivery.Values)));
         RefreshSharedContent();
         if (key == renderKey) return;
         renderKey = key; hasTimedPolls = false;
@@ -353,7 +355,8 @@ public partial class MainWindow : Window
             var quoted = new Button { Content = new TextBlock { Text = original is null ? "Tin nhắn gốc không còn trên máy này" : Author(original) + "\n" + Snippet(original), TextWrapping = TextWrapping.Wrap, MaxWidth = 400 }, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(10), Margin = new Thickness(0, 0, 0, 10), ToolTip = "Đi tới tin nhắn gốc" };
             quoted.Click += (_, _) => GoToMessage(msg.ReplyToId); content.Children.Add(quoted);
         }
-        if (msg.Poll is not null) content.Children.Add(PollCard(msg));
+        if (msg.GameId.Length > 0) content.Children.Add(GameCard(msg));
+        else if (msg.Poll is not null) content.Children.Add(PollCard(msg));
         else if (msg.Kind == "contact" && msg.Contact is { } card)
         {
             content.Children.Add(Paragraph("👤 " + (node.FindPeer(card.Id)?.DisplayName ?? card.Name), 16, true));
@@ -900,7 +903,7 @@ public partial class MainWindow : Window
         var peer = node.FindPeer(selectedId); if (peer is null) return;
         if (MessageBox.Show(this, $"Chặn kết nối từ {peer.DisplayName}? Lịch sử vẫn giữ trên máy.", "Chặn máy", MessageBoxButton.YesNo) == MessageBoxResult.Yes) { node.Block(selectedId); selectedId = ""; renderKey = ""; Refresh(); }
     }
-    private void DetailsClick(object sender, RoutedEventArgs e) { if (ActualWidth < 1150) CompactDetails(); else { detailsVisible = !detailsVisible; UpdateLayoutWidths(); } }
+    private void DetailsClick(object sender, RoutedEventArgs e) { if (ActualWidth < 1150 || GameHost.Visibility == Visibility.Visible) CompactDetails(); else { detailsVisible = !detailsVisible; UpdateLayoutWidths(); } }
     private void CompactDetails()
     {
         var content = DetailsPanel.Child; if (content is null) return;
@@ -973,7 +976,7 @@ public partial class MainWindow : Window
         if (appLocking || closing) return;
         InAppDialog.CancelAll(this);
         if (emojiPopup is not null) emojiPopup.IsOpen = false;
-        appLocking = true; CloseMediaViews(); foreach (var player in players) player.Close(); players.Clear();
+        appLocking = true; HideGamePanel(); CloseMediaViews(); foreach (var player in players) player.Close(); players.Clear();
         foreach (var window in OwnedWindows.Cast<Window>().ToArray()) window.Close();
         DetailsContent.IsEnabled = false; DetailsContent.Visibility = Visibility.Collapsed; InfoTabs.IsEnabled = false; DetailsLocked.Visibility = Visibility.Visible;
         unlockedConversations.Clear(); renderKey = ""; RefreshConversation();

@@ -31,6 +31,7 @@ public sealed partial class LocalStore : IDisposable
         using (var profile = db.CreateCommand()) { profile.CommandText = "CREATE TABLE IF NOT EXISTS profile(id TEXT PRIMARY KEY,data TEXT NOT NULL)"; profile.ExecuteNonQuery(); }
         if (vault is not null) MigrateEncryption();
         InitializeUnread();
+        InitializeGames();
     }
     private void InitializeUnread()
     {
@@ -247,7 +248,7 @@ public sealed partial class LocalStore : IDisposable
             var messages = Messages(conversation, limit: int.MaxValue).Where(m => ids is null || ids.Contains(m.Id)).ToList();
             using var tx = db.BeginTransaction();
             using var cmd = db.CreateCommand(); cmd.Transaction = tx;
-            cmd.CommandText = "INSERT OR IGNORE INTO deleted_messages(id) VALUES($id); DELETE FROM unread_messages WHERE id=$id; DELETE FROM message_expiry WHERE id=$id; DELETE FROM expired_messages WHERE id=$id; DELETE FROM pinned_messages WHERE id=$id; DELETE FROM messages WHERE id=$id;";
+            cmd.CommandText = "INSERT OR IGNORE INTO deleted_messages(id) VALUES($id); DELETE FROM unread_messages WHERE id=$id; DELETE FROM message_expiry WHERE id=$id; DELETE FROM expired_messages WHERE id=$id; DELETE FROM pinned_messages WHERE id=$id; DELETE FROM games WHERE id=$id; DELETE FROM messages WHERE id=$id;";
             var parameter = cmd.Parameters.Add("$id", SqliteType.Text);
             foreach (var message in messages) { parameter.Value = message.Id; cmd.ExecuteNonQuery(); }
             if (messages.Count > 0)

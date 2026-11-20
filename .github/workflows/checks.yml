@@ -16,6 +16,7 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet build src/Lantern.App/Lantern.App.csproj -c Release --nologo
       - run: dotnet run --project tests/Lantern.Tests/Lantern.Tests.csproj -c Release
+      - run: dotnet run --project tests/Lantern.UiTests/Lantern.UiTests.csproj -c Release -- --games
       - run: dotnet run --project tests/Lantern.UiTests/Lantern.UiTests.csproj -c Release -- --network-backup
       - run: dotnet run --project tests/Lantern.UiTests/Lantern.UiTests.csproj -c Release -- --pins-emoji
       - run: dotnet run --project tests/Lantern.UiTests/Lantern.UiTests.csproj -c Release -- --rich-polls

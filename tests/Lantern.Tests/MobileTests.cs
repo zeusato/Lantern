@@ -145,6 +145,29 @@ internal static class MobileTests
             var cleared = await Call(new() { Type = "clear-history", Conversation = otherId.Id });
             check(cleared.Messages.Count == 0 && store.Messages(otherId.Id).Count == 0 && cleared.Conversations.Single(c => c.Id == otherId.Id).Protected
                 && otherStore.Messages(identity.Id).Count > 0, "Phone history clearing preserves the conversation password, contact and partner's copy");
+            var gameInvitation = await Call(new() { Type = "game-invite", Conversation = otherId.Id, Name = "words" });
+            var gameId = gameInvitation.MessageId;
+            async Task GameReady() { for (int i = 0; i < 200; i++) { if (node.CurrentGame(otherId.Id, gameId) is { Pending: false } a && other.CurrentGame(identity.Id, gameId) is { Pending: false } b && a.State.Head == b.State.Head) return; await Task.Delay(30); } throw new TimeoutException("Mobile game sync"); }
+            await GameReady();
+            check(gameInvitation.Game?.State.Status == "invited" && gameInvitation.Messages.Any(m => m.GameId == gameId), "Phone can invite a game and receives the invitation card and game snapshot");
+            await other.GameActionAsync(gameId, "accept"); await GameReady();
+            var gameHistory = await Call(new() { Type = "history", Conversation = otherId.Id, Hash = gameInvitation.Hash });
+            check(gameHistory.Type == "ok" && gameHistory.Game?.State.Status == "playing" && gameHistory.Hash != gameInvitation.Hash, "Game-only changes invalidate the mobile history hash");
+            var word = await Call(new() { Type = "game-action", Conversation = otherId.Id, MessageId = gameId, Name = "word", Text = "học sinh", GameRevision = gameHistory.Game!.State.Revision });
+            await GameReady();
+            check(word.Type == "ok" && other.CurrentGame(identity.Id)!.State.Words.SequenceEqual(new[] { "học sinh" }), "Phone word move is validated and synchronized to the other PC");
+            check((await Call(new() { Type = "game-action", Conversation = otherId.Id, MessageId = gameId, Name = "word", Text = "sinh nhật", GameRevision = gameHistory.Game.State.Revision })).Type == "error", "Phone cannot submit an action using a stale game revision");
+            server.LockConversation(otherId.Id);
+            check((await Call(new() { Type = "game-action", Conversation = otherId.Id, MessageId = gameId, Name = "resign", GameRevision = word.Game!.State.Revision })).Type == "error"
+                && (await Call(new() { Type = "history", Conversation = otherId.Id })).Game is null, "Locked conversation denies game actions and conceals the game snapshot");
+            await Call(new() { Type = "unlock", Conversation = otherId.Id, Password = "conversation-secret" });
+            await GameReady();
+            await Call(new() { Type = "game-action", Conversation = otherId.Id, MessageId = gameId, Name = "resign", GameRevision = node.CurrentGame(otherId.Id)!.State.Revision });
+            await GameReady();
+            var shipInvite = await Call(new() { Type = "game-invite", Conversation = otherId.Id, Name = "ships" }); gameId = shipInvite.MessageId; await GameReady();
+            await other.GameActionAsync(gameId, "accept"); await GameReady();
+            var fleetReply = await Call(new() { Type = "game-action", Conversation = otherId.Id, MessageId = gameId, Name = "fleet", Data = Codec.Encode(GameFleet.RandomBoard()), GameRevision = node.CurrentGame(otherId.Id)!.State.Revision }); await GameReady();
+            check(fleetReply.Game?.OwnBoard.Length == 100 && !JsonSerializer.Serialize(fleetReply, MobileProtocol.Json).Contains(store.Game(gameId)!.Fleet!.Salts[0]), "Phone sees only its own fleet and never receives private commitment salts");
             await server.RevokeAsync(phone.Id);
             bool denied = false; try { await Call(new() { Type = "list" }); } catch (Exception) { denied = true; }
             check(denied && !server.Registry.Contains(phone.Id), "Revocation closes an active phone connection");

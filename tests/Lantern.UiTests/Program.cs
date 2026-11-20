@@ -51,6 +51,7 @@ internal sealed partial class UiHarness : Application
     // Isolated fixture host: production startup/password handling is not altered or shipped with a bypass.
     protected override async void OnStartup(StartupEventArgs e)
     {
+        if (e.Args.FirstOrDefault() == "--games") { await RunGamesUi(e.Args.ElementAtOrDefault(1)); return; }
         if (e.Args.FirstOrDefault() == "--network-backup") { await RunNetworkBackupUi(e.Args.ElementAtOrDefault(1)); return; }
         if (e.Args.FirstOrDefault() == "--composer-menus") { await RunComposerMenus(); return; }
         if (e.Args.FirstOrDefault() == "--stickers") { await RunStickerUi(e.Args.ElementAtOrDefault(1)); return; }

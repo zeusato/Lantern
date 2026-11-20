@@ -34,3 +34,4 @@ relay/dist/
 pwa/vendor/
 
 .tools/
+artifacts/

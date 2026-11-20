@@ -187,7 +187,7 @@ public sealed partial class PeerNode : IAsyncDisposable
                 await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = "lantern.local", ClientCertificates = new X509CertificateCollection { Identity.Certificate }, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, CertificateRevocationCheckMode = X509RevocationMode.NoCheck }, timeout.Token);
             else
                 await ssl.AuthenticateAsServerAsync(new SslServerAuthenticationOptions { ServerCertificate = Identity.Certificate, ClientCertificateRequired = true, EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13, CertificateRevocationCheckMode = X509RevocationMode.NoCheck }, timeout.Token);
-            await Protocol.WriteAsync(ssl, new WireMessage { Type = "hello", Version = 5, Id = Identity.Id, Name = Identity.Name, Port = Port, Data = Presence }, timeout.Token);
+            await Protocol.WriteAsync(ssl, new WireMessage { Type = "hello", Version = 6, Id = Identity.Id, Name = Identity.Name, Port = Port, Data = Presence }, timeout.Token);
             var hello = await Protocol.ReadAsync(ssl, timeout.Token);
             if (hello.Type != "hello" || hello.Id != certificateId || hello.Name.Length is < 1 or > 80 || string.IsNullOrWhiteSpace(hello.Name) || hello.Name.Any(char.IsControl) || hello.Port is < 1 or > 65535) throw new AuthenticationException("Danh tính không khớp khóa của kết nối.");
             session = new Session(certificateId, ssl, client, outbound);
@@ -312,6 +312,7 @@ public sealed partial class PeerNode : IAsyncDisposable
         foreach (var msg in Store.Pending(peerId).Where(m => m.SenderId == Identity.Id && ConversationHasPeer(m, peerId) && (!m.ExpiresAt.HasValue || m.ExpiresAt > DateTimeOffset.UtcNow) && (m.DisappearAfterSeconds == 0 || peers[peerId].ProtocolVersion >= 2))) await SendTo(peerId, new WireMessage { Type = msg.Kind == "text" ? "message" : msg.Kind == "contact" ? "contact" : "offer", Message = ForRecipient(msg, peerId) });
         // Replay only this machine's reaction, including removals. Revision numbers reject stale updates.
         await ReplayPolls(peerId);
+        await ReplayGames(peerId);
         foreach (var msg in Store.Messages(limit: int.MaxValue).Where(m => m.Reactions.ContainsKey(Identity.Id) && ConversationHasPeer(m, peerId)))
             await SendTo(peerId, new WireMessage { Type = "reaction", Id = msg.Id, Data = msg.Reactions[Identity.Id], Offset = msg.ReactionVersions.GetValueOrDefault(Identity.Id) });
         foreach (var msg in Store.Messages(limit: int.MaxValue).Concat(Store.ExpiredMessages()).Where(m => m.ExpiresAt.HasValue && ConversationHasPeer(m, peerId)))
@@ -320,7 +321,7 @@ public sealed partial class PeerNode : IAsyncDisposable
     }
     private static ChatMessage ForWire(ChatMessage value)
     {
-        var msg = Codec.Decode<ChatMessage>(Codec.Encode(value)); msg.PendingPollVote = null; msg.FilePath = ""; msg.ExpiresAt = null; msg.Delivery.Clear(); msg.Reactions.Clear(); msg.ReactionVersions.Clear(); msg.Error = ""; msg.Status = ""; msg.Transferred = 0; return msg;
+        var msg = Codec.Decode<ChatMessage>(Codec.Encode(value)); msg.GameId = ""; msg.PendingPollVote = null; msg.FilePath = ""; msg.ExpiresAt = null; msg.Delivery.Clear(); msg.Reactions.Clear(); msg.ReactionVersions.Clear(); msg.Error = ""; msg.Status = ""; msg.Transferred = 0; return msg;
     }
     private List<string> Recipients(string conversationId)
     {
@@ -573,6 +574,7 @@ public sealed partial class PeerNode : IAsyncDisposable
             });
             if (changed) Changed?.Invoke(); return;
         }
+        if (wire.Type.StartsWith("game-", StringComparison.Ordinal)) { await HandleGame(peerId, wire); return; }
         if (wire.Type is "poll-vote" or "poll-state" or "poll-sync") { await HandlePoll(peerId, wire); return; }
         if (wire.Type == "profile")
         {
@@ -618,7 +620,7 @@ public sealed partial class PeerNode : IAsyncDisposable
             incoming.Outgoing = false; incoming.ExpiresAt = history && incoming.DisappearAfterSeconds > 0 ? incoming.ExpiresAt : null; incoming.ConversationId = incoming.GroupId.Length > 0 ? incoming.GroupId : peerId;
             if (incoming.ExpiresAt <= DateTimeOffset.UtcNow) return;
             if (incoming.ExpiresAt > DateTimeOffset.UtcNow.AddSeconds(incoming.DisappearAfterSeconds + 30)) throw new InvalidDataException("Hạn tự hủy không hợp lệ.");
-            incoming.SenderName = peers[peerId].Name; incoming.Delivery.Clear(); incoming.Reactions.Clear(); incoming.ReactionVersions.Clear(); incoming.FilePath = ""; incoming.Error = ""; incoming.Transferred = 0;
+            incoming.GameId = ""; incoming.SenderName = peers[peerId].Name; incoming.Delivery.Clear(); incoming.Reactions.Clear(); incoming.ReactionVersions.Clear(); incoming.FilePath = ""; incoming.Error = ""; incoming.Transferred = 0;
             if (incoming.Time > DateTimeOffset.UtcNow.AddMinutes(5) || incoming.Time < DateTimeOffset.UtcNow.AddYears(-10)) incoming.Time = DateTimeOffset.UtcNow;
             if (wire.Type == "message") { incoming.Kind = "text"; incoming.Status = "delivered"; }
             else if (wire.Type == "contact") { ValidateContact(incoming.Contact ?? throw new InvalidDataException("Thiếu liên hệ.")); incoming.Kind = "contact"; incoming.Status = "delivered"; }

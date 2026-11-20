@@ -28,12 +28,14 @@ import java.time.format.DateTimeFormatter;
 public final class MainActivity extends Activity {
     private static final int BG=Color.rgb(16,26,33),SURFACE=Color.rgb(28,43,53),TEXT=Color.rgb(234,243,246),MUTED=Color.rgb(153,174,186),ACCENT=Color.rgb(45,185,167);
     private LinearLayout root,body,messagesBox,composerBar;private TextView subtitle,title,quote,actionStatus;private EditText composer;private ScrollView scroll;private ImageButton sendButton;private boolean sending;
+    private ChatGamesView gamesView;private LinearLayout composerRow,composerTools;private Button attachGameButton,emojiGameButton;private boolean gameSplit;
     private record MessageRow(String key,String avatar,View view){}
     private final MessageAvatars messageAvatars=new MessageAvatars();
     private final java.util.Map<String,MessageRow> messageRows=new java.util.HashMap<>();
     private long nextExpiry=Long.MAX_VALUE;private int renderGeneration;
     private record Draft(String text,int start,int end,String reply,boolean focused,boolean keyboard){}
-    private record Retained(java.util.Map<String,Draft> drafts,String name){}
+    private record Retained(java.util.Map<String,Draft> drafts,java.util.Map<String,ChatGamesView.Draft> games,String name){}
+    private final java.util.Map<String,ChatGamesView.Draft> gameDrafts=new java.util.HashMap<>();
     private final java.util.Map<String,Draft> drafts=new java.util.HashMap<>();private String composerConversation="";
     private String selectedName="",replyTo="",renderKey="";private boolean resumed,locked;
     private final Handler tick=new Handler(Looper.getMainLooper());
@@ -47,33 +49,35 @@ public final class MainActivity extends Activity {
     private String delivery(String state){return switch(state){case "sending"->"Đang gửi tới PC…";case "retry"->"Chưa xác nhận · Chạm để thử lại";case "queued"->"PC đã nhận · Đang chuyển tiếp";case "delivered"->"Đã nhận";case "read"->"Đã đọc";case "offered"->"Đã gửi";case "receiving"->"Đang nhận";case "received"->"Đã nhận";case "declined"->"Đã từ chối";case "error"->"Lỗi gửi";default->"Đã gửi";};}
     private Button button(String label,Runnable click){Button b=new Button(this);b.setText(label);b.setTextColor(TEXT);b.setTextSize(14);b.setAllCaps(false);b.setBackground(shape(SURFACE,14));b.setPadding(dp(14),dp(8),dp(14),dp(8));b.setOnClickListener(v->click.run());return b;}
     private LinearLayout column(){LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);return panel;}
-    public void onCreate(Bundle state){super.onCreate(state);if(!AppSession.guard(this))return;WindowCompat.setDecorFitsSystemWindows(getWindow(),false);getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,WindowManager.LayoutParams.FLAG_SECURE);if(getLastNonConfigurationInstance() instanceof Retained saved){drafts.putAll(saved.drafts());selectedName=saved.name();}build();}
-    private void rememberDraft(){if(composer==null||composerConversation.isEmpty())return;WindowInsetsCompat insets=ViewCompat.getRootWindowInsets(root);drafts.put(composerConversation,new Draft(composer.getText().toString(),composer.getSelectionStart(),composer.getSelectionEnd(),replyTo,composer.hasFocus(),insets!=null&&insets.isVisible(WindowInsetsCompat.Type.ime())));}
-    public Object onRetainNonConfigurationInstance(){if(resumed)rememberDraft();return new Retained(new java.util.HashMap<>(drafts),selectedName);}
+    public void onCreate(Bundle state){super.onCreate(state);if(!AppSession.guard(this))return;WindowCompat.setDecorFitsSystemWindows(getWindow(),false);getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE,WindowManager.LayoutParams.FLAG_SECURE);if(getLastNonConfigurationInstance() instanceof Retained saved){drafts.putAll(saved.drafts());gameDrafts.putAll(saved.games());selectedName=saved.name();}build();}
+    private void rememberDraft(){if(gamesView!=null&&!composerConversation.isEmpty())gameDrafts.put(composerConversation,gamesView.saveDraft());if(composer==null||composerConversation.isEmpty())return;WindowInsetsCompat insets=ViewCompat.getRootWindowInsets(root);drafts.put(composerConversation,new Draft(composer.getText().toString(),composer.getSelectionStart(),composer.getSelectionEnd(),replyTo,composer.hasFocus(),insets!=null&&insets.isVisible(WindowInsetsCompat.Type.ime())));}
+    public Object onRetainNonConfigurationInstance(){if(resumed)rememberDraft();return new Retained(new java.util.HashMap<>(drafts),new java.util.HashMap<>(gameDrafts),selectedName);}
     protected void onResume(){super.onResume();if(!AppSession.guard(this))return;resumed=true;ConnectionService.visible=true;ConnectionService.changed=this::refresh;try{if(DeviceKeys.load(this)!=null&&ConnectionService.current==null)startConnection();else if(ConnectionService.current!=null&&!ConnectionService.selected.isEmpty())ConnectionService.current.select(ConnectionService.selected);}catch(Exception e){toast("Không đọc được ghép đôi. Hãy quét QR lại.");}refresh();tick.postDelayed(expiryTick,1000);MobileUpdater.get(this).listen(updateChanged);MobileUpdater.get(this).automatic();}
     protected void onPause(){rememberDraft();if(conversationSettings!=null)conversationSettings.dismiss();resumed=false;ConnectionService.visible=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());ConnectionService.changed=null;tick.removeCallbacks(expiryTick);MobileUpdater.get(this).unlisten(updateChanged);super.onPause();}
     private void build(){
         if(!AppSession.guard(this))return;
         if(conversationSettings!=null)conversationSettings.dismiss();
         rememberDraft();replyTo="";composer=null;composerConversation="";messageRows.clear();nextExpiry=Long.MAX_VALUE;renderGeneration++;
-        renderKey="";sending=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());root=column();root.setBackgroundColor(BG);root.setPadding(dp(12),dp(12),dp(12),dp(8));setContentView(root);
+        gamesView=null;gameSplit=false;renderKey="";sending=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());root=column();root.setBackgroundColor(BG);root.setPadding(dp(12),dp(12),dp(12),dp(8));setContentView(root);
         ViewCompat.setOnApplyWindowInsetsListener(root,(v,insets)->{androidx.core.graphics.Insets bars=insets.getInsets(WindowInsetsCompat.Type.systemBars()|WindowInsetsCompat.Type.displayCutout());int left=bars.left+dp(12),top=bars.top+dp(8),right=bars.right+dp(12),bottom=Math.max(bars.bottom,insets.getInsets(WindowInsetsCompat.Type.ime()).bottom)+dp(8);if(v.getPaddingLeft()!=left||v.getPaddingTop()!=top||v.getPaddingRight()!=right||v.getPaddingBottom()!=bottom)v.setPadding(left,top,right,bottom);return insets;});ViewCompat.requestApplyInsets(root);
         LinearLayout header=new LinearLayout(this);header.setGravity(Gravity.CENTER_VERTICAL);root.addView(header);
         if(!ConnectionService.selected.isEmpty())header.addView(button("‹",()->openList()),new LinearLayout.LayoutParams(dp(44),dp(44)));
         LinearLayout headings=column();headings.setPadding(dp(8),0,0,0);title=text(ConnectionService.selected.isEmpty()?"Lantern":selectedName,25,TEXT);title.setTypeface(null,Typeface.BOLD);headings.addView(title);subtitle=text(ConnectionService.status,12,MUTED);headings.addView(subtitle);header.addView(headings,new LinearLayout.LayoutParams(0,-2,1));
+        if(!ConnectionService.selected.isEmpty()){Button play=button("🎮",()->{if(gamesView!=null)gamesView.invite();});play.setContentDescription("Chơi game");header.addView(play,new LinearLayout.LayoutParams(dp(42),dp(44)));}
         Button options=button("⋯",this::menu);options.setContentDescription("Tùy chọn");header.addView(options,new LinearLayout.LayoutParams(dp(44),dp(44)));
         updateBanner=text("",13,ACCENT);updateBanner.setPadding(dp(8),dp(10),dp(8),0);updateBanner.setOnClickListener(v->openUpdates());root.addView(updateBanner);renderUpdate();
         body=column();LinearLayout.LayoutParams b=new LinearLayout.LayoutParams(-1,0,1);b.topMargin=dp(20);root.addView(body,b);
         if(!ConnectionService.selected.isEmpty()){
+            LinearLayout split=new LinearLayout(this);split.setBaselineAligned(false);body.addView(split,new LinearLayout.LayoutParams(-1,-1));body=column();split.addView(body,new LinearLayout.LayoutParams(0,-1,1));gamesView=new ChatGamesView(this,ConnectionService.selected,this::gameLayout);gamesView.restoreDraft(gameDrafts.get(ConnectionService.selected));split.addView(gamesView,new LinearLayout.LayoutParams(0,-1,1));
             scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setFocusable(false);messagesBox=column();messagesBox.setFocusable(false);messagesBox.setPadding(0,dp(8),0,dp(8));scroll.addView(messagesBox);body.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
             scroll.setOnScrollChangeListener((v,x,y,oldX,oldY)->updateVisibleMessages());
             quote=text("",12,ACCENT);quote.setVisibility(View.GONE);quote.setPadding(dp(12),dp(8),dp(12),dp(8));quote.setOnClickListener(v->{replyTo="";quote.setVisibility(View.GONE);});body.addView(quote);
             actionStatus=text("",12,MUTED);actionStatus.setPadding(dp(4),dp(6),dp(4),dp(6));actionStatus.setVisibility(View.GONE);body.addView(actionStatus);
-            composerBar=new LinearLayout(this);composerBar.setBaselineAligned(false);composerBar.setGravity(Gravity.BOTTOM);body.addView(composerBar);
-            composerBar.addView(button("＋",this::pickFile),new LinearLayout.LayoutParams(dp(44),dp(48)));
-            composer=new EditText(this);composerConversation=ConnectionService.selected;composer.setContentDescription("Soạn tin nhắn");composer.setTextColor(TEXT);composer.setHintTextColor(MUTED);composer.setTextSize(16);composer.setHint("Nhắn tin…");composer.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE|InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);composer.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI|EditorInfo.IME_FLAG_NO_FULLSCREEN);composer.setMinLines(1);composer.setMaxLines(6);composer.setMinHeight(dp(48));composer.setGravity(Gravity.TOP|Gravity.START);composer.setIncludeFontPadding(false);composer.setHorizontallyScrolling(false);composer.setVerticalScrollBarEnabled(true);composer.setBackground(shape(SURFACE,16));composer.setPadding(dp(14),dp(13),dp(14),dp(13));LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1);cp.setMargins(dp(8),0,dp(8),0);composerBar.addView(composer,cp);
-            EmojiCatalog.get(this).watch(composer);Button emojiButton=button("☺",()->EmojiCatalog.get(this).picker(composer));emojiButton.setContentDescription("Chọn emoji");composerBar.addView(emojiButton,new LinearLayout.LayoutParams(dp(40),dp(48)));
-            sendButton=new ImageButton(this);sendButton.setImageResource(R.drawable.ic_send);sendButton.setContentDescription("Gửi tin nhắn");sendButton.setPadding(dp(12),dp(12),dp(12),dp(12));sendButton.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x35ffffff),shape(Color.rgb(45,170,156),16),null));sendButton.setOnClickListener(v->send());composerBar.addView(sendButton,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            composerBar=column();body.addView(composerBar);composerTools=new LinearLayout(this);composerTools.setVisibility(View.GONE);composerBar.addView(composerTools);composerRow=new LinearLayout(this);composerRow.setBaselineAligned(false);composerRow.setGravity(Gravity.BOTTOM);composerBar.addView(composerRow);
+            attachGameButton=button("＋",this::pickFile);composerRow.addView(attachGameButton,new LinearLayout.LayoutParams(dp(44),dp(48)));
+            composer=new EditText(this);composerConversation=ConnectionService.selected;composer.setContentDescription("Soạn tin nhắn");composer.setTextColor(TEXT);composer.setHintTextColor(MUTED);composer.setTextSize(16);composer.setHint("Nhắn tin…");composer.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE|InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);composer.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI|EditorInfo.IME_FLAG_NO_FULLSCREEN);composer.setMinLines(1);composer.setMaxLines(6);composer.setMinHeight(dp(48));composer.setGravity(Gravity.TOP|Gravity.START);composer.setIncludeFontPadding(false);composer.setHorizontallyScrolling(false);composer.setVerticalScrollBarEnabled(true);composer.setBackground(shape(SURFACE,16));composer.setPadding(dp(14),dp(13),dp(14),dp(13));LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-2,1);cp.setMargins(dp(8),0,dp(8),0);composerRow.addView(composer,cp);
+            EmojiCatalog.get(this).watch(composer);Button emojiButton=button("☺",()->EmojiCatalog.get(this).picker(composer));emojiButton.setContentDescription("Chọn emoji");emojiGameButton=emojiButton;composerRow.addView(emojiButton,new LinearLayout.LayoutParams(dp(40),dp(48)));
+            sendButton=new ImageButton(this);sendButton.setImageResource(R.drawable.ic_send);sendButton.setContentDescription("Gửi tin nhắn");sendButton.setPadding(dp(12),dp(12),dp(12),dp(12));sendButton.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(0x35ffffff),shape(Color.rgb(45,170,156),16),null));sendButton.setOnClickListener(v->send());composerRow.addView(sendButton,new LinearLayout.LayoutParams(dp(48),dp(48)));
             Draft draft=drafts.get(composerConversation);if(draft!=null){composer.setText(draft.text());composer.setSelection(Math.max(0,Math.min(draft.start(),composer.length())),Math.max(0,Math.min(draft.end(),composer.length())));replyTo=draft.reply();if(!replyTo.isEmpty()){quote.setText("↳ Tin được trích dẫn   ×");quote.setVisibility(View.VISIBLE);}EditText editor=composer;editor.post(()->{if(editor!=composer||locked||!draft.focused())return;editor.requestFocus();if(draft.keyboard())((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(editor,InputMethodManager.SHOW_IMPLICIT);});}
         }
         refresh();
@@ -108,7 +112,7 @@ public final class MainActivity extends Activity {
     }
     private void renderMessages(){
         boolean nextLocked=true;for(int i=0;i<ConnectionService.conversations.length();i++){JSONObject c=ConnectionService.conversations.optJSONObject(i);if(c!=null&&ConnectionService.selected.equals(c.optString("id"))){nextLocked=c.optBoolean("locked");selectedName=c.optString("name");title.setText(selectedName);}}
-        locked=nextLocked;composerBar.setVisibility(locked?View.GONE:View.VISIBLE);if(locked){quote.setVisibility(View.GONE);ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());}
+        locked=nextLocked;if(gamesView!=null)gamesView.update(ConnectionService.games.get(ConnectionService.selected),locked);composerBar.setVisibility(locked?View.GONE:View.VISIBLE);if(locked){quote.setVisibility(View.GONE);ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());}
         nextExpiry=Long.MAX_VALUE;
         if(locked){if(!"locked".equals(renderKey)){renderKey="locked";messageRows.clear();messagesBox.removeAllViews();messagesBox.addView(text("🔒  Hội thoại được bảo vệ",21,TEXT));messagesBox.addView(text("Nhập mật khẩu để mở trong phiên kết nối này.",14,MUTED));messagesBox.addView(button("Mở khóa hội thoại",this::unlock));}return;}
         java.util.List<JSONObject> visibleMessages=new java.util.ArrayList<>();
@@ -117,7 +121,7 @@ public final class MainActivity extends Activity {
             if(!message.isNull("expiresAt")){long deadline=OffsetDateTime.parse(message.getString("expiresAt")).toInstant().toEpochMilli();if(deadline<=System.currentTimeMillis()){File expired=ConnectionService.images.remove(message.optString("id"));if(expired!=null)expired.delete();continue;}nextExpiry=Math.min(nextExpiry,deadline);}
             visibleMessages.add(message);
         }catch(Exception ignored){}
-        String signature=visibleMessages.toString()+ConnectionService.images.toString();if(signature.equals(renderKey))return;renderKey=signature;
+        String signature=visibleMessages.toString()+ConnectionService.images.toString()+String.valueOf(ConnectionService.games.get(ConnectionService.selected));if(signature.equals(renderKey))return;renderKey=signature;
         int previousY=scroll.getScrollY();boolean bottom=previousY+scroll.getHeight()>=messagesBox.getHeight()-dp(120),composing=composer.hasFocus();
         java.util.Map<String,String> avatars=new java.util.HashMap<>();for(JSONObject item:visibleMessages)if(!item.optBoolean("outgoing")&&item.has("senderAvatar")&&!item.isNull("senderAvatar"))avatars.put(item.optString("senderId"),item.optString("senderAvatar"));
         java.util.List<View> rows=new java.util.ArrayList<>();java.util.Set<String> retained=new java.util.HashSet<>();
@@ -125,13 +129,14 @@ public final class MainActivity extends Activity {
             JSONObject message=visibleMessages.get(i);
             boolean joinsPrevious=i>0&&MessageGrouping.joins(visibleMessages.get(i-1),message),joinsNext=i+1<visibleMessages.size()&&MessageGrouping.joins(message,visibleMessages.get(i+1));
             String id=message.getString("id"),replyId=message.optString("replyToId"),replyText="";for(JSONObject candidate:visibleMessages)if(replyId.equals(candidate.optString("id")))replyText=candidate.toString();
-            String avatar=avatars.getOrDefault(message.optString("senderId"),"");String rowKey=message.toString()+joinsPrevious+joinsNext+replyText+ConnectionService.images.get(id);retained.add(id);MessageRow cached=messageRows.get(id);if(cached!=null&&cached.key().equals(rowKey)&&cached.avatar().equals(avatar)){rows.add(cached.view());continue;}
+            String avatar=avatars.getOrDefault(message.optString("senderId"),"");String rowKey=message.toString()+joinsPrevious+joinsNext+replyText+ConnectionService.images.get(id)+(message.optString("gameId").isEmpty()?"":String.valueOf(ConnectionService.games.get(ConnectionService.selected)));retained.add(id);MessageRow cached=messageRows.get(id);if(cached!=null&&cached.key().equals(rowKey)&&cached.avatar().equals(avatar)){rows.add(cached.view());continue;}
             boolean own=message.optBoolean("outgoing"),sticker="image".equals(message.optString("kind"))&&message.optJSONObject("sticker")!=null;LinearLayout row=new LinearLayout(this);row.setTag(id);row.setGravity(own?Gravity.RIGHT:Gravity.LEFT);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,-2);rp.topMargin=dp(joinsPrevious?4:12);row.setLayoutParams(rp);rows.add(row);messageRows.put(id,new MessageRow(rowKey,avatar,row));
             if(!own){if(!joinsPrevious)row.addView(messageAvatars.create(this,message.optString("senderName"),avatar));else row.addView(new View(this),new LinearLayout.LayoutParams(dp(40),1));}
-            LinearLayout bubble=column();bubble.setPadding(dp(12),dp(10),dp(12),dp(8));bubble.setBackground(sticker?null:shape(own?Color.rgb(29,77,72):SURFACE,16));if(sticker)bubble.setPadding(0,0,0,0);row.addView(bubble,new LinearLayout.LayoutParams(-2,-2));int max=getResources().getDisplayMetrics().widthPixels-dp(100);
+            LinearLayout bubble=column();bubble.setPadding(dp(12),dp(10),dp(12),dp(8));bubble.setBackground(sticker?null:shape(own?Color.rgb(29,77,72):SURFACE,16));if(sticker)bubble.setPadding(0,0,0,0);row.addView(bubble,new LinearLayout.LayoutParams(-2,-2));int max=Math.max(dp(80),(gameSplit?getResources().getDisplayMetrics().widthPixels/2:getResources().getDisplayMetrics().widthPixels)-dp(100));
             if(!own&&!joinsPrevious&&ConversationSettings.contact(ConnectionService.selected)!=null&&ConversationSettings.contact(ConnectionService.selected).optBoolean("isGroup")){TextView sender=text(message.optString("senderName"),12,ACCENT);sender.setMaxWidth(max);bubble.addView(sender);}
             String reply=message.optString("replyToId");if(!reply.isEmpty()){String snippet="Tin được trích dẫn";for(JSONObject q:visibleMessages){if(q!=null&&reply.equals(q.optString("id")))snippet=q.optString("text",q.optString("fileName"));}TextView q=text("↳ "+snippet,12,MUTED);q.setMaxWidth(max);q.setMaxLines(2);bubble.addView(q);}
-            String kind=message.optString("kind");if("text".equals(kind)){TextView content=text("",16,TEXT);content.setText(EmojiCatalog.get(this).render(message.optString("text"),content.getTextSize()));content.setMaxWidth(max);content.setTextIsSelectable(true);bubble.addView(content);}
+            String kind=message.optString("kind");if(!message.optString("gameId").isEmpty()){gameCard(bubble,message);}
+            else if("text".equals(kind)){TextView content=text("",16,TEXT);content.setText(EmojiCatalog.get(this).render(message.optString("text"),content.getTextSize()));content.setMaxWidth(max);content.setTextIsSelectable(true);bubble.addView(content);}
             else if("contact".equals(kind)){JSONObject contact=message.optJSONObject("contact");bubble.addView(text("👤 "+(contact==null?"Liên hệ":contact.optString("name")),16,TEXT));}
             else if(sticker){File file=ConnectionService.images.get(id);String name=message.optJSONObject("sticker").optString("name","Sticker");if(file!=null)bubble.addView(new StickerView(this,file,name));else {TextView loading=text("Đang tải sticker…",13,MUTED);loading.setContentDescription("Sticker "+name);bubble.addView(loading);}}
             else {
@@ -157,6 +162,22 @@ public final class MainActivity extends Activity {
         if(composing&&!composer.hasFocus())composer.requestFocus();
         int generation=++renderGeneration;ScrollView target=scroll;
         target.post(()->{if(target!=scroll||generation!=renderGeneration)return;target.scrollTo(0,bottom?messagesBox.getBottom():previousY);updateVisibleMessages();});
+    }
+    private void gameLayout(boolean split){
+        if(gameSplit==split||composerRow==null||composerTools==null)return;gameSplit=split;
+        for(Button button:new Button[]{attachGameButton,emojiGameButton})if(button!=null&&button.getParent() instanceof ViewGroup parent)parent.removeView(button);
+        if(split){composerTools.addView(attachGameButton,new LinearLayout.LayoutParams(dp(44),dp(42)));composerTools.addView(emojiGameButton,new LinearLayout.LayoutParams(dp(40),dp(42)));composerTools.setVisibility(View.VISIBLE);}
+        else{composerRow.addView(attachGameButton,0,new LinearLayout.LayoutParams(dp(44),dp(48)));composerRow.addView(emojiGameButton,2,new LinearLayout.LayoutParams(dp(40),dp(48)));composerTools.setVisibility(View.GONE);}
+        messageRows.clear();renderKey="";
+    }
+    private void gameCard(LinearLayout bubble,JSONObject message){
+        JSONObject game=ConnectionService.games.get(ConnectionService.selected),state=game==null?null:game.optJSONObject("state");
+        TextView label=text("🎮 "+message.optString("text").replace("🎮 ",""),16,TEXT);label.setMaxWidth(dp(230));bubble.addView(label);
+        if(state!=null&&message.optString("gameId").equals(state.optString("id"))&&"invited".equals(state.optString("status"))){
+            boolean own=state.optString("host").equals(game.optString("me"));
+            Button accept=button(own?"Hủy lời mời":"Chấp nhận",()->gamesView.action(own?"cancel":"accept"));accept.setEnabled(!game.optBoolean("pending"));bubble.addView(accept);
+            if(!own){Button decline=button("Từ chối",()->gamesView.action("decline"));decline.setEnabled(!game.optBoolean("pending"));bubble.addView(decline);}
+        }else bubble.addView(button("Mở game hiện tại",()->gamesView.open()));
     }
     private void updateVisibleMessages(){
         java.util.Set<String> ids=new java.util.HashSet<>();

@@ -6,6 +6,15 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Lantern.Core;
 
+if (args.FirstOrDefault() == "--games-only")
+{
+    await GameTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-games-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
+}
+if (args.FirstOrDefault() == "--mobile-only")
+{
+    await MobileTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-mobile-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
+}
+
 if (args.FirstOrDefault() == "--backup-only")
 {
     BackupTests.Run(Path.Combine(Path.GetTempPath(), "Lantern-backup-" + Guid.NewGuid().ToString("N")), (ok, name) => { if (!ok) throw new Exception("FAIL: " + name); Console.WriteLine("PASS: " + name); }); return;
@@ -334,6 +343,7 @@ await GroupLifecycleTests.Run(root, Check);
 MessageLinkTests.Run(Check);
 PinEmojiTests.Run(root, Check);
 await RichPollTests.Run(Path.Combine(root, "rich-polls"), Check);
+await GameTests.Run(Path.Combine(root, "games"), Check);
 await StickerTests.Run(Path.Combine(root, "stickers"), Check);
 await MobileAppLoginTests.Run(Path.Combine(root, "mobile-login"), Check);
 Console.WriteLine($"\n{passed} checks passed. Test data: {root}");

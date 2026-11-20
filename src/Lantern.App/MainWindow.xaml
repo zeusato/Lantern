@@ -43,7 +43,7 @@
      </Grid>
     </DockPanel>
    </Border>
-   <Grid Grid.Column="2">
+   <Grid Grid.Column="2"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition x:Name="GameColumn" Width="0"/></Grid.ColumnDefinitions><Grid x:Name="ChatPane">
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1" Padding="26,19">
      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock x:Name="ChatTitle" Text="Không gian của bạn" FontSize="19" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock x:Name="ChatSubtitle" Text="Những cuộc trò chuyện ở ngay bên cạnh" Style="{StaticResource Muted}" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"/></StackPanel><StackPanel Grid.Column="1" Orientation="Horizontal"><Button x:Name="HeaderLockButton" Click="LockConversationClick" Style="{StaticResource RailButton}" Visibility="Collapsed" ToolTip="Khóa hội thoại ngay" AutomationProperties.Name="Khóa hội thoại ngay"><TextBlock Text="&#xE72E;" Style="{StaticResource Icon}"/></Button><Button Click="DetailsClick" Style="{StaticResource RailButton}" ToolTip="Thông tin cuộc trò chuyện" AutomationProperties.Name="Thông tin cuộc trò chuyện"><TextBlock Text="&#xE946;" Style="{StaticResource Icon}"/></Button></StackPanel></Grid>
@@ -78,7 +78,7 @@
       <Border x:Name="ComposerToolbarDivider" BorderBrush="{DynamicResource LineBrush}" BorderThickness="0,0,0,1" Margin="-12,0,-12,4" Padding="12,0,12,3"><DockPanel LastChildFill="False">
        <StackPanel Orientation="Horizontal">
         <Button x:Name="AttachButton" Click="AttachClick" Style="{StaticResource ComposerToolButton}" ToolTip="Gửi tệp (Ctrl+O)" AutomationProperties.Name="Gửi tệp"><TextBlock Text="&#xE723;" Style="{StaticResource Icon}"/></Button>
-        <Button x:Name="EmojiButton" Click="EmojiClick" Style="{StaticResource ComposerToolButton}" ToolTip="Chọn emoji" AutomationProperties.Name="Chọn emoji"><TextBlock Text="&#xE899;" Style="{StaticResource Icon}"/></Button>
+        <Button x:Name="GameButton" Click="GameClick" Style="{StaticResource ComposerToolButton}" ToolTip="Chơi game" AutomationProperties.Name="Chơi game"><TextBlock Text="🎮" FontSize="18"/></Button><Button x:Name="EmojiButton" Click="EmojiClick" Style="{StaticResource ComposerToolButton}" ToolTip="Chọn emoji" AutomationProperties.Name="Chọn emoji"><TextBlock Text="&#xE899;" Style="{StaticResource Icon}"/></Button>
         <Button x:Name="StickerButton" Click="StickerClick" Style="{StaticResource ComposerToolButton}" ToolTip="Sticker" AutomationProperties.Name="Sticker"><Viewbox Width="21" Height="21"><Canvas Width="24" Height="24"><Path Stroke="{DynamicResource TextBrush}" StrokeThickness="1.8" StrokeLineJoin="Round" Data="M 5,2.5 L 19,2.5 Q 21.5,2.5 21.5,5 L 21.5,15 L 15,21.5 L 5,21.5 Q 2.5,21.5 2.5,19 L 2.5,5 Q 2.5,2.5 5,2.5 Z M 15,21.5 L 15,17 Q 15,15 17,15 L 21.5,15 M 7,13 Q 10.5,17.5 14,13"/><Ellipse Canvas.Left="7" Canvas.Top="7" Width="2.5" Height="3" Fill="{DynamicResource TextBrush}"/><Ellipse Canvas.Left="14" Canvas.Top="7" Width="2.5" Height="3" Fill="{DynamicResource TextBrush}"/></Canvas></Viewbox></Button>
         <Button x:Name="FormatButton" Click="FormatClick" Style="{StaticResource ComposerToolButton}" ToolTip="Soạn thảo chuyên sâu (Ctrl+Shift+X)" AutomationProperties.Name="Soạn thảo chuyên sâu" IsEnabled="{Binding IsEnabled, ElementName=Composer}"><TextBlock Text="A✎" FontSize="18"/></Button>
         <Button x:Name="PollButton" Click="CreatePollClick" Style="{StaticResource ComposerToolButton}" Visibility="Collapsed" ToolTip="Tạo bình chọn trong nhóm" AutomationProperties.Name="Tạo bình chọn"><Viewbox Width="18" Height="18"><Canvas Width="20" Height="20"><Rectangle Canvas.Left="1" Canvas.Top="10" Width="4" Height="9" Fill="{DynamicResource TextBrush}"/><Rectangle Canvas.Left="8" Canvas.Top="2" Width="4" Height="17" Fill="{DynamicResource TextBrush}"/><Rectangle Canvas.Left="15" Canvas.Top="6" Width="4" Height="13" Fill="{DynamicResource TextBrush}"/></Canvas></Viewbox></Button>
@@ -94,6 +94,7 @@
      </StackPanel>
     </Border>
    </Grid>
+    <Border x:Name="GameHost" Grid.Column="1" Visibility="Collapsed" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource LineBrush}" Background="{DynamicResource SurfaceBrush}"/></Grid>
    <Border x:Name="DetailsPanel" Grid.Column="3" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource LineBrush}" BorderThickness="1,0,0,0">
     <Grid>
     <DockPanel x:Name="DetailsContent" Margin="16,22">
