@@ -16,6 +16,10 @@ final class ChatGamesView extends ScrollView {
     private final Activity activity;private final String conversation;private final Consumer<Boolean> layoutChanged;
     private JSONObject view,state;private String key="",hidden="",draft="",lastError="";private EditText wordInput;private TextView error;private boolean busy,vertical,own;private int selectedShip=1;private int[] fleet=randomFleet();
     private static final int[] LENGTHS={5,4,3,3,2};
+    private AlertDialog dialog;
+    private void showDialog(AlertDialog.Builder builder){dismissDialog();dialog=builder.create();dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);dialog.show();}
+    void dismissDialog(){if(dialog!=null){dialog.dismiss();dialog=null;}}
+    protected void onDetachedFromWindow(){dismissDialog();super.onDetachedFromWindow();}
     record Draft(String game,String word,String hidden,int[] fleet,int ship,boolean vertical,boolean own){}
     Draft saveDraft(){return new Draft(state==null?"":state.optString("id"),wordInput==null?draft:wordInput.getText().toString(),hidden,fleet.clone(),selectedShip,vertical,own);}
     void restoreDraft(Draft saved){JSONObject current=ConnectionService.games.get(conversation);if(saved==null||current==null||!saved.game().equals(current.optJSONObject("state").optString("id")))return;draft=saved.word();hidden=saved.hidden();fleet=saved.fleet().clone();selectedShip=saved.ship();vertical=saved.vertical();own=saved.own();}
@@ -32,20 +36,21 @@ final class ChatGamesView extends ScrollView {
     private String other(){return state.optString("host").equals(me())?state.optString("guest"):state.optString("host");}
     void update(JSONObject next,boolean locked){
         JSONObject contact=ConversationSettings.contact(conversation);
-        if(locked||!AppSession.unlocked()||contact==null||contact.optBoolean("locked",true)||next==null){view=null;state=null;key="";setVisibility(GONE);removeAllViews();layoutChanged.accept(false);return;}
+        if(locked||!AppSession.unlocked()||contact==null||contact.optBoolean("locked",true)||next==null){dismissDialog();view=null;state=null;key="";wordInput=null;error=null;draft="";setVisibility(GONE);removeAllViews();layoutChanged.accept(false);return;}
         JSONObject nextState=next.optJSONObject("state");if(nextState==null)return;
-        boolean show=!"invited".equals(nextState.optString("status"))&&!hidden.equals(nextState.optString("id"));
+        boolean show=!Set.of("invited","declined","cancelled").contains(nextState.optString("status"))&&!hidden.equals(nextState.optString("id"));
         setVisibility(show?VISIBLE:GONE);layoutChanged.accept(show);
         String nextKey=next.toString();if(nextKey.equals(key))return;
         if(wordInput!=null)draft=wordInput.getText().toString();
         if(state!=null&&(!state.optString("id").equals(nextState.optString("id"))||state.optJSONArray("words").length()!=nextState.optJSONArray("words").length()))draft="";
-        key=nextKey;view=next;state=nextState;if(show)render();
+        if(state!=null&&!state.optString("id").equals(nextState.optString("id"))){fleet=randomFleet();selectedShip=1;own=false;vertical=false;lastError="";}
+        key=nextKey;view=next;state=nextState;if(show)render();else{wordInput=null;error=null;removeAllViews();}
     }
     void open(){hidden="";key="";update(ConnectionService.games.get(conversation),false);}
     void invite(){
         JSONObject contact=ConversationSettings.contact(conversation);if(contact==null||contact.optBoolean("locked",true)||contact.optBoolean("isGroup")){toast("Chơi trong chat riêng đã mở khóa.");return;}
         if(view!=null&&!finished()){if("invited".equals(state.optString("status")))toast("Lời mời đang ở trong log chat.");else open();return;}
-        new AlertDialog.Builder(activity).setTitle("Chơi cùng nhau").setItems(new String[]{"Caro · Nối 5 quân","Bắn tàu · Khóa đội tàu và đối kháng","Nối chữ · Nối hai tiếng"},(d,i)->inviteKind(new String[]{"caro","ships","words"}[i])).show();
+        showDialog(new AlertDialog.Builder(activity).setTitle("Chơi cùng nhau").setItems(new String[]{"Caro · Nối 5 quân","Bắn tàu · Khóa đội tàu và đối kháng","Nối chữ · Nối hai tiếng"},(d,i)->inviteKind(new String[]{"caro","ships","words"}[i])));
     }
     private void inviteKind(String kind){try{ConnectionService service=ConnectionService.current;if(service==null){toast("Chưa kết nối PC");return;}hidden="";service.submit(ConnectionService.packet("game-invite",conversation).put("name",kind),e->{if(e!=null)toast(e);});}catch(JSONException e){toast(e.getMessage());}}
     void action(String type){action(type,-1,"",null);}
@@ -61,8 +66,8 @@ final class ChatGamesView extends ScrollView {
     private void toast(String value){Toast.makeText(activity,value,Toast.LENGTH_LONG).show();}
     private void render(){
         wordInput=null;removeAllViews();LinearLayout p=column();p.setPadding(dp(10),dp(10),dp(10),dp(14));addView(p);
-        TextView title=text(title(state.optString("kind")),22,TEXT);title.setTypeface(null,Typeface.BOLD);p.addView(title);p.addView(text("BẠN × "+view.optString("peerName"),11,MUTED));
-        p.addView(button("Thu gọn ×",()->{hidden=state.optString("id");setVisibility(GONE);layoutChanged.accept(false);},true));
+        LinearLayout heading=new LinearLayout(activity);heading.setGravity(Gravity.CENTER_VERTICAL);TextView title=text(title(state.optString("kind")),22,TEXT);title.setTypeface(null,Typeface.BOLD);heading.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+        Button collapse=button("×",()->{hidden=state.optString("id");setVisibility(GONE);layoutChanged.accept(false);},true);collapse.setContentDescription("Thu gọn game");heading.addView(collapse,new LinearLayout.LayoutParams(dp(40),dp(40)));p.addView(heading);p.addView(text("BẠN × "+view.optString("peerName"),11,MUTED));
         String status=state.optString("status"),turn=state.optString("turn");
         String label=finished()?"cancelled".equals(status)?"Ván đã hủy":"declined".equals(status)?"Đã từ chối":"".equals(state.optString("winner"))?"HAI BÊN HÒA":me().equals(state.optString("winner"))?"BẠN ĐÃ THẮNG!":"ĐỐI THỦ THẮNG":"placing".equals(status)?"XẾP ĐỘI TÀU":"verifying".equals(status)?"KIỂM CHỨNG ĐỘI TÀU":state.optInt("pendingCell",-1)>=0?"CHỜ KẾT QUẢ BẮN":turn.equals(me())?"ĐẾN LƯỢT BẠN":"ĐỐI THỦ ĐANG NGHĨ…";
         TextView badge=text(label,13,ACCENT);badge.setTypeface(null,Typeface.BOLD);p.addView(badge);
@@ -73,7 +78,7 @@ final class ChatGamesView extends ScrollView {
         if(finished()){p.addView(text(state.optString("reason"),12,MUTED));p.addView(button("Tái đấu",()->inviteKind(kind),view.optBoolean("connected")));}
         else{
             String offer=state.optString("drawOffer");if(!offer.isEmpty()&&!offer.equals(me())){p.addView(text("Đối thủ đề nghị hòa",12,ACCENT));p.addView(button("Đồng ý hòa",()->action("draw"),!pending()));p.addView(button("Chơi tiếp",()->action("draw-decline"),!pending()));}
-            p.addView(button("Xin hòa",()->action("draw"),!pending()&&offer.isEmpty()));p.addView(button("Đầu hàng",()->new AlertDialog.Builder(activity).setMessage("Kết thúc ván và nhận thua?").setNegativeButton("Chơi tiếp",null).setPositiveButton("Đầu hàng",(d,w)->action("resign")).show(),!pending()));
+            p.addView(button("Xin hòa",()->action("draw"),!pending()&&offer.isEmpty()));p.addView(button("Đầu hàng",()->showDialog(new AlertDialog.Builder(activity).setMessage("Kết thúc ván và nhận thua?").setNegativeButton("Chơi tiếp",null).setPositiveButton("Đầu hàng",(d,w)->action("resign"))),!pending()));
         }
     }
     private void words(LinearLayout p,boolean playable){
@@ -81,13 +86,13 @@ final class ChatGamesView extends ScrollView {
         for(int i=Math.max(0,words.length()-6);i<words.length();i++){
             String[] parts=words.optString(i).split(" ");LinearLayout row=new LinearLayout(activity);row.setGravity((i%2==0?state.optString("starter"):state.optString("starter").equals(me())?other():me()).equals(me())?Gravity.RIGHT:Gravity.LEFT);
             for(int n=0;n<parts.length;n++){TextView token=text(parts[n],17,n==1?ACCENT:TEXT);token.setTypeface(null,Typeface.BOLD);token.setBackground(shape(n==1?0xff1d4945:SURFACE));token.setPadding(dp(7),dp(9),dp(7),dp(9));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.setMargins(dp(2),dp(3),dp(2),dp(3));row.addView(token,lp);}
-            HorizontalScrollView clip=new HorizontalScrollView(activity);clip.addView(row);p.addView(clip);if(i==words.length()-1){clip.setAlpha(.2f);clip.animate().alpha(1).setDuration(240).start();}
-            if(i<words.length()-1)p.addView(text("↳",16,MUTED));
+            HorizontalScrollView clip=new HorizontalScrollView(activity);clip.setFillViewport(true);clip.addView(row);p.addView(clip);if(i==words.length()-1){clip.setAlpha(.2f);clip.animate().alpha(1).setDuration(240).start();}
+            if(i<words.length()-1){TextView arrow=text("↳",12,MUTED);arrow.setPadding(0,0,0,0);p.addView(arrow);}
         }
-        if(words.length()>6)p.addView(button("Xem toàn bộ chuỗi",()->{StringBuilder all=new StringBuilder();for(int i=0;i<words.length();i++){if(i>0)all.append(" → ");all.append(words.optString(i));}new AlertDialog.Builder(activity).setTitle("Chuỗi nối chữ").setMessage(all).setPositiveButton("Đóng",null).show();},true));
+        if(words.length()>6)p.addView(button("Xem toàn bộ chuỗi",()->{StringBuilder all=new StringBuilder();for(int i=0;i<words.length();i++){if(i>0)all.append(" → ");all.append(words.optString(i));}showDialog(new AlertDialog.Builder(activity).setTitle("Chuỗi nối chữ").setMessage(all).setPositiveButton("Đóng",null));},true));
         String proposed=state.optString("proposedWord");if(!proposed.isEmpty()){p.addView(text("Đề nghị công nhận:\n“"+proposed+"”",16,TEXT));if(!state.optString("turn").equals(me())){p.addView(button("Có nghĩa · Công nhận",()->action("word-approve"),!pending()));p.addView(button("Không chấp nhận",()->action("word-reject"),!pending()));}else p.addView(text("Chờ đối thủ công nhận",12,MUTED));return;}
         if(finished())return;String prefix=words.length()==0?"":words.optString(words.length()-1).split(" ")[1];if(!prefix.isEmpty()){TextView token=text(prefix+"  🔒",23,ACCENT);token.setTypeface(null,Typeface.BOLD);p.addView(token);}
-        wordInput=new EditText(activity);wordInput.setText(draft);wordInput.setTextColor(TEXT);wordInput.setHintTextColor(MUTED);wordInput.setTextSize(18);wordInput.setHint(prefix.isEmpty()?"Ví dụ: học sinh":"Tiếng tiếp theo…");wordInput.setContentDescription("Nhập từ nối");wordInput.setSingleLine();wordInput.setEnabled(playable);wordInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(prefix.isEmpty()?40:16)});p.addView(wordInput);
+        wordInput=new EditText(activity);wordInput.setText(draft);wordInput.setTextColor(TEXT);wordInput.setHintTextColor(MUTED);wordInput.setTextSize(18);wordInput.setHint(prefix.isEmpty()?"Ví dụ: học sinh":"Tiếng tiếp theo…");wordInput.setContentDescription("Nhập từ nối");wordInput.setSingleLine();wordInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_DONE);wordInput.setEnabled(playable);wordInput.setFilters(new InputFilter[]{new InputFilter.LengthFilter(prefix.isEmpty()?40:16)});p.addView(wordInput);
         Runnable send=()->action("word",-1,(prefix.isEmpty()?"":prefix+" ")+wordInput.getText(),null);p.addView(button("Nối từ →",send,playable));wordInput.setOnEditorActionListener((v,id,event)->{if(id==android.view.inputmethod.EditorInfo.IME_ACTION_DONE){send.run();return true;}return false;});
         p.addView(text("Từ chưa có trong từ điển sẽ được gửi để đối thủ công nhận. Không lặp từ đã dùng.",11,MUTED));
     }
@@ -115,6 +120,7 @@ final class ChatGamesView extends ScrollView {
     private final class Board extends View {
         final int size;final int[] cells;final boolean ships,playable;final IntConsumer click;final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);float downX,downY;
         Board(int size,int[] cells,boolean ships,boolean playable,IntConsumer click){super(activity);this.size=size;this.cells=cells;this.ships=ships;this.playable=playable;this.click=click;setContentDescription(ships?"Bàn bắn tàu":"Bàn caro");setFocusable(true);}
+        protected void onMeasure(int widthSpec,int heightSpec){int preferred=getLayoutParams()!=null&&getLayoutParams().width>0?getLayoutParams().width:dp(330);setMeasuredDimension(resolveSize(preferred,widthSpec),resolveSize(preferred,heightSpec));}
         protected void onDraw(Canvas c){super.onDraw(c);float u=getWidth()/(float)size;c.drawColor(SURFACE);for(int i=0;i<cells.length;i++){float x=(i%size)*u,y=(i/size)*u,cx=x+u/2,cy=y+u/2,r=u*.27f;paint.setColor(0xff37505b);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(dp(.7f));c.drawRect(x,y,x+u,y+u,paint);int v=cells[i];paint.setStrokeWidth(dp(2));if(ships){paint.setStyle(Paint.Style.FILL);if(v==3){paint.setColor(ACCENT);c.drawRoundRect(x+3,y+3,x+u-3,y+u-3,4,4,paint);}else if(v==4||v==5){paint.setColor(v==5?CORAL:MUTED);c.drawCircle(cx,cy,v==5?r:u*.08f,paint);}}else if(v==1){paint.setColor(ACCENT);c.drawLine(cx-r,cy-r,cx+r,cy+r,paint);c.drawLine(cx+r,cy-r,cx-r,cy+r,paint);}else if(v==2){paint.setColor(CORAL);c.drawCircle(cx,cy,r,paint);}}}
         public boolean onTouchEvent(android.view.MotionEvent e){if(!playable)return false;if(e.getAction()==MotionEvent.ACTION_DOWN){downX=e.getX();downY=e.getY();return true;}if(e.getAction()==MotionEvent.ACTION_UP&&Math.abs(e.getX()-downX)<dp(8)&&Math.abs(e.getY()-downY)<dp(8)){performClick();int x=(int)(e.getX()*size/getWidth()),y=(int)(e.getY()*size/getHeight());if(x>=0&&x<size&&y>=0&&y<size)click.accept(y*size+x);return true;}return true;}
         public boolean performClick(){super.performClick();return true;}

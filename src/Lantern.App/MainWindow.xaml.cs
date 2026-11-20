@@ -646,7 +646,7 @@ public partial class MainWindow : Window
     private void WindowKeyDown(object sender, KeyEventArgs e)
     {
         if (appLocking || node is null || InAppDialog.IsOpen(this)) return;
-        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F) { if (ActualWidth < 1150) CompactDetails(); else { detailsVisible = true; UpdateLayoutWidths(); MessageSearch.Focus(); } e.Handled = true; }
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F) { if (ActualWidth < 1150 || GameHost.Visibility == Visibility.Visible) CompactDetails(); else { detailsVisible = true; UpdateLayoutWidths(); MessageSearch.Focus(); } e.Handled = true; }
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.O) { AttachClick(this, new RoutedEventArgs()); e.Handled = true; }
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.L) { LockApp(); e.Handled = true; }
         if (e.Key == Key.Escape) { MessageSearch.Clear(); Composer.Focus(); }

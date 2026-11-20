@@ -46,6 +46,9 @@ internal static class GameTests
         var invalidProof = SignedGameCommand.Sign(bId, new GameCommand { GameId = ships, Revision = aStore.Game(ships)!.State.Revision, Previous = aStore.Game(ships)!.State.Head, Type = "proof", Cell = 0, Ship = 1, Salt = new string('a', 48) });
         rejected = false; try { GameRules.Apply(aStore.Game(ships)!.State, invalidProof); } catch (InvalidOperationException) { rejected = true; }
         check(rejected, "Battleship rejects unsolicited or fabricated hit results");
+        var pendingShot = Codec.Decode<GameState>(Codec.Encode(aStore.Game(ships)!.State)); pendingShot.PendingCell = 0; pendingShot.PendingDefender = bId.Id;
+        rejected = false; try { GameRules.Apply(pendingShot, invalidProof); } catch (InvalidOperationException) { rejected = true; }
+        check(rejected, "Even the expected defender cannot forge a shot result that differs from its cell commitment");
         var targets = Enumerable.Range(0, 100).Where(i => bBoard[i] > 0).ToArray(); var misses = Enumerable.Range(0, 100).Where(i => aBoard[i] == 0).ToArray();
         for (int i = 0; i < targets.Length; i++)
         {

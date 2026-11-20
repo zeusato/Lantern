@@ -58,7 +58,7 @@ public static class GameRules
         if (c.Type is "word-approve" or "word-reject")
         {
             if (s.ProposedWord.Length == 0 || c.Actor == s.Turn) throw new InvalidOperationException("Không có từ cần bạn công nhận.");
-            if (c.Type == "word-approve") { s.Words.Add(s.ProposedWord); s.Turn = c.Actor; }
+            if (c.Type == "word-approve") { s.Words.Add(s.ProposedWord); s.Turn = c.Actor; if (s.Words.Count >= 500) Finish(s, "", "Hoàn thành chuỗi 500 từ"); }
             s.ProposedWord = ""; return;
         }
         NeedTurn(s, c);

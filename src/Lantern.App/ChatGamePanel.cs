@@ -81,7 +81,7 @@ internal sealed class ChatGamePanel : ScrollViewer
             }
             var actions = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
             actions.Children.Add(Button("Xin hòa", () => Send("draw"), !view.Pending && s.DrawOffer.Length == 0));
-            actions.Children.Add(Button("Đầu hàng", () => { if (MessageBox.Show(Window.GetWindow(this), "Kết thúc ván và nhận thua?", "Đầu hàng", MessageBoxButton.YesNo) == MessageBoxResult.Yes) Send("resign"); }, !view.Pending)); panel.Children.Add(actions);
+            actions.Children.Add(Button("Đầu hàng", () => { if (InAppDialog.Show(Window.GetWindow(this), "Đầu hàng", Label("Kết thúc ván và nhận thua?"), "Đầu hàng")) Send("resign"); }, !view.Pending)); panel.Children.Add(actions);
         }
         else { var actions = new WrapPanel(); actions.Children.Add(Button("Tái đấu", rematch, view.Connected, true)); actions.Children.Add(Button("Đóng game", close)); panel.Children.Add(actions); }
     }
@@ -138,7 +138,7 @@ internal sealed class ChatGamePanel : ScrollViewer
             if (i == s.Words.Count - 1) { card.BeginAnimation(OpacityProperty, new DoubleAnimation(.25, 1, TimeSpan.FromMilliseconds(260))); }
             if (i < s.Words.Count - 1) panel.Children.Add(Label("↳", 18, muted: true));
         }
-        if (s.Words.Count > 6) panel.Children.Add(Button("Xem toàn bộ chuỗi", () => MessageBox.Show(Window.GetWindow(this), string.Join(" → ", s.Words), "Lịch sử nối chữ")));
+        if (s.Words.Count > 6) panel.Children.Add(Button("Xem toàn bộ chuỗi", () => InAppDialog.Show(Window.GetWindow(this), "Lịch sử nối chữ", Label(string.Join(" → ", s.Words), 18), "Đóng")));
         if (s.ProposedWord.Length > 0)
         {
             panel.Children.Add(Label("Đề nghị công nhận: “" + s.ProposedWord + "”", 16, true));

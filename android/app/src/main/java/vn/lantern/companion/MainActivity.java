@@ -53,7 +53,7 @@ public final class MainActivity extends Activity {
     private void rememberDraft(){if(gamesView!=null&&!composerConversation.isEmpty())gameDrafts.put(composerConversation,gamesView.saveDraft());if(composer==null||composerConversation.isEmpty())return;WindowInsetsCompat insets=ViewCompat.getRootWindowInsets(root);drafts.put(composerConversation,new Draft(composer.getText().toString(),composer.getSelectionStart(),composer.getSelectionEnd(),replyTo,composer.hasFocus(),insets!=null&&insets.isVisible(WindowInsetsCompat.Type.ime())));}
     public Object onRetainNonConfigurationInstance(){if(resumed)rememberDraft();return new Retained(new java.util.HashMap<>(drafts),new java.util.HashMap<>(gameDrafts),selectedName);}
     protected void onResume(){super.onResume();if(!AppSession.guard(this))return;resumed=true;ConnectionService.visible=true;ConnectionService.changed=this::refresh;try{if(DeviceKeys.load(this)!=null&&ConnectionService.current==null)startConnection();else if(ConnectionService.current!=null&&!ConnectionService.selected.isEmpty())ConnectionService.current.select(ConnectionService.selected);}catch(Exception e){toast("Không đọc được ghép đôi. Hãy quét QR lại.");}refresh();tick.postDelayed(expiryTick,1000);MobileUpdater.get(this).listen(updateChanged);MobileUpdater.get(this).automatic();}
-    protected void onPause(){rememberDraft();if(conversationSettings!=null)conversationSettings.dismiss();resumed=false;ConnectionService.visible=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());ConnectionService.changed=null;tick.removeCallbacks(expiryTick);MobileUpdater.get(this).unlisten(updateChanged);super.onPause();}
+    protected void onPause(){rememberDraft();if(gamesView!=null)gamesView.dismissDialog();if(conversationSettings!=null)conversationSettings.dismiss();resumed=false;ConnectionService.visible=false;ConnectionService.displayed=new ConnectionService.ReadState("",java.util.Collections.emptySet());ConnectionService.changed=null;tick.removeCallbacks(expiryTick);MobileUpdater.get(this).unlisten(updateChanged);super.onPause();}
     private void build(){
         if(!AppSession.guard(this))return;
         if(conversationSettings!=null)conversationSettings.dismiss();
@@ -168,11 +168,13 @@ public final class MainActivity extends Activity {
         for(Button button:new Button[]{attachGameButton,emojiGameButton})if(button!=null&&button.getParent() instanceof ViewGroup parent)parent.removeView(button);
         if(split){composerTools.addView(attachGameButton,new LinearLayout.LayoutParams(dp(44),dp(42)));composerTools.addView(emojiGameButton,new LinearLayout.LayoutParams(dp(40),dp(42)));composerTools.setVisibility(View.VISIBLE);}
         else{composerRow.addView(attachGameButton,0,new LinearLayout.LayoutParams(dp(44),dp(48)));composerRow.addView(emojiGameButton,2,new LinearLayout.LayoutParams(dp(40),dp(48)));composerTools.setVisibility(View.GONE);}
-        messageRows.clear();renderKey="";
+        messageRows.clear();renderKey="";root.post(this::renderMessages);
     }
     private void gameCard(LinearLayout bubble,JSONObject message){
         JSONObject game=ConnectionService.games.get(ConnectionService.selected),state=game==null?null:game.optJSONObject("state");
-        TextView label=text("🎮 "+message.optString("text").replace("🎮 ",""),16,TEXT);label.setMaxWidth(dp(230));bubble.addView(label);
+        boolean current=state!=null&&message.optString("gameId").equals(state.optString("id"));
+        TextView label=text("🎮 "+(current?ChatGamesView.title(state.optString("kind")):message.optString("text").replace("🎮 ","").replace(" · Lời mời chơi","")),16,TEXT);label.setMaxWidth(dp(230));bubble.addView(label);
+        if(current&&!"invited".equals(state.optString("status"))){TextView status=text(state.optString("reason").isEmpty()?state.optString("turn").equals(game.optString("me"))?"Đến lượt bạn":"Đang chờ đối thủ":state.optString("reason"),12,MUTED);status.setMaxWidth(dp(150));bubble.addView(status);}
         if(state!=null&&message.optString("gameId").equals(state.optString("id"))&&"invited".equals(state.optString("status"))){
             boolean own=state.optString("host").equals(game.optString("me"));
             Button accept=button(own?"Hủy lời mời":"Chấp nhận",()->gamesView.action(own?"cancel":"accept"));accept.setEnabled(!game.optBoolean("pending"));bubble.addView(accept);

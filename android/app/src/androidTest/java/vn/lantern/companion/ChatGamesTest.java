@@ -26,6 +26,7 @@ public class ChatGamesTest {
                 ConnectionService.selected=PEER;ConnectionService.connected=true;ConnectionService.conversations=new JSONArray().put(new JSONObject().put("id",PEER).put("name","Minh Anh").put("locked",false));
                 ConnectionService.messages=new JSONArray();ConnectionService.games.put(PEER,game("invited","words"));call(a,"build");
                 ChatGamesView games=field(a,"gamesView");assertEquals(View.GONE,games.getVisibility());
+                ConnectionService.games.put(PEER,game("declined","words"));call(a,"refresh");assertEquals(View.GONE,games.getVisibility());
                 ConnectionService.games.put(PEER,game("playing","words"));call(a,"refresh");assertEquals(View.VISIBLE,games.getVisibility());
                 EditText composer=field(a,"composer");composer.setText("Vừa chơi vừa chat");composer.requestFocus();
                 EditText input=find(games,EditText.class,"Nhập từ nối");assertNotNull(input);assertTrue(input.isEnabled());input.setText("chế");
@@ -38,7 +39,11 @@ public class ChatGamesTest {
             scenario.onActivity(a->{try{
                 ChatGamesView games=field(a,"gamesView");assertEquals("chế",find(games,EditText.class,"Nhập từ nối").getText().toString());assertEquals("Vừa chơi vừa chat",((EditText)field(a,"composer")).getText().toString());
                 ConnectionService.conversations.getJSONObject(0).put("locked",true);call(a,"refresh");assertEquals(View.GONE,games.getVisibility());games.open();assertEquals(View.GONE,games.getVisibility());
-                ConnectionService.conversations.getJSONObject(0).put("locked",false);ConnectionService.games.put(PEER,game("placing","ships"));call(a,"refresh");assertNotNull(find(games,SeekBar.class,"Phóng to bàn chơi"));CompanionTest.snapshotCurrent(a,"android-battleship.png");
+                ConnectionService.conversations.getJSONObject(0).put("locked",false);ConnectionService.games.put(PEER,game("placing","ships"));call(a,"refresh");assertNotNull(find(games,SeekBar.class,"Phóng to bàn chơi"));
+            }catch(Exception e){throw new AssertionError(e);}});
+            Thread.sleep(500);InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+            scenario.onActivity(a->{try{
+                ChatGamesView games=field(a,"gamesView");View board=find(games,View.class,"Bàn bắn tàu");assertNotNull(board);assertTrue("Board width="+board.getWidth()+" measured="+board.getMeasuredWidth()+" parent="+((View)board.getParent()).getWidth()+"x"+((View)board.getParent()).getHeight()+" requested="+board.getLayoutParams().width,board.getWidth()>0);assertTrue("Board has measured height: "+board.getHeight(),board.getHeight()>0);CompanionTest.snapshotCurrent(a,"android-battleship.png");
                 AppSession.invalidate();games.open();assertEquals(View.GONE,games.getVisibility());
             }catch(Exception e){throw new AssertionError(e);}});
         }finally{ConnectionService.selected="";ConnectionService.connected=false;ConnectionService.conversations=new JSONArray();ConnectionService.messages=new JSONArray();ConnectionService.games.clear();AppSession.invalidate();}

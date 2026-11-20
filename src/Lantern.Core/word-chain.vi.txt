@@ -14,7 +14,6 @@ vật lý
 lý tưởng
 tưởng tượng
 tượng đài
-đài phát
 phát triển
 triển khai
 khai thác
@@ -377,7 +376,6 @@ tin tức
 tức giận
 giận dữ
 dữ liệu
-liệu lượng
 tin nhắn
 nhắn nhủ
 nhủ lòng
@@ -760,7 +758,6 @@ tích hợp
 hợp đồng
 đồng ý
 ý thức
-thức giục
 giục giã
 giã từ
 từ biệt
@@ -828,7 +825,6 @@ hiệp sĩ
 sĩ khí
 khí chất
 chất liệu
-liệu thuốc
 thuốc men
 men rượu
 rượu vang
@@ -879,7 +875,6 @@ bình minh
 minh chứng
 chứng cứ
 cứ liệu
-liệu định
 tiến trình
 trình chiếu
 chiếu sáng

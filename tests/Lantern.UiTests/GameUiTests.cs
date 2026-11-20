@@ -30,6 +30,8 @@ internal sealed partial class UiHarness
             async Task Ready(string id) { await Until(() => node.CurrentGame(remoteId.Id, id) is { Pending: false } a && remote.CurrentGame(node.Identity.Id, id) is { Pending: false } b && a.State.Head == b.State.Head, "Game synchronized"); Call(window, "Refresh"); window.UpdateLayout(); }
             var id = await remote.InviteGameAsync(node.Identity.Id, "caro"); await Ready(id);
             Check(host.Visibility == Visibility.Collapsed && Visuals<Button>(window).Any(b => Equals(b.Content, "Chấp nhận")), "Invitation stays in the chat before acceptance");
+            await node.GameActionAsync(id, "decline"); await Ready(id); Check(!host.IsVisible, "Declining an invitation never splits the chat");
+            id = await remote.InviteGameAsync(node.Identity.Id, "caro"); await Ready(id);
             Visuals<Button>(window).Single(b => Equals(b.Content, "Chấp nhận")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => node.CurrentGame(remoteId.Id)!.State.Status == "playing", "Accepted"); await Ready(id);
             Check(host.IsVisible && Math.Abs(chat.ActualWidth - host.ActualWidth) < 2, "Accepting splits conversation into equal chat and game columns");

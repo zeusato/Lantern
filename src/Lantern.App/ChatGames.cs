@@ -19,7 +19,7 @@ public partial class MainWindow
         GameButton.IsEnabled = !locked && node.FindPeer(selectedId) is { Trusted: true, Blocked: false };
         if (viewedConversation != selectedId) { viewedGame = ""; viewedConversation = selectedId; }
         var view = locked ? null : node.CurrentGame(selectedId, viewedGame.Length == 0 ? null : viewedGame);
-        if (view is null || view.State.Status == "invited" || hiddenGames.Contains(view.State.Id)) { HideGamePanel(); return; }
+        if (view is null || view.State.Status is "invited" or "declined" or "cancelled" || hiddenGames.Contains(view.State.Id)) { HideGamePanel(); return; }
         detailsVisible = false; UpdateLayoutWidths(); GameColumn.Width = new GridLength(1, GridUnitType.Star); GameHost.Visibility = Visibility.Visible;
         if (displayedGame != view.State.Id || gamePanel is null)
         {
@@ -64,7 +64,7 @@ public partial class MainWindow
             button.Click += async (_, _) => { if (appLocking || ConversationProtected || selectedId != message.ConversationId) return; button.IsEnabled = false; try { await node.GameActionAsync(s.Id, type, expectedRevision: s.Revision); viewedGame = ""; Refresh(); } catch (Exception ex) { button.IsEnabled = true; ShowError(ex); } };
         }
         if (s.Status == "invited") { if (s.Host != identity.Id) { Action("Chấp nhận", "accept"); Action("Từ chối", "decline"); } else Action("Hủy lời mời", "cancel"); }
-        else
+        else if (s.Status is not ("declined" or "cancelled"))
         {
             var open = new Button { Content = "Mở bàn chơi", Margin = new Thickness(0, 4, 0, 0) }; open.Click += (_, _) => { if (appLocking || ConversationProtected) return; viewedConversation = selectedId; viewedGame = s.Id; hiddenGames.Remove(s.Id); RefreshGamePanel(false); }; actions.Children.Add(open);
         }
