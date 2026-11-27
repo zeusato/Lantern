@@ -131,7 +131,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { ShowError(ex); }
     }
     private void QueueRefresh() => Dispatcher.BeginInvoke(() => refreshPending = true);
-    private void RestoreFromTray()
+    internal void RestoreFromTray()
     {
         if (closing) return;
         if (hiddenToTray)

@@ -11,18 +11,19 @@ public partial class App : Application
     public static AppSettings Settings { get; private set; } = new();
     public static bool TestMode { get; private set; }
     public static WorkspaceVault Vault { get; private set; } = null!;
-    private FileStream? profileLock;
+    private ProfileInstance? instance;
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         var index = Array.IndexOf(e.Args, "--data");
         DataDirectory = index >= 0 && index + 1 < e.Args.Length ? Path.GetFullPath(e.Args[index + 1]) : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Lantern");
         TestMode = e.Args.Contains("--local-test");
-        Directory.CreateDirectory(DataDirectory);
-        try { profileLock = new FileStream(Path.Combine(DataDirectory, "profile.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
-        catch (IOException) { MessageBox.Show("Hồ sơ này đang mở trong một cửa sổ Lantern khác.", "Lantern"); Shutdown(); return; }
         try
         {
+            Directory.CreateDirectory(DataDirectory);
+            instance = ProfileInstance.OpenOrActivate(DataDirectory, () =>
+                Dispatcher.BeginInvoke(() => (MainWindow as MainWindow)?.RestoreFromTray()));
+            if (instance is null) { Shutdown(); return; }
             var path = Path.Combine(DataDirectory, "settings.json");
             if (File.Exists(path)) Settings = Codec.Decode<AppSettings>(File.ReadAllText(path));
             if (string.IsNullOrWhiteSpace(Settings.Name)) Settings.Name = Environment.UserName;
@@ -74,5 +75,5 @@ public partial class App : Application
         if (MainWindow is MainWindow window) window.PrepareForSystemShutdown();
         base.OnSessionEnding(e);
     }
-    protected override void OnExit(ExitEventArgs e) { Vault?.Dispose(); profileLock?.Dispose(); base.OnExit(e); }
+    protected override void OnExit(ExitEventArgs e) { Vault?.Dispose(); instance?.Dispose(); base.OnExit(e); }
 }

@@ -82,6 +82,8 @@ internal sealed partial class UiHarness : Application
             if (trayOnly)
             {
                 Settings.CloseToTray = true;
+                using var owner = ProfileInstance.OpenOrActivate(workspace, () => Dispatcher.BeginInvoke(window.RestoreFromTray))
+                    ?? throw new InvalidOperationException("Tray fixture profile already in use.");
                 var desktopSamples = checkDesktop ? await SetUpTrayDisplay(window) : null;
                 window.Activate();
                 window.WindowState = WindowState.Maximized;
@@ -119,6 +121,17 @@ internal sealed partial class UiHarness : Application
                 SystemCommands.CloseWindow(window);
                 await Until(() => !IsWindowVisible(handle), "Hide restored window again");
                 if (desktopSamples is not null) await CheckTrayDisplay(desktopSamples);
+                await LaunchSameProfile(workspace);
+                await Until(() => IsWindowVisible(handle), "Launching Lantern restores the original hidden window");
+                Check(node.IsConnected(remoteIdentity.Id), "A second launch keeps the same connected chat session");
+                Call(window, "LockApp");
+                SystemCommands.CloseWindow(window);
+                await Until(() => !IsWindowVisible(handle), "Hide locked session");
+                await LaunchSameProfile(workspace);
+                await Until(() => IsWindowVisible(handle) && Visuals<LoginView>(window).Any(view => view.IsVisible), "Second launch restores the locked session");
+                Check(((FrameworkElement)window.FindName("Shell")).Visibility == Visibility.Collapsed, "Relaunching a locked profile still requires its password");
+                SystemCommands.CloseWindow(window);
+                await Until(() => !IsWindowVisible(handle), "Hide session before tray exit");
                 var exited = new TaskCompletionSource();
                 window.Closed += (_, _) => exited.TrySetResult();
                 menu.Items.Cast<System.Windows.Forms.ToolStripItem>().Single(item => item.Text == "Thoát Lantern").PerformClick();
@@ -504,6 +517,21 @@ internal sealed partial class UiHarness : Application
         catch (Exception ex) { Console.Error.WriteLine(ex); Environment.ExitCode = 1; if (window is not null) Call(window, "ExitApplication"); await Task.Delay(700); }
         Vault.Dispose(); Shutdown(Environment.ExitCode);
     }
+    private static async Task LaunchSameProfile(string directory)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "Lantern.exe"))
+        {
+            UseShellExecute = false, ArgumentList = { "--local-test", "--data", directory }
+        };
+        using var secondary = System.Diagnostics.Process.Start(start)!;
+        try
+        {
+            await secondary.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(12));
+            if (secondary.ExitCode != 0) throw new InvalidOperationException($"Second launch exited with {secondary.ExitCode}.");
+        }
+        finally { if (!secondary.HasExited) secondary.Kill(); }
+    }
+
     private sealed class PreviewFixture(byte[] image) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
