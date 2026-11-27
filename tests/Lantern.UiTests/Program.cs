@@ -39,6 +39,9 @@ internal sealed partial class UiHarness : Application
     {
         var converted = new FormatConvertedBitmap(image, PixelFormats.Bgra32, null, 0); var pixels = new byte[converted.PixelWidth * converted.PixelHeight * 4]; converted.CopyPixels(pixels, converted.PixelWidth * 4, 0); return pixels;
     }
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr handle);
+
     private static void ActivateFixture(Window window)
     {
         window.Hide(); window.Show();
@@ -60,7 +63,9 @@ internal sealed partial class UiHarness : Application
         if (e.Args.FirstOrDefault() == "--rich-polls") { await RunRichPollUi(e.Args.ElementAtOrDefault(1)); return; }
         if (e.Args.FirstOrDefault() == "--pins-emoji") { await RunPinsAndEmoji(e.Args.ElementAtOrDefault(1)); return; }
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        var root = Path.GetFullPath(e.Args.FirstOrDefault() ?? Path.Combine(Path.GetTempPath(), "Lantern-ui-" + Guid.NewGuid().ToString("N"))); Directory.CreateDirectory(root);
+        var trayOnly = e.Args.FirstOrDefault() == "--tray";
+        var rootArgument = trayOnly ? e.Args.ElementAtOrDefault(1) : e.Args.FirstOrDefault();
+        var root = Path.GetFullPath(rootArgument ?? Path.Combine(Path.GetTempPath(), "Lantern-ui-" + Guid.NewGuid().ToString("N"))); Directory.CreateDirectory(root);
         var workspace = Path.Combine(root, "workspace");
         SetApp("DataDirectory", workspace); SetApp("TestMode", true); SetApp("Settings", new AppSettings { Name = "Linh · Kiểm thử", Onboarded = true, Theme = "light", AutoUpdates = false, MessageToasts = false });
         SetApp("Vault", WorkspaceVault.Create(workspace, "synthetic QA password only")); ApplyTheme("light");
@@ -73,6 +78,38 @@ internal sealed partial class UiHarness : Application
             var node = Field<PeerNode>(window, "node"); var store = Field<LocalStore>(window, "store");
             await Until(() => node.Port > 0, "Main window load");
             await node.ConnectAsync("127.0.0.1", remote.Port, remoteIdentity.Id); await Until(() => remote.IsConnected(node.Identity.Id), "UI peer connect"); await node.TrustAsync(remoteIdentity.Id); await remote.TrustAsync(node.Identity.Id);
+            if (trayOnly)
+            {
+                Settings.CloseToTray = true;
+                window.WindowState = WindowState.Maximized;
+                var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+                var trayIcon = Field<object>(window, "tray");
+                var menu = Field<System.Windows.Forms.ContextMenuStrip>(trayIcon, "menu");
+                var media = new Window { Owner = window, ShowActivated = false, ShowInTaskbar = false };
+                var mediaWindows = Field<List<Window>>(window, "mediaWindows");
+                mediaWindows.Add(media);
+                bool hiddenBeforeMediaClose = false;
+                media.Closing += (_, _) => hiddenBeforeMediaClose = !IsWindowVisible(handle);
+                media.Closed += (_, _) => mediaWindows.Remove(media);
+                media.Show();
+                SystemCommands.CloseWindow(window);
+                await Until(() => !window.IsVisible && !IsWindowVisible(handle), "Maximized window hides after Windows close command");
+                Check(hiddenBeforeMediaClose && mediaWindows.Count == 0, "Native chat window is hidden before media cleanup");
+                await remote.SendTextAsync(node.Identity.Id, "Tin nhắn dưới khay");
+                await Until(() => store.UnreadCount() == 1 && Field<int>(trayIcon, "lastCount") == 1, "Receive while hidden");
+                Check(node.IsConnected(remoteIdentity.Id), "Hidden session stays connected and updates its tray badge");
+                menu.Items.Cast<System.Windows.Forms.ToolStripItem>().Single(item => item.Text == "Mở Lantern").PerformClick();
+                await Until(() => IsWindowVisible(handle) && ((FrameworkElement)window.FindName("Shell")).IsVisible, "Tray menu restores original chat window");
+                Check(window.WindowState == WindowState.Maximized, "Reopened window retains its maximized state");
+                SystemCommands.CloseWindow(window);
+                await Until(() => !IsWindowVisible(handle), "Hide restored window again");
+                var exited = new TaskCompletionSource();
+                window.Closed += (_, _) => exited.TrySetResult();
+                menu.Items.Cast<System.Windows.Forms.ToolStripItem>().Single(item => item.Text == "Thoát Lantern").PerformClick();
+                await exited.Task.WaitAsync(TimeSpan.FromSeconds(8));
+                Check(Field<bool>(trayIcon, "disposed"), "Tray exit closes the hidden session and removes its icon");
+                Vault.Dispose(); Shutdown(); return;
+            }
             window.WindowState = WindowState.Minimized; await Task.Delay(200);
             var first = await remote.SendTextAsync(node.Identity.Id, "Chào Linh 👋 Cùng xem bản thiết kế nhé! https://example.com/design");
             await Until(() => store.UnreadCount() == 1, "Minimized unread"); await Task.Delay(350);
@@ -409,11 +446,11 @@ internal sealed partial class UiHarness : Application
             await Until(() => store.Message(autoImage.Id)?.Status == "received", "Incoming image auto-download");
             await Until(() => ((Panel)window.FindName("MessagesPanel")).Children.OfType<FrameworkElement>().Where(view => view.Tag as string == autoImage.Id).Any(view => Visuals<Image>(view).Any(picture => picture.Source is BitmapSource)), "Incoming image displays"); Check(true, "Received images automatically download and render in the chat without accepting");
             await Until(() => store.UnreadCount() == 0, "Visible auto image read");
-            window.Close(); Check(!window.IsVisible && !Field<bool>(window, "closing") && node.IsConnected(remoteIdentity.Id), "Close button hides to tray while keeping the peer connected");
+            window.Close(); await Until(() => !window.IsVisible, "Hide chat to tray"); Check(!Field<bool>(window, "closing") && node.IsConnected(remoteIdentity.Id), "Close button hides to tray while keeping the peer connected");
             await remote.SendTextAsync(node.Identity.Id, "Tin nhận khi chạy dưới tray"); await Until(() => store.UnreadCount() == 1 && Field<int>(tray, "lastCount") == 1, "Hidden receive"); Check(true, "Hidden app receives messages and updates unread tray badge");
             Call(window, "RestoreFromTray"); await Until(() => window.IsVisible && store.UnreadCount() == 0, "Tray restore"); Check(composer.IsEnabled, "Opening from tray restores the same unlocked session");
             Call(window, "LockApp"); await Task.Delay(100); Check(Windows.Count == 1 && Visuals<LoginView>(window).Count() == 1, "Locking the app shows an embedded login with only one taskbar window"); window.Close();
-            Check(!window.IsVisible && Field<bool>(window, "appLocking") && node.IsConnected(remoteIdentity.Id), "Closing the unlock prompt hides the app and keeps it locked");
+            await Until(() => !window.IsVisible, "Hide locked window to tray"); Check(Field<bool>(window, "appLocking") && node.IsConnected(remoteIdentity.Id), "Closing the unlock prompt hides the app and keeps it locked");
             ActivateFixture(window); Call(window, "RestoreFromTray"); await Task.Delay(100);
             var login = Visuals<LoginView>(window).Single();
             Check(login.IsVisible && ((FrameworkElement)window.FindName("Shell")).Visibility == Visibility.Collapsed, "Restoring a locked tray session requires the password again");

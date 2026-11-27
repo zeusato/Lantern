@@ -117,13 +117,13 @@ public partial class MainWindow : Window
                 { App.Settings.Name = name.Text.Trim(); identity.Name = App.Settings.Name; App.Settings.Onboarded = true; App.SaveSettings(); }
                 else { Close(); return; }
             }
+            tray = new TrayIcon(() => Dispatcher.BeginInvoke(RestoreFromTray), () => Dispatcher.BeginInvoke(LockApp), () => Dispatcher.BeginInvoke(ExitApplication), id => Dispatcher.BeginInvoke(() => OpenNotification(id)));
             await node.StartAsync(App.TestMode ? 0 : App.Settings.Port, !App.TestMode, App.TestMode);
             await mobile.StartAsync(App.TestMode ? 0 : 45854, App.TestMode);
             await UpdatePresence();
             MyInitials.Text = Initials(identity.Name);
             NetworkStatus.Text = App.TestMode ? "Kiểm thử cục bộ · Kết nối mã hóa" : "LAN · Kết nối trực tiếp · Mã hóa TLS";
             Title = $"Lantern · {identity.Name}";
-            tray = new TrayIcon(() => Dispatcher.BeginInvoke(RestoreFromTray), () => Dispatcher.BeginInvoke(LockApp), () => Dispatcher.BeginInvoke(ExitApplication), id => Dispatcher.BeginInvoke(() => OpenNotification(id)));
             Refresh();
             if (!App.TestMode) { await updates.RestoreAsync(uiLifetime.Token); if (updates.DownloadedArchive is not null) { UpdateButton.ToolTip = updates.Status; UpdateButton.SetResourceReference(Control.BackgroundProperty, "AccentSoftBrush"); } if (App.Settings.AutoUpdates) _ = updates.CheckAsync(uiLifetime.Token); }
         }
@@ -142,11 +142,13 @@ public partial class MainWindow : Window
     }
     private void HideToTray()
     {
+        if (closing || exitRequested || !IsVisible) return;
+        Hide();
         ClearPinnedMessages();
         InAppDialog.CancelAll(this);
         if (emojiPopup is not null) emojiPopup.IsOpen = false;
         CloseMediaViews(); foreach (var player in players) player.Pause();
-        Hide(); refreshPending = true;
+        refreshPending = true;
     }
     private void ExitApplication()
     {
@@ -187,7 +189,7 @@ public partial class MainWindow : Window
             taskbarUnread = unread; TaskbarItemInfo.Overlay = unread > 0 ? TaskbarBadge.Create(unread) : null;
             TaskbarItemInfo.Description = unread > 0 ? $"Lantern · {unread:N0} tin chưa đọc" : "Lantern · Không có tin chưa đọc";
         }
-        if (appLocking) return;
+        if (appLocking || !IsVisible) return;
         MyAvatar.Source = AvatarImages.Get(store.Avatar);
         MyInitials.Visibility = MyAvatar.Source is null ? Visibility.Visible : Visibility.Collapsed;
         refreshing = true;
@@ -1016,7 +1018,13 @@ public partial class MainWindow : Window
         if (exportingWorkspace || loginView?.IsRestoring == true) { e.Cancel = true; ShowToast("Đang sao lưu/khôi phục dữ liệu. Vui lòng chờ hoàn tất trước khi đóng ứng dụng."); return; }
         if (node is null) { closing = true; InAppDialog.CancelAll(this); updates.Dispose(); linkPreviews.Dispose(); uiLifetime.Dispose(); return; }
         if (closing) { e.Cancel = !closeReady; return; }
-        if (!exitRequested && App.Settings.CloseToTray && tray is not null) { e.Cancel = true; HideToTray(); return; }
+        if (!exitRequested && App.Settings.CloseToTray && tray is not null)
+        {
+            e.Cancel = true;
+            // Finish the native close message before hiding the window and dismissing its media views.
+            _ = Dispatcher.BeginInvoke(HideToTray);
+            return;
+        }
         e.Cancel = true; closing = true; InAppDialog.CancelAll(this); refreshTimer.Stop(); uiLifetime.Cancel(); Microsoft.Win32.SystemEvents.UserPreferenceChanged -= SystemThemeChanged;
         sessionTimer.Stop(); updateTimer.Stop(); updates.Dispose(); linkPreviews.Dispose();
         tray?.Dispose();

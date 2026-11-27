@@ -17,6 +17,7 @@ jobs:
       - run: dotnet build src/Lantern.App/Lantern.App.csproj -c Release --nologo
       - run: dotnet run --project tests/Lantern.Tests/Lantern.Tests.csproj -c Release
       - run: dotnet run --project tests/Lantern.UiTests/Lantern.UiTests.csproj -c Release -- --update-cache
+      - run: dotnet run --project tests/Lantern.UiTests/Lantern.UiTests.csproj -c Release -- --tray
       - run: dotnet run --project tests/Lantern.UiTests/Lantern.UiTests.csproj -c Release -- --contacts
       - run: dotnet run --project tests/Lantern.UiTests/Lantern.UiTests.csproj -c Release -- --games
       - run: dotnet run --project tests/Lantern.UiTests/Lantern.UiTests.csproj -c Release -- --network-backup
