@@ -32,6 +32,12 @@ final class ReleaseUpdate {
             if(SUMS.equals(a.optString("name"))) { if(sums!=null) throw new IOException("Trùng checksum."); sums=a; }
         }
         if(apk==null||sums==null) throw new IOException("Bản phát hành chưa có đủ APK và checksum.");
+        String label=apk.optString("label","");
+        if(label.startsWith("Android v")) {
+            String apkVersion=label.substring("Android v".length());
+            if(code(apkVersion)>code(version)) throw new IOException("Phiên bản APK vượt quá phiên bản phát hành.");
+            version=apkVersion;
+        }
         String base="https://github.com/zeusato/Lantern/releases/download/"+tag+"/";
         String url=apk.getString("browser_download_url"), sumUrl=sums.getString("browser_download_url");
         if(!url.equals(base+ASSET)||!sumUrl.equals(base+SUMS)) throw new IOException("Nguồn cập nhật không hợp lệ.");

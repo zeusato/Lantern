@@ -4,3 +4,4 @@
 - Viết trả lời và release note ngắn gọn. Release note mặc định chỉ một câu: "Sửa lỗi và cải thiện trải nghiệm."
 - Không đưa hướng dẫn truy cập riêng hoặc chi tiết nội bộ vào ghi chú phát hành công khai.
 - Không gộp lịch sử các phiên bản cũ vào release note của bản mới.
+- Khi mã nguồn, cấu hình build và tài nguyên của bản mobile không đổi, dùng lại nguyên gói đã phát hành cùng checksum. Chỉ build và ký khi có thay đổi hoặc khi phát hành lần đầu.

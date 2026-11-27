@@ -41,6 +41,11 @@ public class UpdateTest {
         assertThrows(Exception.class,()->ReleaseUpdate.code("1.2.3-beta"));
         assertThrows(Exception.class,()->ReleaseUpdate.code("1.200.3"));
         assertEquals("9.9.9",ReleaseUpdate.parse(metadata()).version);
+        JSONObject reused=metadata(); JSONObject apk=reused.getJSONArray("assets").getJSONObject(0);
+        apk.put("label","Android v9.8.0");
+        ReleaseUpdate prior=ReleaseUpdate.parse(reused);
+        assertEquals("9.8.0",prior.version); assertEquals(apk.getString("browser_download_url"),prior.url);
+        apk.put("label","Android v10.0.0"); assertThrows(Exception.class,()->ReleaseUpdate.parse(reused));
         assertThrows(Exception.class,()->ReleaseUpdate.parse(metadata().put("prerelease",true)));
         JSONObject foreign=metadata();foreign.getJSONArray("assets").getJSONObject(0).put("browser_download_url","https://github.com/evil/Lantern/releases/download/v9.9.9/Lantern-Android.apk");
         assertThrows(Exception.class,()->ReleaseUpdate.parse(foreign));
