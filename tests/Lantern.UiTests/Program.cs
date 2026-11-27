@@ -63,7 +63,8 @@ internal sealed partial class UiHarness : Application
         if (e.Args.FirstOrDefault() == "--rich-polls") { await RunRichPollUi(e.Args.ElementAtOrDefault(1)); return; }
         if (e.Args.FirstOrDefault() == "--pins-emoji") { await RunPinsAndEmoji(e.Args.ElementAtOrDefault(1)); return; }
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        var trayOnly = e.Args.FirstOrDefault() == "--tray";
+        var checkDesktop = e.Args.FirstOrDefault() == "--tray-display";
+        var trayOnly = checkDesktop || e.Args.FirstOrDefault() == "--tray";
         var rootArgument = trayOnly ? e.Args.ElementAtOrDefault(1) : e.Args.FirstOrDefault();
         var root = Path.GetFullPath(rootArgument ?? Path.Combine(Path.GetTempPath(), "Lantern-ui-" + Guid.NewGuid().ToString("N"))); Directory.CreateDirectory(root);
         var workspace = Path.Combine(root, "workspace");
@@ -81,7 +82,14 @@ internal sealed partial class UiHarness : Application
             if (trayOnly)
             {
                 Settings.CloseToTray = true;
+                var desktopSamples = checkDesktop ? await SetUpTrayDisplay(window) : null;
+                window.Activate();
                 window.WindowState = WindowState.Maximized;
+                if (desktopSamples is not null)
+                {
+                    Call(window, "ShowContact", remoteIdentity.Id);
+                    await Until(() => desktopSamples.Any(s => ReadPixel(s.Location) != s.Color), "Chat covers the sampled monitor");
+                }
                 var handle = new System.Windows.Interop.WindowInteropHelper(window).Handle;
                 var trayIcon = Field<object>(window, "tray");
                 var menu = Field<System.Windows.Forms.ContextMenuStrip>(trayIcon, "menu");
@@ -98,11 +106,19 @@ internal sealed partial class UiHarness : Application
                 await remote.SendTextAsync(node.Identity.Id, "Tin nhắn dưới khay");
                 await Until(() => store.UnreadCount() == 1 && Field<int>(trayIcon, "lastCount") == 1, "Receive while hidden");
                 Check(node.IsConnected(remoteIdentity.Id), "Hidden session stays connected and updates its tray badge");
+                if (desktopSamples is not null)
+                {
+                    await remote.SetConversationRulesAsync(node.Identity.Id, true, true);
+                    await Until(() => node.ConversationRules(remoteIdentity.Id).CaptureProtected, "Capture policy received while hidden");
+                    await CheckTrayDisplay(desktopSamples);
+                }
                 menu.Items.Cast<System.Windows.Forms.ToolStripItem>().Single(item => item.Text == "Mở Lantern").PerformClick();
                 await Until(() => IsWindowVisible(handle) && ((FrameworkElement)window.FindName("Shell")).IsVisible, "Tray menu restores original chat window");
                 Check(window.WindowState == WindowState.Maximized, "Reopened window retains its maximized state");
+                if (desktopSamples is not null) Check(ScreenCaptureProtection.IsProtected(window), "Restored chat applies the capture restriction received in the tray");
                 SystemCommands.CloseWindow(window);
                 await Until(() => !IsWindowVisible(handle), "Hide restored window again");
+                if (desktopSamples is not null) await CheckTrayDisplay(desktopSamples);
                 var exited = new TaskCompletionSource();
                 window.Closed += (_, _) => exited.TrySetResult();
                 menu.Items.Cast<System.Windows.Forms.ToolStripItem>().Single(item => item.Text == "Thoát Lantern").PerformClick();

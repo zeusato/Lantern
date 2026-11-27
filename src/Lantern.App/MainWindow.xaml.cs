@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private int sessionTicks;
     private readonly Dictionary<string, (TextBlock Label, DateTimeOffset Deadline)> expiryLabels = [];
     private TrayIcon? tray;
+    private bool hiddenToTray;
     private int taskbarUnread = -1;
     private readonly Dictionary<string, (ProgressBar Bar, TextBlock Label)> progress = [];
     private readonly Dictionary<string, RichTextContent> drafts = [];
@@ -133,6 +134,12 @@ public partial class MainWindow : Window
     private void RestoreFromTray()
     {
         if (closing) return;
+        if (hiddenToTray)
+        {
+            hiddenToTray = false;
+            // Apply conversation changes, including capture restrictions, before showing the chat.
+            Refresh();
+        }
         Show(); if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         if (appLocking) { Activate(); loginView?.FocusPassword(); return; }
         var dialog = OwnedWindows.Cast<Window>().LastOrDefault(w => w.IsVisible);
@@ -143,6 +150,7 @@ public partial class MainWindow : Window
     private void HideToTray()
     {
         if (closing || exitRequested || !IsVisible) return;
+        hiddenToTray = true;
         Hide();
         ClearPinnedMessages();
         InAppDialog.CancelAll(this);
@@ -189,7 +197,7 @@ public partial class MainWindow : Window
             taskbarUnread = unread; TaskbarItemInfo.Overlay = unread > 0 ? TaskbarBadge.Create(unread) : null;
             TaskbarItemInfo.Description = unread > 0 ? $"Lantern · {unread:N0} tin chưa đọc" : "Lantern · Không có tin chưa đọc";
         }
-        if (appLocking) return;
+        if (appLocking || hiddenToTray) return;
         MyAvatar.Source = AvatarImages.Get(store.Avatar);
         MyInitials.Visibility = MyAvatar.Source is null ? Visibility.Visible : Visibility.Collapsed;
         refreshing = true;
@@ -225,6 +233,7 @@ public partial class MainWindow : Window
     private Dictionary<string, string> renderedSenderAvatars = [];
     private void RefreshConversation()
     {
+        if (hiddenToTray) return;
         if (selectedId.Length == 32 && !store.Groups().Any(g => g.Id == selectedId))
         { CloseMediaViews(); drafts.Remove(selectedId); replyDrafts.Remove(selectedId); selectedId = ""; Composer.Clear(); }
         bool protectedDetails = ConversationProtected || appLocking;

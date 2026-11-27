@@ -17,7 +17,9 @@ internal static class ScreenCaptureProtection
     {
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == IntPtr.Zero) return !protect;
-        return SetWindowDisplayAffinity(handle, protect ? ExcludeFromCapture : 0);
+        uint requested = protect ? ExcludeFromCapture : 0;
+        if (GetWindowDisplayAffinity(handle, out var current) && current == requested) return true;
+        return SetWindowDisplayAffinity(handle, requested);
     }
     internal static bool IsProtected(Window window) => GetWindowDisplayAffinity(new WindowInteropHelper(window).Handle, out var affinity) && affinity == ExcludeFromCapture;
     internal static bool ProtectPopup(Visual child, Window owner)
