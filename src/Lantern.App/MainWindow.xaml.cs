@@ -189,7 +189,7 @@ public partial class MainWindow : Window
             taskbarUnread = unread; TaskbarItemInfo.Overlay = unread > 0 ? TaskbarBadge.Create(unread) : null;
             TaskbarItemInfo.Description = unread > 0 ? $"Lantern · {unread:N0} tin chưa đọc" : "Lantern · Không có tin chưa đọc";
         }
-        if (appLocking || !IsVisible) return;
+        if (appLocking) return;
         MyAvatar.Source = AvatarImages.Get(store.Avatar);
         MyInitials.Visibility = MyAvatar.Source is null ? Visibility.Visible : Visibility.Collapsed;
         refreshing = true;
